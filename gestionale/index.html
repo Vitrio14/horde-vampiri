@@ -1,0 +1,1381 @@
+<!DOCTYPE html>
+<html lang="it">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Gestionale Vampiri | Horde RP</title>
+    <link rel="shortcut icon" href="../assets/logo.ico" type="image/x-icon">
+    <link rel="preload" href="../assets/banner.png" as="image">
+    <link href="https://fonts.googleapis.com/css2?family=Cinzel:wght@400;600;700&family=Quicksand:wght@300;400;500;600;700&display=swap" rel="stylesheet">
+    
+    <script src="https://cdn.jsdelivr.net/npm/sweetalert2@11"></script>
+    <script src="https://cdn.jsdelivr.net/npm/html2canvas@1.4.1/dist/html2canvas.min.js"></script>
+    <script type="module" src="script.js" defer></script>
+    
+    <link rel="stylesheet" href="style.css">
+
+    <style>
+        .admin-grid-menu {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(250px, 1fr));
+            gap: 20px;
+            margin-bottom: 25px;
+        }
+        .admin-menu-card {
+            background: rgba(18, 18, 18, 0.95);
+            border: 1px solid var(--gold-accent, #d4af37);
+            border-radius: 8px;
+            padding: 25px 20px;
+            text-align: center;
+            cursor: pointer;
+            transition: transform 0.2s, background 0.2s, box-shadow 0.2s;
+            box-shadow: 0 4px 6px rgba(0,0,0,0.3);
+        }
+        .admin-menu-card:hover {
+            transform: translateY(-5px);
+            background: rgba(30, 30, 30, 0.95);
+            box-shadow: 0 6px 12px rgba(212, 175, 55, 0.15);
+        }
+        .admin-menu-card h3 { 
+            margin-bottom: 10px; 
+            font-size: 1.2rem; 
+            color: var(--gold-accent, #d4af37); 
+            border-bottom: none;
+            padding-bottom: 0;
+        }
+        .admin-menu-card p { 
+            font-size: 0.8rem; 
+            opacity: 0.7; 
+            margin: 0;
+        }
+        .btn-indietro {
+            background: transparent;
+            border: 1px solid var(--gold-accent, #d4af37);
+            color: var(--gold-accent, #d4af37);
+            padding: 8px 16px;
+            border-radius: 4px;
+            cursor: pointer;
+            margin-bottom: 20px;
+            font-family: 'Quicksand', sans-serif;
+            font-size: 0.9rem;
+            display: inline-flex;
+            align-items: center;
+            gap: 8px;
+            transition: background 0.2s;
+        }
+        .btn-indietro:hover {
+            background: rgba(212, 175, 55, 0.1);
+        }
+    </style>
+</head>
+<body>
+
+    <style>
+    /* Reset e overlay a tutto schermo */
+    #schermata-manutenzione {
+        position: fixed;
+        top: 0;
+        left: 0;
+        width: 100vw;
+        height: 100vh;
+        background-color: #0b0f19;
+        background-image: 
+            radial-gradient(at 0% 0%, hsla(253,16%,7%,1) 0, transparent 50%), 
+            radial-gradient(at 50% 0%, hsla(225,39%,30%,0.3) 0, transparent 50%),
+            radial-gradient(at 100% 0%, hsla(339,49%,30%,0.2) 0, transparent 50%);
+        z-index: 999999;
+        display: none; /* Gestito in tempo reale dallo script tramite il file status.txt */
+        justify-content: center;
+        align-items: center;
+        font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+        color: #f3f4f6;
+        text-align: center;
+        box-sizing: border-box;
+        padding: 24px;
+    }
+
+    /* Card centrale minimale (effetto Glassmorphism) */
+    #schermata-manutenzione .card-manutenzione {
+        background: rgba(17, 24, 39, 0.7);
+        backdrop-filter: blur(12px);
+        -webkit-backdrop-filter: blur(12px);
+        border: 1px solid rgba(255, 255, 255, 0.08);
+        padding: 48px 32px;
+        border-radius: 24px;
+        box-shadow: 0 20px 40px rgba(0, 0, 0, 0.4);
+        max-width: 480px;
+        width: 100%;
+    }
+
+    /* Badge di stato superiore */
+    #schermata-manutenzione .badge-manutenzione {
+        display: inline-flex;
+        align-items: center;
+        gap: 8px;
+        background: rgba(59, 130, 246, 0.1);
+        border: 1px solid rgba(59, 130, 246, 0.2);
+        color: #60a5fa;
+        padding: 6px 14px;
+        border-radius: 100px;
+        font-size: 0.75rem;
+        font-weight: 600;
+        letter-spacing: 0.05em;
+        text-transform: uppercase;
+        margin-bottom: 28px;
+    }
+
+    /* Pallino pulsante nel badge */
+    #schermata-manutenzione .badge-dot {
+        width: 6px;
+        height: 6px;
+        background-color: #3b82f6;
+        border-radius: 50%;
+        animation: pulse-dot-manutenzione 2s cubic-bezier(0.4, 0, 0.6, 1) infinite;
+    }
+
+    /* Titolo */
+    #schermata-manutenzione .titolo-manutenzione {
+        font-size: 2rem;
+        font-weight: 700;
+        letter-spacing: -0.025em;
+        margin-bottom: 16px;
+        color: #ffffff;
+    }
+
+    /* Testo descrittivo */
+    #schermata-manutenzione .testo-manutenzione {
+        font-size: 1rem;
+        line-height: 1.6;
+        color: #9ca3af;
+        margin-bottom: 32px;
+    }
+
+    /* Evidenziazione nome developer */
+    #schermata-manutenzione .dev-name {
+        color: #60a5fa;
+        font-weight: 600;
+    }
+
+    /* Loader lineare */
+    #schermata-manutenzione .progress-bar-container {
+        width: 120px;
+        height: 3px;
+        background: rgba(255, 255, 255, 0.1);
+        border-radius: 10px;
+        margin: 0 auto 32px auto;
+        overflow: hidden;
+        position: relative;
+    }
+
+    #schermata-manutenzione .progress-bar-line {
+        width: 40%;
+        height: 100%;
+        background: linear-gradient(90deg, #3b82f6, #8b5cf6);
+        border-radius: 10px;
+        position: absolute;
+        animation: loading-bar-manutenzione 1.5s ease-in-out infinite;
+    }
+
+    /* Footer personalizzato */
+    #schermata-manutenzione .footer-manutenzione {
+        font-size: 0.8rem;
+        line-height: 1.5;
+        color: #6b7280;
+        border-top: 1px solid rgba(255, 255, 255, 0.05);
+        padding-top: 20px;
+    }
+    
+    #schermata-manutenzione .footer-highlight {
+        color: #9ca3af;
+    }
+
+    @keyframes loading-bar-manutenzione {
+        0% { left: -40%; }
+        50% { left: 100%; }
+        100% { left: 100%; }
+    }
+
+    @keyframes pulse-dot-manutenzione {
+        0%, 100% { opacity: 1; transform: scale(1); }
+        50% { opacity: .4; transform: scale(0.9); }
+    }
+</style>
+
+<div id="schermata-manutenzione">
+    <div class="card-manutenzione">
+        <div class="badge-manutenzione">
+            <span class="badge-dot"></span>
+            Aggiornamento in corso
+        </div>
+        <h1 class="titolo-manutenzione">Sito in manutenzione</h1>
+        <p class="testo-manutenzione">
+            Il developer <span class="dev-name">Vitrio</span> sta lavorando per migliorare il sito e implementare nuove funzionalità. Il servizio tornerà regolare a breve.
+        </p>
+        <div class="progress-bar-container">
+            <div class="progress-bar-line"></div>
+        </div>
+        <div class="footer-manutenzione">
+            Vitrio - Tutti i diritti riservati<br>
+            <span class="footer-highlight">Sito in manutenzione! Torniamo a breve!</span>
+        </div>
+    </div>
+</div>
+
+<script>
+    (function() {
+        const manutenzioneDiv = document.getElementById('schermata-manutenzione');
+        
+        function controllaStatoManutenzione() {
+            // Carica il file status.txt dal server evitando la cache del browser
+            fetch('status.txt?t=' + new Date().getTime())
+                .then(response => {
+                    if (!response.ok) throw new Error('File status non trovato');
+                    return response.text();
+                })
+                .then(stato => {
+                    const statoPulito = stato.trim().toLowerCase();
+                    
+                    if (statoPulito === 'on') {
+                        manutenzioneDiv.style.display = 'flex'; // Attiva la schermata per tutti
+                    } else {
+                        manutenzioneDiv.style.display = 'none'; // Nasconde la schermata
+                    }
+                })
+                .catch(err => {
+                    console.log('Errore controllo manutenzione:', err);
+                });
+        }
+
+        // Controllo iniziale immediato
+        controllaStatoManutenzione();
+
+        // Controllo automatico ogni 5 secondi
+        setInterval(controllaStatoManutenzione, 5000);
+    })();
+</script>
+
+    <div id="global-lock">
+        <div class="vamp-card" style="max-width: 380px; text-align: center; background: rgba(18, 18, 18, 0.95); border-color: var(--gold-accent);">
+            
+            <!-- LOGIN MEMBRO -->
+            <div id="login-membro-box">
+                <h2 style="border: none; text-align: center;">Accesso Dinastia</h2>
+                <p style="font-size: 0.7rem; margin-bottom: 5px; opacity: 0.5; text-transform: uppercase; letter-spacing: 1px;">Codice a 4 cifre + Password</p>
+                <p style="font-size: 0.6rem; margin-bottom: 25px; opacity: 0.3; text-transform: uppercase;">Inserire le chiavi del sangue</p>
+                <input type="text" id="global-codice" maxlength="4" pattern="[0-9]*" inputmode="numeric" style="text-align: center; font-size: 1.3rem; margin-bottom: 12px; letter-spacing: 8px;" placeholder="••••" onkeydown="if(event.key==='Enter') document.getElementById('global-pass').focus()">
+                <input type="password" id="global-pass" style="text-align: center; font-size: 1.1rem; margin-bottom: 20px;" placeholder="Password" onkeydown="if(event.key==='Enter') window.unlockSite()">
+                <button onclick="window.unlockSite()">Entra</button>
+                <p style="margin-top: 22px; font-size: 0.7rem; color: var(--gold-dim); cursor: pointer; text-transform: uppercase; letter-spacing: 1px;" onclick="window.mostraLoginGestore()">
+                    Accesso Gestore →
+                </p>
+            </div>
+
+            <!-- LOGIN GESTORE (nascosto di default) -->
+            <div id="login-gestore-box" style="display: none;">
+                <h2 style="border: none; text-align: center;">Accesso Gestore</h2>
+                <p style="font-size: 0.7rem; margin-bottom: 5px; opacity: 0.5; text-transform: uppercase; letter-spacing: 1px;">Identità: vampiri.gestore@horde.it</p>
+                <p style="font-size: 0.6rem; margin-bottom: 25px; opacity: 0.3; text-transform: uppercase;">Inserire la chiave del sangue</p>
+                <input type="password" id="global-admin-pass" style="text-align: center; font-size: 1.1rem; margin-bottom: 20px;" placeholder="Password Gestore" onkeydown="if(event.key==='Enter') window.unlockGestore()">
+                <button onclick="window.unlockGestore()">Entra come Gestore</button>
+                <p style="margin-top: 22px; font-size: 0.7rem; color: var(--gold-dim); cursor: pointer; text-transform: uppercase; letter-spacing: 1px;" onclick="window.mostraLoginMembro()">
+                    ← Torna al login membro
+                </p>
+            </div>
+
+        </div>
+    </div>
+
+    <nav>
+        <div class="logo-container">
+            <img src="../assets/logo.png" alt="Logo" class="logo-img" id="main-logo" >
+            <h1>Horde RP <span style="font-weight:300; opacity:0.4; margin:0 5px;">|</span> Vampiri</h1>
+        </div>
+        <div class="nav-links">
+            <a href="../" class="nav-link" title="Torna al Portale">🏠 Portale</a>
+            <div class="nav-link" onclick="window.showSection('albero')">Albero</div>
+            <div class="nav-link active" onclick="window.showSection('generale')">Generale</div>
+            <div class="nav-link" onclick="window.showSection('vendite')">Vendite</div>
+            <div class="nav-link" onclick="window.showSection('materiali')">Vendita Materiali</div>
+            <div class="nav-link" onclick="window.showSection('saldo')">Saldo</div>
+            <div class="nav-link" onclick="window.showSection('calcolo')">Calcolo</div>
+            <div class="nav-link" onclick="window.showSection('inventario')">Inventario</div>
+            <div class="nav-link" onclick="window.showSection('dungeon')">Nidi</div>
+            <div class="nav-link" onclick="window.showSection('conquiste')">Conquiste</div>
+            <div class="nav-link" onclick="window.showSection('gestione')">Gestione</div>
+            <a href="https://postimages.org" target="_blank" class="nav-link">Foto</a>
+        </div>
+        <div class="nav-logout">
+            <div class="nav-link" onclick="window.logoutVampiro()" style="color: var(--withdraw-red);">Esci</div>
+        </div>
+    </nav>
+
+    <div class="container">
+        
+        <section id="albero" class="section">
+            <div class="vamp-card" style="padding: 1.5rem;">
+                <div style="display:flex; justify-content:space-between; align-items:center; flex-wrap:wrap; gap:12px; margin-bottom:20px;">
+                    <h2 style="margin:0; border:none; padding:0;">🦇 Albero Genealogico</h2>
+                    <button type="button" id="btn-download-albero" onclick="window.downloadAlberoPNG()" style="width:auto; padding:10px 18px; font-size:0.75rem;">
+                        📥 Scarica PNG
+                    </button>
+                </div>
+                <p style="font-size:0.75rem; color:var(--text-dim); margin-bottom:12px; text-align:center;">
+                    Dinastia Vampiri · Clan Drakòvič · Dè Lùne
+                </p>
+                <p style="font-size:0.65rem; color:var(--gold-dim); margin-bottom:12px; text-align:center; opacity:0.8;">
+                    🖱️ Trascina per muoverti · 🔍 Rotella del mouse per zoom · Doppio click per reset
+                </p>
+                <div id="albero-viewport" class="albero-viewport">
+                    <div id="albero-container" class="albero-parchment albero-pannable">
+                        <div id="albero-tree-root" class="albero-tree">
+                            <!-- Renderizzato da JS -->
+                            <p style="text-align:center; opacity:0.5; padding:40px;">Caricamento albero...</p>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </section>
+
+        <section id="generale" class="section active">
+            <div class="vamp-card" style="margin-bottom: 20px;">
+                <h2 style="text-align: center;">🎖️ Classifiche Dinastia</h2>
+                <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(240px, 1fr)); gap: 20px; margin-top: 20px;">
+                    <div>
+                        <h4 style="font-size: 0.7rem; color: var(--gold-accent); text-transform: uppercase; margin-bottom: 15px; text-align: center;">Vendite · Top Settimana</h4>
+                        <div id="top-settimana-box"></div>
+                    </div>
+                    <div>
+                        <h4 style="font-size: 0.7rem; color: var(--gold-accent); text-transform: uppercase; margin-bottom: 15px; text-align: center;">Vendite · Migliori di Sempre</h4>
+                        <div id="top-sempre-box"></div>
+                    </div>
+                    <div>
+                        <h4 style="font-size: 0.7rem; color: var(--gold-accent); text-transform: uppercase; margin-bottom: 15px; text-align: center;">Materiali · Top Settimana</h4>
+                        <div id="top-mat-settimana-box"></div>
+                    </div>
+                    <div>
+                        <h4 style="font-size: 0.7rem; color: var(--gold-accent); text-transform: uppercase; margin-bottom: 15px; text-align: center;">Materiali · Migliori di Sempre</h4>
+                        <div id="top-mat-sempre-box"></div>
+                    </div>
+                </div>
+            </div>
+
+            <div class="general-grid">
+                <div class="coming-soon-card">
+                    <h3>Comunicazioni Dinastia</h3>
+                    <div id="comunicazioni-box"></div>
+                </div>
+
+                <div class="coming-soon-card">
+                    <h3>Link Utili / Documenti</h3>
+                    <div id="documenti-box"></div>
+                </div>
+
+                <div class="coming-soon-card">
+                    <h3>Membri e Ranghi</h3>
+                    <div id="lista-membri-dinamica" style="margin-top: 15px; text-align: left; width: 100%; border-left: 1px solid var(--blood-red); padding-left: 15px;"></div>
+                </div>
+            </div>
+        </section>
+
+        <section id="vendite" class="section">
+            <div class="stats-grid">
+                <div class="stat-card">
+                    <h3>Qty Venduta <br> (Settimana)</h3>
+                    <p id="tot-qty-sett" style="color: var(--gold-dim);">0x</p>
+                </div>
+                <div class="stat-card">
+                    <h3>Crediti Dinastia (Settimana)</h3>
+                    <p id="tot-dinastia-sett" style="color: var(--gold-dim);">0 cr</p>
+                </div>
+                <div class="stat-card">
+                    <h3>Ekaton <br> (Settimana)</h3>
+                    <p id="tot-ekaton-sett" style="color: var(--gold-dim);">0 cr</p>
+                </div>
+                <div class="stat-card">
+                    <h3>Vendite <br> (Freq. Sett.)</h3>
+                    <p id="tot-count-sett" style="color: var(--gold-dim);">0</p>
+                </div>
+                <div class="stat-card">
+                    <h3>Fondo <br> Cassa</h3>
+                    <p id="tot-saldo-globale" style="color: var(--gold-dim);">0 cr</p>
+                </div>
+            </div>
+
+            <div class="vamp-card">
+                <h2>💲Registra Vendita</h2>
+                <div style="display: grid; grid-template-columns: 1fr 1fr 1fr; gap: 20px; margin-top: 15px;">
+                    <div class="form-group">
+                        <label>Vampiro</label>
+                        <select id="vamp-nome" class="vampiro-select-list"></select>
+                    </div>
+                    <div class="form-group">
+                        <label>Tipo / Materiale</label>
+                        <select id="vamp-tipo-mat" onchange="window.onVenditaTipoChange()">
+                            <option value="">— Seleziona —</option>
+                        </select>
+                    </div>
+                    <div class="form-group">
+                        <label>Quantità</label>
+                        <input type="number" id="vamp-qty" placeholder="0" oninput="window.updateVenditaPreview()" onkeydown="if(event.key==='Enter') window.registraVendita()">
+                    </div>
+                </div>
+                <div style="display:grid; grid-template-columns:1fr 1fr 1fr 1fr; gap:12px; margin-bottom:15px; font-size:0.8rem;">
+                    <div style="background:rgba(0,0,0,0.3); padding:10px; border-left:3px solid var(--gold-accent);">
+                        <span style="opacity:0.6; display:block; font-size:0.65rem;">PREZZO UNIT.</span>
+                        <strong id="vamp-preview-un">—</strong>
+                    </div>
+                    <div style="background:rgba(0,0,0,0.3); padding:10px; border-left:3px solid var(--gold-dim);">
+                        <span style="opacity:0.6; display:block; font-size:0.65rem;">TOTALE</span>
+                        <strong id="vamp-preview-tot">—</strong>
+                    </div>
+                    <div style="background:rgba(0,0,0,0.3); padding:10px; border-left:3px solid var(--success-green);">
+                        <span style="opacity:0.6; display:block; font-size:0.65rem;">PROPRIA</span>
+                        <strong id="vamp-preview-pro" style="color:var(--success-green)">—</strong>
+                    </div>
+                    <div style="background:rgba(0,0,0,0.3); padding:10px; border-left:3px solid var(--withdraw-red);">
+                        <span style="opacity:0.6; display:block; font-size:0.65rem;">DINASTIA / EKATON</span>
+                        <strong id="vamp-preview-din" style="color:var(--withdraw-red)">—</strong>
+                    </div>
+                </div>
+                <div class="form-group">
+                    <label>Link Prova Fotografica</label>
+                    <input type="url" id="vamp-foto" placeholder="https://imgur.com/..." onkeydown="if(event.key==='Enter') window.registraVendita()">
+                </div>
+                <div class="form-group">
+                    <label>Note / Causale</label>
+                    <input type="text" id="vamp-note" placeholder="Note..." onkeydown="if(event.key==='Enter') window.registraVendita()">
+                </div>
+                <button onclick="window.registraVendita()">Registra Vendita</button>
+            </div>
+
+            <h2 style="font-size: 0.8rem; margin-bottom: 15px;">Vendite della Settimana</h2>
+            <div class="search-box">
+                <input type="text" id="search-vendite" placeholder="Cerca..." onkeyup="window.renderVendite()">
+            </div>
+            <div class="scroll-container">
+                <table>
+                    <thead>
+                        <tr>
+                            <th>Data/Ora</th>
+                            <th>Vampiro</th>
+                            <th>Materiale</th>
+                            <th>Qty</th>
+                            <th>Totale</th>
+                            <th>Propria</th>
+                            <th>Dinastia</th>
+                            <th>Note</th>
+                            <th>Foto</th>
+                        </tr>
+                    </thead>
+                    <tbody id="lista-vendite"></tbody>
+                </table>
+            </div>
+        </section>
+
+        <section id="materiali" class="section">
+            <div class="stats-grid">
+                <div class="stat-card">
+                    <h3>Materiali venduti <br> (Settimana)</h3>
+                    <p id="mat-tot-qty-sett" style="color: var(--gold-dim);">0</p>
+                </div>
+                <div class="stat-card">
+                    <h3>Crediti Materiali <br> (Settimana)</h3>
+                    <p id="mat-tot-crediti-sett" style="color: var(--gold-dim);">0 cr</p>
+                </div>
+                <div class="stat-card">
+                    <h3>Tributo Dinastia <br> (Settimana)</h3>
+                    <p id="mat-tot-dinastia-sett" style="color: var(--gold-dim);">0 cr</p>
+                </div>
+                <div class="stat-card">
+                    <h3>Vendite Totali <br> (Settimana)</h3>
+                    <p id="mat-tot-count-sett" style="color: var(--gold-dim);">0</p>
+                </div>
+            </div>
+
+            <div class="vamp-card">
+                <h2>⚒️ Registra Vendita Materiali</h2>
+                <div style="display: grid; grid-template-columns: 1fr 1fr 1fr; gap: 20px; margin-top: 15px;">
+                    <div class="form-group">
+                        <label>Vampiro</label>
+                        <select id="mat-vamp-nome" class="vampiro-select-list"></select>
+                    </div>
+                    <div class="form-group">
+                        <label>Materiale</label>
+                        <select id="mat-tipo-select" onchange="window.onMatTipoChange()">
+                            <option value="">— Seleziona materiale —</option>
+                        </select>
+                    </div>
+                    <div class="form-group">
+                        <label>Dinastia Acquirente</label>
+                        <select id="mat-acquirente">
+                            <option value="" disabled selected>Seleziona Dinastia/Persona...</option>
+                            <option value="Vampiri">Vampiri</option>
+                            <option value="Demoni">Demoni</option>
+                            <option value="Kitzune">Kitzune</option>
+                            <option value="Lycan">Lycan</option>
+                            <option value="Ghoul">Ghoul</option>
+                            <option value="Stregoni">Stregoni</option>
+                            <option value="Elyri">Elyri</option>
+                            <option value="Umani">Umani</option>
+                        </select>
+                    </div>
+                </div>
+                <div style="display: grid; grid-template-columns: 1fr 1fr 1fr 1fr; gap: 12px; margin: 10px 0 15px; font-size:0.8rem;">
+                    <div class="form-group" style="margin:0">
+                        <label>Quantità</label>
+                        <input type="number" id="mat-qty" placeholder="0" oninput="window.updateMatPreview()">
+                    </div>
+                    <div style="background:rgba(0,0,0,0.3); padding:10px; border-left:3px solid var(--gold-accent);">
+                        <span style="opacity:0.6; display:block; font-size:0.65rem;">PREZZO UNIT.</span>
+                        <strong id="mat-preview-un">—</strong>
+                    </div>
+                    <div style="background:rgba(0,0,0,0.3); padding:10px; border-left:3px solid var(--gold-dim);">
+                        <span style="opacity:0.6; display:block; font-size:0.65rem;">TOTALE</span>
+                        <strong id="mat-preview-tot">—</strong>
+                    </div>
+                    <div style="background:rgba(0,0,0,0.3); padding:10px; border-left:3px solid var(--withdraw-red);">
+                        <span style="opacity:0.6; display:block; font-size:0.65rem;">PRO / DIN / EKATON</span>
+                        <strong id="mat-preview-split" style="font-size:0.75rem;">—</strong>
+                    </div>
+                </div>
+                <div class="form-group" style="margin-top: 10px;">
+                    <label>Link Foto / Ricevuta</label>
+                    <input type="url" id="mat-foto" placeholder="https://...">
+                </div>
+                <button onclick="window.registraVenditaMateriali()">Registra Transazione Materiali</button>
+            </div>
+
+            <h2 style="font-size: 0.8rem; margin-bottom: 15px;">Storico Vendita Materiali</h2>
+            <div class="search-box" style="display: flex; gap: 10px;">
+                <input type="text" id="search-materiali" placeholder="Cerca materiale, acquirente o vampiro..." onkeyup="window.renderMateriali()" style="flex: 1;">
+                <select id="filter-tipo-mat" onchange="window.renderMateriali()" style="padding: 10px; background: #1a1a1a; color: #e0e0e0; border: 1px solid #333; border-radius: 5px; max-width: 200px;">
+                    <option value="">Tutti i Materiali</option>
+                </select>
+            </div>
+            <div class="scroll-container">
+                <table>
+                    <thead>
+                        <tr>
+                            <th>Data</th>
+                            <th>Vampiro</th>
+                            <th>Materiale</th>
+                            <th>Acquirente</th>
+                            <th>Qty</th>
+                            <th>Totale</th>
+                            <th>Dinastia (%)</th>
+                            <th>Propria (%)</th>
+                            <th>Foto</th>
+                        </tr>
+                    </thead>
+                    <tbody id="lista-materiali"></tbody>
+                </table>
+            </div>
+        </section>
+
+        <section id="saldo" class="section">
+            <div class="vamp-card">
+                <h2>💰 Gestione Crediti Dinastia</h2>
+                <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 20px;">
+                    <div class="form-group">
+                        <label>Vampiro Operante</label>
+                        <select id="saldo-nome" class="vampiro-select-list"></select>
+                    </div>
+                    <div class="form-group">
+                        <label>Importo (cr)</label>
+                        <input type="number" id="saldo-importo" placeholder="0" onkeydown="if(event.key==='Enter') window.movimentoSaldo()">
+                    </div>
+                </div>
+                <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 20px;">
+                    <div class="form-group">
+                        <label>Azione</label>
+                        <select id="saldo-azione">
+                            <option value="deposita">Deposita</option>
+                            <option value="preleva">Preleva</option>
+                        </select>
+                    </div>
+                    <div class="form-group">
+                        <label>Motivazione</label>
+                        <input type="text" id="saldo-motivo" placeholder="Motivo..." onkeydown="if(event.key==='Enter') window.movimentoSaldo()">
+                    </div>
+                </div>
+                <button onclick="window.movimentoSaldo()">Registra Transazione</button>
+            </div>
+            <h2 style="font-size: 0.8rem; margin-bottom: 15px;">Storico Transazioni</h2>
+            <div class="search-box">
+                <input type="text" id="search-saldo-logs" placeholder="Cerca..." onkeyup="window.renderSaldoLogs()">
+            </div>
+            <div class="scroll-container"><div id="saldo-logs-box"></div></div>
+        </section>
+
+        <section id="calcolo" class="section">
+            <div class="vamp-card" style="max-width: 600px; margin: 0 auto;">
+                <h2>🔍 Controllo vendite</h2>
+                <div class="form-group">
+                    <label>Nome del Vampiro</label>
+                    <select id="calc-search-name" class="vampiro-select-list"></select>
+                </div>
+                <div class="form-group">
+                    <label>Periodo / Settimana</label>
+                    <select id="calc-period-filter">
+                        <option value="current">Settimana Corrente</option>
+                        <option value="all">Totale Storico</option>
+                    </select>
+                </div>
+                <button onclick="window.eseguiCalcolo()">Calcola</button>
+                <div id="calc-result" class="calc-result-box" style="display: none;">
+                    <h3 id="calc-res-nome" style="color: var(--gold-accent); margin-bottom: 15px; text-align: center;">-</h3>
+                    
+                    <h4 style="margin-top: 10px; margin-bottom: 10px; color: #aaa; text-transform: uppercase; font-size: 0.8rem; letter-spacing: 1px;">Vendite</h4>
+                    <div class="calc-item"><span>Quantità venduta</span><span id="calc-res-qty" style="color: var(--gold-dim);">0</span></div>
+                    <div class="calc-item"><span>Numero Transazioni</span><span id="calc-res-count" style="color: var(--gold-dim);">0</span></div>
+                    <div class="calc-item"><span>Crediti Totali</span><span id="calc-res-tot" style="color: var(--gold-dim);">0 cr</span></div>
+                    <div class="calc-item" style="border-top: 1px dashed #444; margin-top: 5px; padding-top: 5px;">
+                        <span style="color: var(--success-green);">Quota Propria</span>
+                        <span id="calc-res-vamp" style="color: var(--success-green);">0 cr</span>
+                    </div>
+                    <div class="calc-item">
+                        <span style="color: var(--withdraw-red);">Tributo Dinastia</span>
+                        <span id="calc-res-din" style="color: var(--withdraw-red);">0 cr</span>
+                    </div>
+                    <div class="calc-item">
+                        <span style="color: var(--gold-accent);">Quota Ekaton</span>
+                        <span id="calc-res-ekaton" style="color: var(--gold-accent);">0 cr</span>
+                    </div>
+
+                    <h4 style="margin-top: 25px; margin-bottom: 10px; color: #aaa; text-transform: uppercase; font-size: 0.8rem; letter-spacing: 1px;">Vendita Materiali</h4>
+                    <div class="calc-item"><span>Materiali Venduti</span><span id="calc-res-mat-qty" style="color: var(--gold-dim);">0</span></div>
+                    <div class="calc-item"><span>Numero Transazioni</span><span id="calc-res-mat-count" style="color: var(--gold-dim);">0</span></div>
+                    <div class="calc-item"><span>Crediti Totali</span><span id="calc-res-mat-tot" style="color: var(--gold-dim);">0 cr</span></div>
+                    <div class="calc-item" style="border-top: 1px dashed #444; margin-top: 5px; padding-top: 5px;">
+                        <span style="color: var(--success-green);">Quota Propria</span>
+                        <span id="calc-res-mat-vamp" style="color: var(--success-green);">0 cr</span>
+                    </div>
+                    <div class="calc-item">
+                        <span style="color: var(--withdraw-red);">Tributo Dinastia</span>
+                        <span id="calc-res-mat-din" style="color: var(--withdraw-red);">0 cr</span>
+                    </div>
+                    <div class="calc-item">
+                        <span style="color: var(--gold-accent);">Quota Ekaton</span>
+                        <span id="calc-res-mat-ekaton" style="color: var(--gold-accent);">0 cr</span>
+                    </div>
+
+                    <div id="calc-res-lista-dettaglio" style="margin-top: 25px; border-top: 1px solid #333; padding-top: 15px; font-size: 0.75rem;"></div>
+                </div>
+            </div>
+        </section>
+
+        <section id="inventario" class="section">
+            <div class="vamp-card">
+                <h2>📦 Accesso Rapido Depositi</h2>
+                <p style="font-size: 0.7rem; color: var(--gold-dim); margin-bottom: 20px; text-transform: uppercase;">Clicca su un oggetto sotto per registrarne il movimento.</p>
+                <div class="form-group" style="max-width: 300px;">
+                    <label>Tuo Nome (Vampiro)</label>
+                    <select id="inv-user-name" class="vampiro-select-list"></select>
+                </div>
+            </div>
+            <h2 style="font-size: 0.8rem; margin-bottom: 15px;">Stato Depositi</h2>
+            <div class="search-box">
+                <input type="text" id="search-inventario" placeholder="Cerca oggetto..." onkeyup="window.renderInventario()">
+            </div>
+            <div class="inv-layout-3col">
+                <div class="inv-column"><h3>Deposito 1</h3><div id="display-inv-1"></div></div>
+                <div class="inv-column"><h3>Deposito 2</h3><div id="display-inv-2"></div></div>
+                <div class="inv-column"><h3>Deposito Ekaton</h3><div id="display-inv-3"></div></div>
+            </div>
+            <h2 style="font-size: 0.8rem; margin-top: 40px; margin-bottom: 15px;">Cronologia Movimenti</h2>
+            <div class="search-box">
+                <input type="text" id="search-logs" placeholder="Cerca nel log..." onkeyup="window.renderLogs()">
+            </div>
+            <div class="scroll-container"><div id="inv-logs"></div></div>
+        </section>
+
+        <section id="dungeon" class="section">
+            <div class="stats-grid" style="margin-bottom: 25px;">
+                <div class="stat-card">
+                    <h3>Nidi <br> Totali</h3>
+                    <p id="stat-dungeon-tot" style="color: var(--gold-dim);">0</p>
+                </div>
+                <div class="stat-card">
+                    <h3>Nidi <br> Successo</h3>
+                    <p id="stat-dungeon-vittorie" style="color: var(--success-green);">0</p>
+                </div>
+                <div class="stat-card">
+                    <h3>Nidi <br> Falliti</h3>
+                    <p id="stat-dungeon-sconfitte" style="color: var(--withdraw-red);">0</p>
+                </div>
+            </div>
+
+            <div class="vamp-card">
+                <h2>⚔️ Registra Incursione Nidi</h2>
+                <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 20px;">
+                    <div class="form-group">
+                        <label>Aggiungi Membro Squadra</label>
+                        <div style="display: flex; gap: 10px;">
+                            <select id="dungeon-select-membro" class="vampiro-select-list" style="flex: 1;"></select>
+                            <button onclick="window.aggiungiMembroSquadra()" style="width: auto; padding: 0 20px; background: var(--gold-accent); color: black;">+</button>
+                        </div>
+                    </div>
+                    <div class="form-group">
+                        <label>Livello Nido</label>
+                        <select id="dungeon-livello">
+                            <option value="1">Livello 1</option><option value="2">Livello 2</option>
+                            <option value="3">Livello 3</option><option value="4">Livello 4</option>
+                            <option value="5">Livello 5</option><option value="6">Livello 6</option>
+                            <option value="7">Livello 7</option><option value="8">Livello 8</option>
+                            <option value="9">Livello 9</option><option value="10">Livello 10</option>
+                            <option value="11">Livello 11</option><option value="12">Livello 12</option>
+                            <option value="13">Livello 13</option><option value="14">Livello 14</option>
+                            <option value="15">Livello 15</option>
+                        </select>
+                    </div>
+                </div>
+                <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 20px;">
+                    <div class="form-group">
+                        <label>Esito</label>
+                        <select id="dungeon-esito">
+                            <option value="successo">Successo</option>
+                            <option value="fallimento">Fallimento</option>
+                        </select>
+                    </div>
+                    <div class="form-group">
+                        <label>Bottino (cosa hanno preso)</label>
+                        <input type="text" id="dungeon-bottino" placeholder="es. 3x Carbonio, Pile, Armatura...">
+                    </div>
+                </div>
+                <div id="squadra-temporanea" style="margin: 15px 0; display: flex; flex-wrap: wrap; gap: 10px;"></div>
+                <button onclick="window.avviaDungeon()">Avvia Incursione (30 min)</button>
+            </div>
+
+            <h2 style="font-size: 0.8rem; margin-bottom: 15px;">Nidi in Corso / Storico</h2>
+            <div class="search-box">
+                <input type="text" id="search-dungeon" placeholder="Cerca nidi (squadra, livello o bottino)..." onkeyup="window.renderDungeon()">
+            </div>
+            <div class="scroll-container">
+                <table>
+                    <thead>
+                        <tr>
+                            <th>Squadra</th>
+                            <th>Livello</th>
+                            <th>Esito</th>
+                            <th>Bottino</th>
+                            <th>Timer / Stato</th>
+                            <th>Inizio</th>
+                        </tr>
+                    </thead>
+                    <tbody id="lista-dungeon"></tbody>
+                </table>
+            </div>
+        </section>
+
+        <section id="conquiste" class="section">
+            <div class="stats-grid" style="margin-bottom: 25px;">
+                <div class="stat-card">
+                    <h3>Conquiste <br> Totali</h3>
+                    <p id="stat-conquista-tot" style="color: var(--gold-dim);">0</p>
+                </div>
+                <div class="stat-card">
+                    <h3>Conquiste <br> Riuscite</h3>
+                    <p id="stat-conquista-vittorie" style="color: var(--success-green);">0</p>
+                </div>
+                <div class="stat-card">
+                    <h3>Conquiste <br> Fallite</h3>
+                    <p id="stat-conquista-sconfitte" style="color: var(--withdraw-red);">0</p>
+                </div>
+            </div>
+
+            <div class="vamp-card">
+                <h2>🏆 Registra Punto Conquista</h2>
+                <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 20px;">
+                    <div class="form-group">
+                        <label>Aggiungi Membro Squadra</label>
+                        <div style="display: flex; gap: 10px;">
+                            <select id="conquista-select-membro" class="vampiro-select-list" style="flex: 1;"></select>
+                            <button onclick="window.aggiungiMembroConquista()" style="width: auto; padding: 0 20px; background: var(--gold-accent); color: black;">+</button>
+                        </div>
+                    </div>
+                    <div class="form-group">
+                        <label>Zona / Punto</label>
+                        <input type="text" id="conquista-zona" placeholder="Esempio: Porto, Periferia...">
+                    </div>
+                </div>
+                <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 20px;">
+                    <div class="form-group">
+                        <label>Esito</label>
+                        <select id="conquista-esito">
+                            <option value="successo">Successo</option>
+                            <option value="fallimento">Fallimento</option>
+                        </select>
+                    </div>
+                    <div class="form-group">
+                        <label>Bottino (cosa hanno preso)</label>
+                        <input type="text" id="conquista-bottino" placeholder="es. Armi, Materiali, Documenti...">
+                    </div>
+                </div>
+                <div id="squadra-conquista-temporanea" style="margin: 15px 0; display: flex; flex-wrap: wrap; gap: 10px;"></div>
+                <button onclick="window.registraConquista()">Registra Conquista</button>
+            </div>
+
+            <h2 style="font-size: 0.8rem; margin-bottom: 15px;">Log Conquiste</h2>
+            <div class="search-box">
+                <input type="text" id="search-conquiste" placeholder="Cerca conquista (squadra, zona o bottino)..." onkeyup="window.renderConquiste()">
+            </div>
+            <div class="scroll-container">
+                <table>
+                    <thead>
+                        <tr>
+                            <th>Data</th>
+                            <th>Squadra</th>
+                            <th>Zona Conquistata</th>
+                            <th>Esito</th>
+                            <th>Bottino</th>
+                        </tr>
+                    </thead>
+                    <tbody id="lista-conquiste"></tbody>
+                </table>
+            </div>
+        </section>
+
+        <section id="gestione" class="section">
+            <div id="login-container-gestione" style="display: flex; justify-content: center; align-items: center; min-height: 70vh;">
+                <div id="login-gestione" class="vamp-card" style="max-width: 400px; width: 100%; text-align: center; background: rgba(18, 18, 18, 0.95); border-color: var(--gold-accent);">
+                    <h2>Accesso Gestore</h2>
+                    <p style="font-size: 0.7rem; margin-bottom: 5px; opacity: 0.5; text-transform: uppercase; letter-spacing: 1px;">Identità: vampiri.gestore@horde.it</p>
+                    <div class="form-group">
+                        <input type="password" id="admin-pass" style="text-align: center; margin: 20px 0;" onkeydown="if(event.key==='Enter') window.checkAccess()" placeholder="Password">
+                    </div>
+                    <button onclick="window.checkAccess()">Entra</button>
+                    
+                    <p style="margin-top: 20px; font-size: 0.7rem; color: var(--gold-dim); cursor: pointer; text-transform: uppercase; letter-spacing: 1px;" 
+                       onclick="location.reload()">
+                        Torna al login membro
+                    </p>
+                </div>
+            </div>
+
+            <div id="admin-content" style="display: none;">
+                
+                <div id="admin-dashboard-menu" class="admin-grid-menu">
+                    <div class="admin-menu-card" onclick="window.apriAdminView('comunicazioni')">
+                        <h3>📢 Comunicazioni & Link</h3>
+                        <p>Gestisci avvisi alla dinastia e documenti utili</p>
+                    </div>
+                    <div class="admin-menu-card" onclick="window.apriAdminView('membri')">
+                        <h3>🦇 Gestione Membri</h3>
+                        <p>Aggiungi e modifica i ranghi dei vampiri</p>
+                    </div>
+                    <div class="admin-menu-card" onclick="window.apriAdminView('dungeon')">
+                        <h3>⚔️ Dungeon & Nidi</h3>
+                        <p>Visualizza e filtra i database delle operazioni</p>
+                    </div>
+                    <div class="admin-menu-card" onclick="window.apriAdminView('storico-vendite')">
+                        <h3>📦 Storico Vendite</h3>
+                        <p>Statistiche storiche, carbonio e materiali</p>
+                    </div>
+                    <div class="admin-menu-card" onclick="window.apriAdminView('finanze')">
+                        <h3>💰 Gestione Finanze</h3>
+                        <p>Correzione saldo dinastia e log transazioni</p>
+                    </div>
+                    <div class="admin-menu-card" onclick="window.apriAdminView('inventario')">
+                        <h3>🎒 Gestione Inventario</h3>
+                        <p>Libreria PNG, item, giacenze e log magazzini</p>
+                    </div>
+                    <div class="admin-menu-card" onclick="window.apriAdminView('materiali')">
+                        <h3>🧱 Tipi Materiale</h3>
+                        <p>Prezzi, percentuali, Ekaton e dove appaiono</p>
+                    </div>
+                    <div class="admin-menu-card" onclick="window.apriAdminView('albero')">
+                        <h3>🌳 Albero Genealogico</h3>
+                        <p>Nodi, foto, legami di sangue e download PNG</p>
+                    </div>
+                </div>
+
+                <div id="admin-view-comunicazioni" class="admin-sub-view" style="display: none;">
+                    <button class="btn-indietro" onclick="window.tornaAdminMenu()">🔙 Torna alla Dashboard</button>
+                    <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(300px, 1fr)); gap: 20px; margin-bottom: 25px;">
+                        <div class="vamp-card">
+                            <h2>Invia Comunicazione</h2>
+                            <div class="form-group"><label>Titolo</label><input type="text" id="adm-com-titolo"></div>
+                            <div class="form-group"><label>Descrizione</label><input type="text" id="adm-com-desc"></div>
+                            <div class="form-group"><label>Link (Opzionale)</label><input type="url" id="adm-com-link"></div>
+                            <div class="form-group"><label>Firma</label><input type="text" id="adm-com-firma"></div>
+                            <button onclick="window.addDinamico('comunicazioni')">Pubblica Avviso</button>
+                            <div class="scroll-container" style="max-height: 150px; margin-top:15px;" id="adm-com-list"></div>
+                        </div>
+
+                        <div class="vamp-card">
+                            <h2>Nuovo Link / Documento</h2>
+                            <div class="form-group"><label>Nome Link</label><input type="text" id="adm-doc-titolo"></div>
+                            <div class="form-group"><label>Descrizione Breve</label><input type="text" id="adm-doc-desc"></div>
+                            <div class="form-group"><label>URL</label><input type="url" id="adm-doc-link"></div>
+                            <div class="form-group"><label>Firma</label><input type="text" id="adm-doc-firma"></div>
+                            <button onclick="window.addDinamico('documenti')">Aggiungi Link</button>
+                            <div class="scroll-container" style="max-height: 150px; margin-top:15px;" id="adm-doc-list"></div>
+                        </div>
+                    </div>
+                </div>
+
+                <div id="admin-view-membri" class="admin-sub-view" style="display: none;">
+                    <button class="btn-indietro" onclick="window.tornaAdminMenu()">🔙 Torna alla Dashboard</button>
+                    <div class="vamp-card">
+                        <h2>Gestione Membri / Utenti</h2>
+                        <div style="display: grid; grid-template-columns: 1fr 1fr 1fr 1fr; gap: 15px; align-items: flex-end; margin-bottom: 15px;">
+                            <div class="form-group" style="margin:0"><label>Nome</label><input type="text" id="admin-vamp-nome" placeholder="Nome vampiro"></div>
+                            <div class="form-group" style="margin:0"><label>Grado</label><input type="text" id="admin-vamp-grado" placeholder="es. Anziano"></div>
+                            <div class="form-group" style="margin:0"><label>Codice (4 cifre)</label><input type="text" id="admin-vamp-codice" maxlength="4" pattern="[0-9]*" inputmode="numeric" placeholder="1234"></div>
+                            <div class="form-group" style="margin:0"><label>Password</label><input type="text" id="admin-vamp-password" placeholder="Password accesso"></div>
+                        </div>
+                        <div style="margin-bottom: 20px;">
+                            <label style="display:block; margin-bottom:12px; color: var(--gold-dim); font-size:0.75rem; letter-spacing:1px;">Permessi sezioni (cosa può vedere il membro)</label>
+                            <div id="admin-permessi-checkboxes" class="permessi-grid">
+                                <div class="permessi-group">
+                                    <span class="permessi-group-title">Sezioni interne</span>
+                                    <div class="permessi-group-items">
+                                        <label class="perm-label"><input type="checkbox" class="perm-check" value="albero" checked> Albero</label>
+                                        <label class="perm-label"><input type="checkbox" class="perm-check" value="generale" checked> Generale</label>
+                                        <label class="perm-label"><input type="checkbox" class="perm-check" value="vendite" checked> Vendite</label>
+                                        <label class="perm-label"><input type="checkbox" class="perm-check" value="materiali" checked> Vendita Materiali</label>
+                                        <label class="perm-label"><input type="checkbox" class="perm-check" value="saldo" checked> Saldo</label>
+                                        <label class="perm-label"><input type="checkbox" class="perm-check" value="calcolo"> Calcolo</label>
+                                        <label class="perm-label"><input type="checkbox" class="perm-check" value="inventario" checked> Inventario</label>
+                                        <label class="perm-label"><input type="checkbox" class="perm-check" value="dungeon" checked> Nidi</label>
+                                        <label class="perm-label"><input type="checkbox" class="perm-check" value="conquiste" checked> Conquiste</label>
+                                    </div>
+                                </div>
+                                <div class="permessi-group">
+                                    <span class="permessi-group-title">Link esterni</span>
+                                    <div class="permessi-group-items">
+                                        <label class="perm-label"><input type="checkbox" class="perm-check" value="foto"> Foto</label>
+                                        <label class="perm-label"><input type="checkbox" class="perm-check" value="conquiste-ext"> ⚔️ Conquiste Ext</label>
+                                        <label class="perm-label"><input type="checkbox" class="perm-check" value="bg"> BG</label>
+                                        <label class="perm-label"><input type="checkbox" class="perm-check" value="gm"> GM</label>
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+                        <button onclick="window.aggiungiVampiro()" style="width: auto; padding: 14px 25px;">Aggiungi / Aggiorna Membro</button>
+                        <div class="scroll-container" style="max-height: 280px; margin-top: 20px;">
+                            <table style="font-size: 0.7rem;">
+                                <thead><tr><th>Nome</th><th>Grado</th><th>Codice</th><th>Permessi</th><th>Azione</th></tr></thead>
+                                <tbody id="admin-vampiri-body"></tbody>
+                            </table>
+                        </div>
+                    </div>
+                </div>
+
+                <div id="admin-view-dungeon" class="admin-sub-view" style="display: none;">
+                    <button class="btn-indietro" onclick="window.tornaAdminMenu()">🔙 Torna alla Dashboard</button>
+                    <div class="admin-dungeon-layout">
+                        <div class="vamp-card">
+                            <h2>Gestione Database Nidi</h2>
+                            <div class="stats-grid" style="grid-template-columns: 1fr 1fr 1fr; margin-bottom: 15px; font-size: 0.6rem;">
+                                <div class="stat-card"><h5>TOT</h5><p id="admin-stat-dungeon-tot">0</p></div>
+                                <div class="stat-card"><h5>WIN</h5><p id="admin-stat-dungeon-vittorie">0</p></div>
+                                <div class="stat-card"><h5>LOSE</h5><p id="admin-stat-dungeon-sconfitte">0</p></div>
+                            </div>
+                            <div class="search-box">
+                                <input type="text" id="search-admin-dungeon" placeholder="Filtra nidi..." onkeyup="window.renderAdminDungeon()">
+                            </div>
+                            <div class="scroll-container admin-table-scroll">
+                                <table class="admin-wide-table">
+                                    <thead><tr><th>Data/Ora</th><th>Squadra</th><th>Liv</th><th>Esito</th><th>Bottino</th><th>Azione</th></tr></thead>
+                                    <tbody id="admin-dungeon-body"></tbody>
+                                </table>
+                            </div>
+                        </div>
+
+                        <div class="vamp-card">
+                            <h2>Gestione Database Conquiste</h2>
+                            <div class="stats-grid" style="grid-template-columns: 1fr 1fr 1fr; margin-bottom: 15px; font-size: 0.6rem;">
+                                <div class="stat-card"><h5>TOT</h5><p id="admin-stat-conquista-tot">0</p></div>
+                                <div class="stat-card"><h5>WIN</h5><p id="admin-stat-conquista-vittorie">0</p></div>
+                                <div class="stat-card"><h5>LOSE</h5><p id="admin-stat-conquista-sconfitte">0</p></div>
+                            </div>
+                            <div class="search-box">
+                                <input type="text" id="search-admin-conquiste" placeholder="Filtra conquiste..." onkeyup="window.renderAdminConquiste()">
+                            </div>
+                            <div class="scroll-container admin-table-scroll">
+                                <table class="admin-wide-table">
+                                    <thead><tr><th>Data</th><th>Squadra</th><th>Zona</th><th>Esito</th><th>Bottino</th><th>Azione</th></tr></thead>
+                                    <tbody id="admin-conquiste-body"></tbody>
+                                </table>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+
+                <div id="admin-view-storico-vendite" class="admin-sub-view" style="display: none;">
+                    <button class="btn-indietro" onclick="window.tornaAdminMenu()">🔙 Torna alla Dashboard</button>
+                    
+                    <div class="stats-grid">
+                        <div class="stat-card">
+                            <h3>Qty Vendite <br> (TOTALE STORICO)</h3>
+                            <p id="admin-tot-qty-storico" style="color: var(--gold-dim);">0x</p>
+                        </div>
+                        <div class="stat-card">
+                            <h3>Crediti Dinastia Vendite<br> (TOTALE STORICO)</h3>
+                            <p id="admin-tot-dinastia-storico" style="color: var(--gold-dim);">0 cr</p>
+                        </div>
+                        <div class="stat-card">
+                            <h3>Ekaton Vendite<br> (TOTALE STORICO)</h3>
+                            <p id="admin-tot-ekaton-storico" style="color: var(--gold-dim);">0 cr</p>
+                        </div>
+                        <div class="stat-card">
+                            <h3>N. Vendite <br> (STORICO)</h3>
+                            <p id="admin-tot-count-storico" style="color: var(--gold-dim);">0</p>
+                        </div>
+                    </div>
+
+                    <div class="stats-grid" style="margin-top: 25px;">
+                        <div class="stat-card">
+                            <h3>Materiali Venduti <br> (TOTALE STORICO)</h3>
+                            <p id="admin-tot-mat-qty-storico" style="color: var(--gold-dim);">0x</p>
+                        </div>
+                        <div class="stat-card">
+                            <h3>Crediti Materiali <br> (TOTALE STORICO)</h3>
+                            <p id="admin-tot-mat-crediti-storico" style="color: var(--gold-dim);">0 cr</p>
+                        </div>
+                        <div class="stat-card">
+                            <h3>Tributo Dinastia Mat. <br> (TOTALE STORICO)</h3>
+                            <p id="admin-tot-mat-dinastia-storico" style="color: var(--gold-dim);">0 cr</p>
+                        </div>
+                        <div class="stat-card">
+                            <h3>Transazioni Mat. <br> (STORICO)</h3>
+                            <p id="admin-tot-mat-count-storico" style="color: var(--gold-dim);">0</p>
+                        </div>
+                    </div>
+
+                    <div class="vamp-card" style="margin-top: 25px;">
+                        <h2>Archivio Database Vendita Materiali</h2>
+                        <div class="search-box" style="display:flex; gap:10px; margin-bottom: 10px;">
+                            <input type="text" id="search-admin-mat" placeholder="Filtra vampiro, materiale o acquirente..." onkeyup="window.renderAdminMateriali()" style="flex: 1;">
+                            <select id="filter-admin-tipo-mat" onchange="window.renderAdminMateriali()" style="padding: 10px; background: #1a1a1a; color: #e0e0e0; border: 1px solid #333; border-radius: 5px; max-width: 200px;">
+                                <option value="">Tutti i Materiali</option>
+                            </select>
+                        </div>
+                        <div class="scroll-container" id="admin-materiali-container" style="max-height: 400px;"></div>
+                    </div>
+
+                    <div class="vamp-card">
+                        <h2>Archivio Storico Vendite</h2>
+                        <div class="search-box"><input type="text" id="search-admin-archivio" placeholder="Filtra vampiro, materiale o note..." onkeyup="window.renderArchivioGestione()"></div>
+                        <div class="scroll-container" id="admin-archivio-container"></div>
+                    </div>
+                </div>
+
+                <div id="admin-view-finanze" class="admin-sub-view" style="display: none;">
+                    <button class="btn-indietro" onclick="window.tornaAdminMenu()">🔙 Torna alla Dashboard</button>
+                    <div class="vamp-card">
+                        <h2>Gestione Saldo Dinastia</h2>
+                        <div style="display: flex; gap: 15px; align-items: flex-end;">
+                            <div class="form-group" style="flex:1; margin:0">
+                                <label>Correzione Manuale Saldo (cr)</label>
+                                <input type="number" id="admin-saldo-val" onkeydown="if(event.key==='Enter') window.adminUpdateSaldo()">
+                            </div>
+                            <button onclick="window.adminUpdateSaldo()" style="width: auto; padding: 14px 25px;">Aggiorna</button>
+                        </div>
+                    </div>
+
+                    <div class="vamp-card">
+                        <h2>Log Saldo</h2>
+                        <div class="search-box"><input type="text" id="search-admin-saldo-logs" placeholder="Cerca..." onkeyup="window.renderAdminSaldoLogs()"></div>
+                        <div class="scroll-container"><div id="admin-saldo-logs-box"></div></div>
+                    </div>
+                </div>
+
+                <div id="admin-view-inventario" class="admin-sub-view" style="display: none;">
+                    <button class="btn-indietro" onclick="window.tornaAdminMenu()">🔙 Torna alla Dashboard</button>
+
+                    <div class="vamp-card">
+                        <h2>🖼 Libreria Immagini (PNG)</h2>
+                        <p style="font-size:0.75rem; color:var(--text-dim); margin-bottom:15px;">Seleziona una o più PNG (max ~400 KB ciascuna). Poi, creando un oggetto, scegli l'immagine per <strong style="color:var(--gold-accent)">nome file</strong>.</p>
+                        <div style="display:flex; flex-wrap:wrap; gap:15px; align-items:flex-end; margin-bottom:15px;">
+                            <div class="form-group" style="margin:0; flex:1; min-width:220px;">
+                                <label>File PNG (selezione multipla)</label>
+                                <input type="file" id="item-image-file" accept="image/png,.png" multiple>
+                            </div>
+                            <button type="button" id="item-image-upload-btn" onclick="window.uploadItemImagesFromInput()" style="width:auto; padding:14px 25px;">
+                                Carica PNG
+                            </button>
+                        </div>
+                        <p id="item-image-status" style="font-size:0.7rem; color:var(--text-dim); margin-bottom:12px; display:none;"></p>
+                        <div id="item-images-grid" style="display:grid; grid-template-columns:repeat(auto-fill, minmax(100px, 1fr)); gap:12px; max-height:220px; overflow-y:auto;">
+                            <p style="grid-column:1/-1; font-size:0.75rem; color:#777; font-style:italic;">Nessuna immagine caricata.</p>
+                        </div>
+                    </div>
+
+                    <div class="vamp-card">
+                        <h2>Gestione Inventario</h2>
+                        <div style="display: grid; grid-template-columns: 1fr 1fr 1fr 1fr auto; gap: 15px; align-items: flex-end; margin-bottom: 30px;">
+                            <div class="form-group" style="margin:0"><label>Nome</label><input type="text" id="admin-item-name"></div>
+                            <div class="form-group" style="margin:0">
+                                <label>Settore</label>
+                                <select id="admin-item-cat">
+                                    <option value="Inventario 1">Deposito 1</option>
+                                    <option value="Inventario 2">Deposito 2</option>
+                                    <option value="Inventario 3">Deposito Ekaton</option>
+                                </select>
+                            </div>
+                            <div class="form-group" style="margin:0">
+                                <label>Immagine (libreria)</label>
+                                <select id="admin-item-foto">
+                                    <option value="">— Nessuna / placeholder —</option>
+                                </select>
+                            </div>
+                            <div class="form-group" style="margin:0"><label>Q.tà</label><input type="number" id="admin-item-qty" value="0" onkeydown="if(event.key==='Enter') window.adminUpdateItem()"></div>
+                            <button type="button" onclick="window.adminUpdateItem()" style="width: auto; padding: 14px 25px;">Aggiungi</button>
+                        </div>
+                        <div class="search-box">
+                            <input type="text" id="search-admin-inv" placeholder="Cerca..." onkeyup="window.renderAdminTable()">
+                        </div>
+                        <div class="scroll-container">
+                            <table>
+                                <thead><tr><th>Nome Oggetto</th><th>Categoria</th><th>Giacenza</th><th>Azioni</th></tr></thead>
+                                <tbody id="admin-table-body"></tbody>
+                            </table>
+                        </div>
+                    </div>
+
+                    <div class="vamp-card">
+                        <h2>Log Inventario</h2>
+                        <div class="search-box"><input type="text" id="search-admin-logs" placeholder="Cerca..." onkeyup="window.renderAdminLogs()"></div>
+                        <div class="scroll-container"><div id="admin-logs-box"></div></div>
+                    </div>
+                </div>
+
+                <div id="admin-view-materiali" class="admin-sub-view" style="display: none;">
+                    <button class="btn-indietro" onclick="window.tornaAdminMenu()">🔙 Torna alla Dashboard</button>
+                    <div class="vamp-card">
+                        <h2>🧱 Gestione Tipi Materiale / Vendita</h2>
+                        <p style="font-size:0.75rem; color:var(--text-dim); margin-bottom:20px;">
+                            Definisci i materiali disponibili. Imposta prezzo unitario, split % e quanto dell'incasso dinastia va a Ekaton.
+                            Scegli in quali sezioni il tipo appare (Vendite / Vendita Materiali).
+                        </p>
+                        <div style="display: grid; grid-template-columns: 1fr 1fr 1fr; gap: 15px; margin-bottom: 15px;">
+                            <div class="form-group" style="margin:0">
+                                <label>Nome materiale</label>
+                                <input type="text" id="adm-mat-nome" placeholder="es. Carbonio, Rame, Pile...">
+                            </div>
+                            <div class="form-group" style="margin:0">
+                                <label>Prezzo unitario (cr)</label>
+                                <input type="number" id="adm-mat-prezzo" placeholder="30" min="0" step="1">
+                            </div>
+                            <div class="form-group" style="margin:0">
+                                <label>% Propria (membro)</label>
+                                <input type="number" id="adm-mat-perc-pro" value="40" min="0" max="100" oninput="window.syncPercFromPropria()">
+                            </div>
+                        </div>
+                        <div style="display: grid; grid-template-columns: 1fr 1fr 1fr; gap: 15px; margin-bottom: 15px;">
+                            <div class="form-group" style="margin:0">
+                                <label>% Dinastia</label>
+                                <input type="number" id="adm-mat-perc-din" value="60" min="0" max="100" oninput="window.syncPercFromDinastia()">
+                            </div>
+                            <div class="form-group" style="margin:0">
+                                <label>% Ekaton (su quota Dinastia)</label>
+                                <input type="number" id="adm-mat-perc-ekaton" value="50" min="0" max="100" placeholder="50">
+                            </div>
+                            <div class="form-group" style="margin:0">
+                                <label>Visibilità</label>
+                                <div style="display:flex; gap:18px; padding-top:10px;">
+                                    <label class="perm-label" style="margin:0;"><input type="checkbox" id="adm-mat-sez-vendite" checked> Vendite</label>
+                                    <label class="perm-label" style="margin:0;"><input type="checkbox" id="adm-mat-sez-materiali" checked> Vendita Materiali</label>
+                                </div>
+                            </div>
+                        </div>
+                        <input type="hidden" id="adm-mat-edit-id" value="">
+                        <div style="display:flex; gap:12px; flex-wrap:wrap;">
+                            <button type="button" onclick="window.salvaTipoMateriale()" style="width:auto; padding:14px 25px;">Salva Tipo</button>
+                            <button type="button" onclick="window.resetFormTipoMateriale()" style="width:auto; padding:14px 25px; border-color:#555; color:#888;">Annulla / Nuovo</button>
+                        </div>
+                        <div class="scroll-container" style="max-height:320px; margin-top:25px;">
+                            <table style="font-size:0.75rem;">
+                                <thead>
+                                    <tr>
+                                        <th>Nome</th>
+                                        <th>Prezzo</th>
+                                        <th>% Pro / Din</th>
+                                        <th>% Ekaton</th>
+                                        <th>Sezioni</th>
+                                        <th>Azioni</th>
+                                    </tr>
+                                </thead>
+                                <tbody id="admin-tipi-materiale-body"></tbody>
+                            </table>
+                        </div>
+                    </div>
+                </div>
+
+                <div id="admin-view-albero" class="admin-sub-view" style="display: none;">
+                    <button class="btn-indietro" onclick="window.tornaAdminMenu()">🔙 Torna alla Dashboard</button>
+                    <div class="vamp-card">
+                        <h2>🌳 Gestione Albero Genealogico</h2>
+
+                        <div class="albero-help-box">
+                            <strong>Come compilare (ordine consigliato)</strong>
+                            <ol>
+                                <li><b>Prima</b> crea le persone in alto (Originari / Sire) con <em>Genitore = Nessuno</em>.</li>
+                                <li><b>Poi</b> i figli col <em>Genitore</em>. Stesso genitore = fratelli automatici.</li>
+                                <li><b>Fratelli senza stessi genitori</b>: nel multi-select «Fratelli / stesso livello» scegli le altre persone (Ctrl/Cmd + click). Restano <b>sulla stessa riga</b>, senza un secondo ramo.</li>
+                                <li>Per una <b>coppia</b>: su uno dei due scegli l’altro in <em>Coniuge</em> (compaiono con ♥).</li>
+                                <li><em>Ruolo nel sangue</em> è solo etichetta; la struttura la fanno Genitore + Fratelli.</li>
+                            </ol>
+                        </div>
+
+                        <h3 class="albero-form-step">1 · Identità</h3>
+                        <div style="display: grid; grid-template-columns: 1fr 1fr 1fr; gap: 15px; margin-bottom: 18px;">
+                            <div class="form-group" style="margin:0">
+                                <label>Nome *</label>
+                                <input type="text" id="adm-albero-nome" placeholder="es. Vladamar">
+                            </div>
+                            <div class="form-group" style="margin:0">
+                                <label>Cognome</label>
+                                <input type="text" id="adm-albero-cognome" placeholder="es. Drakòvič">
+                            </div>
+                            <div class="form-group" style="margin:0">
+                                <label>Clan</label>
+                                <input type="text" id="adm-albero-clan" placeholder="es. Drakòvič / Dè Lùne">
+                            </div>
+                        </div>
+                        <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 15px; margin-bottom: 22px;">
+                            <div class="form-group" style="margin:0">
+                                <label>Anno / Epoca</label>
+                                <input type="text" id="adm-albero-anno" placeholder="es. 1 Secolo a.C. · Anno 20">
+                            </div>
+                            <div class="form-group" style="margin:0">
+                                <label>Ordine tra fratelli (0 = primo a sinistra)</label>
+                                <input type="number" id="adm-albero-ordine" value="0" min="0" step="1">
+                            </div>
+                        </div>
+
+                        <h3 class="albero-form-step">2 · Legami di sangue (struttura albero)</h3>
+                        <p class="albero-form-hint">Qui decidi <b>dove</b> appare nella famiglia. Non basta scrivere «Fratello»: devono avere lo stesso genitore.</p>
+                        <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 15px; margin-bottom: 12px;">
+                            <div class="form-group" style="margin:0">
+                                <label>Genitore / Sire principale *</label>
+                                <select id="adm-albero-parent" class="albero-person-select">
+                                    <option value="">— Nessuno (è una radice) —</option>
+                                </select>
+                                <span class="field-hint">Chi lo ha generato o creato. Se vuoto = in cima all’albero.</span>
+                            </div>
+                            <div class="form-group" style="margin:0">
+                                <label>Secondo genitore (opzionale)</label>
+                                <select id="adm-albero-parent2" class="albero-person-select">
+                                    <option value="">— Nessuno —</option>
+                                </select>
+                                <span class="field-hint">Es. l’altro genitore di sangue o il coniuge del Sire.</span>
+                            </div>
+                        </div>
+                        <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 15px; margin-bottom: 12px;">
+                            <div class="form-group" style="margin:0">
+                                <label>Coniuge / Compagno di sangue</label>
+                                <select id="adm-albero-spouse" class="albero-person-select">
+                                    <option value="">— Nessuno —</option>
+                                </select>
+                                <span class="field-hint">Devono essere già entrambi salvati. Compariranno affiancati con ♥.</span>
+                            </div>
+                            <div class="form-group" style="margin:0">
+                                <label>Ruolo nel sangue (etichetta)</label>
+                                <select id="adm-albero-relazione">
+                                    <option value="">— Seleziona —</option>
+                                    <option value="Originario">Originario / Fondatore</option>
+                                    <option value="Sire">Sire (creatore)</option>
+                                    <option value="Childe">Childe (creato dal Sire)</option>
+                                    <option value="Figlio">Figlio / Figlia</option>
+                                    <option value="Fratello">Fratello / Sorella</option>
+                                    <option value="Coniuge">Coniuge / Compagno</option>
+                                    <option value="Nipote">Nipote</option>
+                                    <option value="Zio">Zio / Zia</option>
+                                    <option value="Cugino">Cugino / Cugina</option>
+                                    <option value="Alleato">Alleato di sangue</option>
+                                    <option value="Adottato">Adottato / Vincolato</option>
+                                    <option value="Altro">Altro (dettaglio nelle note)</option>
+                                </select>
+                                <span class="field-hint">Solo testo sulla card. La posizione la decide «Genitore».</span>
+                            </div>
+                        </div>
+                        <div class="form-group" style="margin:0 0 22px 0;">
+                            <label>Fratelli / stesso livello (anche senza stessi genitori)</label>
+                            <select id="adm-albero-fratelli" class="albero-person-select" multiple size="5" style="min-height:110px;">
+                            </select>
+                            <span class="field-hint">
+                                Tieni premuto <b>Ctrl</b> (o Cmd su Mac) per selezionare più persone.
+                                Compariranno <b>sulla stessa riga</b>, senza creare un secondo ramo. Utile per fratelli di sangue diverso, giurati, stessi livello di clan.
+                            </span>
+                        </div>
+
+                        <h3 class="albero-form-step">3 · Foto e note</h3>
+                        <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 15px; margin-bottom: 18px;">
+                            <div class="form-group" style="margin:0">
+                                <label>Foto (URL o carica file)</label>
+                                <input type="url" id="adm-albero-foto-url" placeholder="https://... oppure carica sotto">
+                                <input type="file" id="adm-albero-foto-file" accept="image/png,image/jpeg,image/*" style="margin-top:8px;">
+                            </div>
+                            <div class="form-group" style="margin:0">
+                                <label>Note / dettaglio relazione</label>
+                                <input type="text" id="adm-albero-note" placeholder="es. Childe di Selene, fratello di Niko…">
+                            </div>
+                        </div>
+
+                        <input type="hidden" id="adm-albero-edit-id" value="">
+                        <div style="display:flex; gap:12px; flex-wrap:wrap; margin-bottom:20px;">
+                            <button type="button" onclick="window.salvaNodoAlbero()" style="width:auto; padding:14px 25px;">Salva persona</button>
+                            <button type="button" onclick="window.resetFormAlbero()" style="width:auto; padding:14px 25px; border-color:#555; color:#888;">Annulla / Nuovo</button>
+                            <button type="button" onclick="window.downloadAlberoPNG()" style="width:auto; padding:14px 25px;">📥 Scarica PNG Albero</button>
+                        </div>
+
+                        <h3 class="albero-form-step" style="margin-top:10px;">Persone già nell’albero</h3>
+                        <div class="scroll-container" style="max-height:380px;">
+                            <table style="font-size:0.7rem;">
+                                <thead>
+                                    <tr>
+                                        <th>Foto</th>
+                                        <th>Nome</th>
+                                        <th>Ruolo</th>
+                                        <th>Genitori</th>
+                                        <th>Coniuge</th>
+                                        <th>Azioni</th>
+                                    </tr>
+                                </thead>
+                                <tbody id="admin-albero-body"></tbody>
+                            </table>
+                        </div>
+                    </div>
+                </div>
+
+                <div style="text-align: center; margin-top: 40px; margin-bottom: 20px;">
+                    <button onclick="window.logoutAdmin()" style="background: transparent; border: 1px solid #444; width: auto; color: #555; display: inline-block;">Chiudi Sessione Gestore</button>
+                </div>
+
+            </div>
+        </section>
+    </div>
+
+    <footer>Horde RP - Gestionale Vampiri - Solo a scopo ludico &copy; 2026 • Vitrio - Tutti i diritti riservati</footer>
+
+    <script>
+        window.apriAdminView = function(viewId) {
+            // Nasconde la griglia del menu principale
+            document.getElementById('admin-dashboard-menu').style.display = 'none';
+            
+            // Nasconde tutte le sotto-sezioni
+            const views = document.querySelectorAll('.admin-sub-view');
+            views.forEach(v => v.style.display = 'none');
+            
+            // Mostra solo la sezione richiesta
+            const targetView = document.getElementById('admin-view-' + viewId);
+            if(targetView) {
+                targetView.style.display = 'block';
+            }
+        };
+
+        window.tornaAdminMenu = function() {
+            // Nasconde tutte le sotto-sezioni
+            const views = document.querySelectorAll('.admin-sub-view');
+            views.forEach(v => v.style.display = 'none');
+            
+            // Mostra di nuovo il menu a griglia
+            document.getElementById('admin-dashboard-menu').style.display = 'grid';
+        };
+
+    </script>
+</body>
+</html>

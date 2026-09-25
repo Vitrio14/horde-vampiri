@@ -1,0 +1,214 @@
+<!DOCTYPE html>
+<html lang="it">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Invia Background - Horde Vampiri</title>
+    <link rel="icon" href="../assets/logo.ico" type="image/x-icon">
+    
+    <!-- Google Fonts -->
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Cinzel:wght@400;700&family=Quicksand:wght@300;400;600;700&display=swap" rel="stylesheet">
+
+    <!-- Foglio di Stile Esterno -->
+    <link rel="stylesheet" href="style.css">
+</head>
+<body>
+
+    <!-- Schermata di Manutenzione -->
+    <div id="schermata-manutenzione">
+        <div class="card-manutenzione">
+            <div class="badge-manutenzione">
+                <span class="badge-dot"></span>
+                Aggiornamento in corso
+            </div>
+            <h1 class="titolo-manutenzione">Sito in manutenzione</h1>
+            <p class="testo-manutenzione">
+                Il developer <span class="dev-name">Vitrio</span> sta lavorando per migliorare il sito e implementare nuove funzionalità. Il servizio tornerà regolare a breve.
+            </p>
+            <div class="progress-bar-container">
+                <div class="progress-bar-line"></div>
+            </div>
+            <div class="footer-manutenzione">
+                Vitrio - Tutti i diritti riservati<br>
+                <span class="footer-highlight">Sito in manutenzione! Torniamo a breve!</span>
+            </div>
+        </div>
+    </div>
+
+    <!-- Header Principale -->
+    <header>
+        <img src="../assets/logo.png" alt="Sanguis Chronica Logo" class="logo">
+        <a href="../" class="portale-btn" title="Torna al Portale">🏠 Portale</a>
+    </header>
+
+    <!-- Contenitore Principale -->
+    <div class="main-wrapper">
+        <div class="container">
+
+            <!-- Pannello Caricamento -->
+            <div id="loadingPanel" class="card">
+                <div class="loading">Accesso in corso...</div>
+            </div>
+
+            <!-- Pannello Modulo Giocatore -->
+            <div id="bgFormPanel" class="card hidden">
+                <div class="top-action-bar">
+                    <button class="nav-link-btn" id="btnGoToLoginGM">Portale Amministrativo GM</button>
+                </div>
+
+                <div id="userStatusContainer" class="hidden"></div>
+                
+                <h2>Compila il tuo Background</h2>
+                <p class="subtitle">Tutti i campi sono obbligatori per l'invio.</p>
+                
+                <form id="bgForm">
+                    <div class="form-group">
+                        <label for="discordUser">Nome Utente Discord</label>
+                        <span class="guide-text">Inserisci il tuo ID utente di Discord completo (es: nomeutente o preferibilimente ID Discord numerico).</span>
+                        <input type="text" id="discordUser" required>
+                    </div>
+
+                    <div class="form-group">
+                        <label for="charName">Nome</label>
+                        <span class="guide-text">Specifica il nome completo ed eventuali pseudonimi o soprannomi del tuo personaggio prima della trasformazione.</span>
+                        <input type="text" id="charName" required>
+                    </div>
+
+                    <div class="form-group">
+                        <label for="shadowName">Nome Ombra</label>
+                        <span class="guide-text">Definisci il nome associato alla tua Ombra. L'Ombra rappresenta la parte più oscura, primordiale e mostruosa del vampiro; darle un nome serve a identificare quell'entità interiore con cui dovrai costante lottare o scendere a patti. Non usare nomi conosciuti, usa nomi legati anche al carattere del tuo personaggio.</span>
+                        <input type="text" id="shadowName" required>
+                    </div>
+
+                    <div class="form-group">
+                        <label for="history">Storia del Personaggio (Il Passato)</label>
+                        <span class="guide-text">Racconta dove è cresciuto, la sua estrazione sociale, la sua professione quando era umano e il tipo di vita che conduceva. Questo serve a dare una base solida alle sue origini.</span>
+                        <textarea id="history" required></textarea>
+                    </div>
+
+                    <div class="form-group">
+                        <label for="events">Eventi Significativi</label>
+                        <span class="guide-text">Elenca almeno uno o più eventi che hanno cambiato radicalmente la vita del personaggio. Può trattarsi di un grande successo, di un trauma, di una perdita o del momento esatto in cui ha scoperto l'esistenza del sovrannaturale.</span>
+                        <textarea id="events" required></textarea>
+                    </div>
+
+                    <div class="form-group">
+                        <label for="arrival">Arrivo sull'Isola</label>
+                        <span class="guide-text">Quali sono state le sensazioni e i pensieri del tuo personaggio al momento dell'arrivo sull'isola? Ha provato paura, eccitazione o un senso di déjà vu?</span>
+                        <textarea id="arrival" required></textarea>
+                    </div>
+
+                    <div class="form-group">
+                        <label for="bonds">Legami</label>
+                        <span class="guide-text">Indica se il tuo personaggio ha parenti, amici con cui ha una storia in sospeso. Se non ne ha, specifica che si tratta di un personaggio solitario.</span>
+                        <textarea id="bonds" required></textarea>
+                    </div>
+
+                    <div class="form-group">
+                        <label for="character">Carattere</label>
+                        <span class="guide-text">Descrivi la psicologia del tuo personaggio. Non limitarti a "buono" o "cattivo". Spiega come reagisce davanti al pericolo, come si comporta con gli sconosciuti, se è impulsivo, calcolatore, vendicativo o empatico.</span>
+                        <textarea id="character" required></textarea>
+                    </div>
+
+                    <div class="form-group">
+                        <label for="objectives">Obiettivi</label>
+                        <span class="guide-text">Qual è la forza motrice del tuo personaggio? Cosa vuole ottenere a breve e a lungo termine? (Es. Vendetta, potere all'interno della dinastia, protezione degli umani, conoscenza di segreti antichi).</span>
+                        <textarea id="objectives" required></textarea>
+                    </div>
+
+                    <div class="form-group">
+                        <label for="fears">Paure</label>
+                        <span class="guide-text">Ogni personaggio deve avere dei punti deboli. Indica quali sono le fobie fisiche o i traumi psicologici del tuo personaggio. Le paure rendono il gioco di ruolo più profondo.</span>
+                        <textarea id="fears" required></textarea>
+                    </div>
+
+                    <button type="submit" id="btnSubmitBg" class="btn">Invia background</button>
+                </form>
+            </div>
+
+            <!-- Pannello Background Salvato / Bloccato -->
+            <div id="bgLockedPanel" class="card hidden">
+                <div class="top-action-bar">
+                    <button class="nav-link-btn" id="btnGoToLoginGM2">Portale Amministrativo GM</button>
+                </div>
+
+                <div id="lockedStatusBanner"></div>
+                <h2>Il tuo background è stato salvato</h2>
+                <p class="subtitle">Background ricevuto, attendi l'approvazione. Clicca qui sotto per visualizzare il tuo background.</p>
+                
+                <button id="btnTogglePlayerPreview" class="btn" style="margin-bottom: 30px; width: auto; padding: 12px 30px;">Visualizza Background</button>
+                
+                <div id="lockedContentPreview" class="hidden" style="text-align: left;"></div>
+            </div>
+
+            <!-- Pannello Autenticazione GM -->
+            <div id="gmAuthPanel" class="card hidden">
+                <h2>Accesso GameMaster</h2>
+                <p class="subtitle">Schermata riservata esclusivamente ai GM.</p>
+                <div class="form-group">
+                    <label for="gmEmail">Email</label>
+                    <input type="email" id="gmEmail" value="gm.vampiri@horde.it" disabled style="background-color: rgba(20,20,20,0.4); border-color: #240c0c;">
+                </div>
+                <div class="form-group">
+                    <label for="gmPassword">Password</label>
+                    <input type="password" id="gmPassword" placeholder="••••••••">
+                </div>
+                <button id="btnLoginGM" class="btn">Effettua accesso</button>
+                <button class="nav-link-btn" id="btnBackToPlayer" style="margin-top: 20px;">Torna al modulo background</button>
+            </div>
+
+            <!-- Pannello Dashboard GM -->
+            <div id="gmDashboardPanel" class="card hidden gm-dashboard">
+                <div class="gm-header">
+                    <h2>Archivio Background</h2>
+                    <button class="btn" id="btnLogOutAction" style="width: auto; padding: 8px 16px; font-size: 0.8rem;">Chiudi Sessione</button>
+                </div>
+                <p class="subtitle">Esamina i background inviati dai giocatori.</p>
+
+                <!-- Vista Lista con Tab -->
+                <div id="gmListView">
+                    <div class="gm-tabs">
+                        <button class="gm-tab active" data-tab="da_revisionare" id="tabDaRevisionare">Da Revisionare <span class="tab-count" id="countDaRevisionare">0</span></button>
+                        <button class="gm-tab" data-tab="da_modificare" id="tabDaModificare">Da Modificare <span class="tab-count" id="countDaModificare">0</span></button>
+                        <button class="gm-tab" data-tab="approvato" id="tabApprovati">Approvati <span class="tab-count" id="countApprovati">0</span></button>
+                    </div>
+                    <div id="gmListContainer" class="gm-scroll-container"></div>
+                </div>
+
+                <!-- Vista Dettaglio Singolo Background -->
+                <div id="gmDetailView" class="hidden">
+                    <div class="gm-detail-header">
+                        <button class="nav-link-btn" id="btnBackToList">← Torna alla lista</button>
+                    </div>
+                    <div id="gmDetailContent"></div>
+                </div>
+            </div>
+
+        </div>
+    </div>
+
+    <!-- Modale Notifiche Custom -->
+    <div id="customPopup" class="custom-popup-overlay">
+        <div class="custom-popup-card">
+            <h3 id="popupTitle">Decreto Antico</h3>
+            <p id="popupMessage">Contenuto della notifica...</p>
+            <button id="btnPopupClose" class="btn" style="padding: 10px 20px; font-size: 0.85rem; width: auto; min-width: 120px; margin: 0 auto;">Chiudi</button>
+        </div>
+    </div>
+
+    <!-- Footer -->
+    <footer>
+        <p>Horde RP - Gestionale BG - Solo a scopo ludico &copy; 2026 • Vitrio - Tutti i diritti riservati</p>
+    </footer>
+
+    <!-- Firebase Scripts Sincronizzati Compat -->
+    <script src="https://www.gstatic.com/firebasejs/10.7.1/firebase-app-compat.js"></script>
+    <script src="https://www.gstatic.com/firebasejs/10.7.1/firebase-auth-compat.js"></script>
+    <script src="https://www.gstatic.com/firebasejs/10.7.1/firebase-firestore-compat.js"></script>
+
+    <!-- Script Logico del Progetto -->
+    <script src="script.js" defer></script>
+</body>
+</html>

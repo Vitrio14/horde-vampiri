@@ -1,0 +1,370 @@
+<!DOCTYPE html>
+<html lang="it">
+
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+
+    <title>Pannello GM - Horde RP</title>
+
+    <link rel="icon" type="image/x-icon" href="../assets/logo.ico">
+
+    <link rel="stylesheet" href="style.css">
+
+    <script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-app-compat.js"></script>
+    <script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-auth-compat.js"></script>
+    <script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-firestore-compat.js"></script>
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+
+    <link href="https://fonts.googleapis.com/css2?family=Orbitron:wght@400;600;700&family=Inter:wght@300;400;500;600&display=swap" rel="stylesheet">
+
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.2/css/all.min.css">
+
+    <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/toastify-js/src/toastify.min.css">
+
+    <script src="https://cdn.jsdelivr.net/npm/sweetalert2@11"></script>
+
+    <script src="https://cdn.jsdelivr.net/npm/toastify-js"></script>
+</head>
+
+<body>
+
+    <style>
+    /* Reset e overlay a tutto schermo */
+    #schermata-manutenzione {
+        position: fixed;
+        top: 0;
+        left: 0;
+        width: 100vw;
+        height: 100vh;
+        background-color: #0b0f19;
+        background-image: 
+            radial-gradient(at 0% 0%, hsla(253,16%,7%,1) 0, transparent 50%), 
+            radial-gradient(at 50% 0%, hsla(225,39%,30%,0.3) 0, transparent 50%),
+            radial-gradient(at 100% 0%, hsla(339,49%,30%,0.2) 0, transparent 50%);
+        z-index: 999999;
+        display: none; /* Gestito in tempo reale dallo script tramite il file status.txt */
+        justify-content: center;
+        align-items: center;
+        font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+        color: #f3f4f6;
+        text-align: center;
+        box-sizing: border-box;
+        padding: 24px;
+    }
+
+    /* Card centrale minimale (effetto Glassmorphism) */
+    #schermata-manutenzione .card-manutenzione {
+        background: rgba(17, 24, 39, 0.7);
+        backdrop-filter: blur(12px);
+        -webkit-backdrop-filter: blur(12px);
+        border: 1px solid rgba(255, 255, 255, 0.08);
+        padding: 48px 32px;
+        border-radius: 24px;
+        box-shadow: 0 20px 40px rgba(0, 0, 0, 0.4);
+        max-width: 480px;
+        width: 100%;
+    }
+
+    /* Badge di stato superiore */
+    #schermata-manutenzione .badge-manutenzione {
+        display: inline-flex;
+        align-items: center;
+        gap: 8px;
+        background: rgba(59, 130, 246, 0.1);
+        border: 1px solid rgba(59, 130, 246, 0.2);
+        color: #60a5fa;
+        padding: 6px 14px;
+        border-radius: 100px;
+        font-size: 0.75rem;
+        font-weight: 600;
+        letter-spacing: 0.05em;
+        text-transform: uppercase;
+        margin-bottom: 28px;
+    }
+
+    /* Pallino pulsante nel badge */
+    #schermata-manutenzione .badge-dot {
+        width: 6px;
+        height: 6px;
+        background-color: #3b82f6;
+        border-radius: 50%;
+        animation: pulse-dot-manutenzione 2s cubic-bezier(0.4, 0, 0.6, 1) infinite;
+    }
+
+    /* Titolo */
+    #schermata-manutenzione .titolo-manutenzione {
+        font-size: 2rem;
+        font-weight: 700;
+        letter-spacing: -0.025em;
+        margin-bottom: 16px;
+        color: #ffffff;
+    }
+
+    /* Testo descrittivo */
+    #schermata-manutenzione .testo-manutenzione {
+        font-size: 1rem;
+        line-height: 1.6;
+        color: #9ca3af;
+        margin-bottom: 32px;
+    }
+
+    /* Evidenziazione nome developer */
+    #schermata-manutenzione .dev-name {
+        color: #60a5fa;
+        font-weight: 600;
+    }
+
+    /* Loader lineare */
+    #schermata-manutenzione .progress-bar-container {
+        width: 120px;
+        height: 3px;
+        background: rgba(255, 255, 255, 0.1);
+        border-radius: 10px;
+        margin: 0 auto 32px auto;
+        overflow: hidden;
+        position: relative;
+    }
+
+    #schermata-manutenzione .progress-bar-line {
+        width: 40%;
+        height: 100%;
+        background: linear-gradient(90deg, #3b82f6, #8b5cf6);
+        border-radius: 10px;
+        position: absolute;
+        animation: loading-bar-manutenzione 1.5s ease-in-out infinite;
+    }
+
+    /* Footer personalizzato */
+    #schermata-manutenzione .footer-manutenzione {
+        font-size: 0.8rem;
+        line-height: 1.5;
+        color: #6b7280;
+        border-top: 1px solid rgba(255, 255, 255, 0.05);
+        padding-top: 20px;
+    }
+    
+    #schermata-manutenzione .footer-highlight {
+        color: #9ca3af;
+    }
+
+    @keyframes loading-bar-manutenzione {
+        0% { left: -40%; }
+        50% { left: 100%; }
+        100% { left: 100%; }
+    }
+
+    @keyframes pulse-dot-manutenzione {
+        0%, 100% { opacity: 1; transform: scale(1); }
+        50% { opacity: .4; transform: scale(0.9); }
+    }
+</style>
+
+<div id="schermata-manutenzione">
+    <div class="card-manutenzione">
+        <div class="badge-manutenzione">
+            <span class="badge-dot"></span>
+            Aggiornamento in corso
+        </div>
+        <h1 class="titolo-manutenzione">Sito in manutenzione</h1>
+        <p class="testo-manutenzione">
+            Il developer <span class="dev-name">Vitrio</span> sta lavorando per migliorare il sito e implementare nuove funzionalità. Il servizio tornerà regolare a breve.
+        </p>
+        <div class="progress-bar-container">
+            <div class="progress-bar-line"></div>
+        </div>
+        <div class="footer-manutenzione">
+            Vitrio - Tutti i diritti riservati<br>
+            <span class="footer-highlight">Sito in manutenzione! Torniamo a breve!</span>
+        </div>
+    </div>
+</div>
+
+<script>
+    (function() {
+        const manutenzioneDiv = document.getElementById('schermata-manutenzione');
+        
+        function controllaStatoManutenzione() {
+            // Carica il file status.txt dal server evitando la cache del browser
+            fetch('status.txt?t=' + new Date().getTime())
+                .then(response => {
+                    if (!response.ok) throw new Error('File status non trovato');
+                    return response.text();
+                })
+                .then(stato => {
+                    const statoPulito = stato.trim().toLowerCase();
+                    
+                    if (statoPulito === 'on') {
+                        manutenzioneDiv.style.display = 'flex'; // Attiva la schermata per tutti
+                    } else {
+                        manutenzioneDiv.style.display = 'none'; // Nasconde la schermata
+                    }
+                })
+                .catch(err => {
+                    console.log('Errore controllo manutenzione:', err);
+                });
+        }
+
+        // Controllo iniziale immediato
+        controllaStatoManutenzione();
+
+        // Controllo automatico ogni 5 secondi
+        setInterval(controllaStatoManutenzione, 5000);
+    })();
+</script>
+
+<div class="banner-overlay"></div>
+
+<div id="login-page">
+    <div class="login-box">
+
+        <img src="../assets/logo.png" class="main-logo">
+
+        <h1>PANNELLO GM HORDE RP</h1>
+
+        <input type="email" id="email" value="gm.vampiri@horde.it" disabled style="background-color: rgba(20,20,20,0.4); border-color: #240c0c;">
+        <input type="password" id="password" placeholder="Password">
+
+        <button onclick="login()">ACCEDI</button>
+        <p style="margin-top:20px;text-align:center;"><a href="../" style="color:#c5a059;text-decoration:none;font-size:0.85rem;">← Torna al Portale</a></p>
+
+    </div>
+</div>
+
+<div id="dashboard" class="hidden">
+
+    <aside class="sidebar">
+
+        <img src="../assets/logo.png" class="main-logo" alt="Logo Horde RP" style="margin-bottom: 20px;">
+
+        <h2>PANNELLO GM</h2>
+
+        <a href="../" class="portale-btn-sidebar" title="Torna al Portale">🏠 Portale</a>
+
+        <button onclick="showSection('quests')">Quest</button>
+        <button onclick="showSection('players')">Giocatori</button>
+        <button onclick="showSection('docs')">Documenti</button>
+        <button onclick="showSection('notes')">Note</button>
+        <button onclick="showSection('media')">Archivio</button>
+        <button onclick="showSection('commands')">Comandi RP</button>
+        <button onclick="showSection('admin')">Admin</button>
+
+        <button class="logout" onclick="logout()">
+            Esci
+        </button>
+
+    </aside>
+
+    <main>
+
+        <section id="quests" class="panel active">
+
+            <div class="topbar">
+                <h1>Gestione Quest</h1>
+                <div style="display: flex; gap: 10px;">
+                    <button onclick="addFolder('quests')" style="background: linear-gradient(135deg, #f59e0b, #d97706);">+ Nuova Cartella</button>
+                    <button onclick="openQuestModal()">+ Nuova Quest</button>
+                </div>
+            </div>
+
+            <div id="quest-list" class="grid"></div>
+
+        </section>
+
+        <section id="players" class="panel">
+
+            <div class="topbar">
+                <h1>Players</h1>
+                <div style="display: flex; gap: 10px;">
+                    <button onclick="addFolder('players')" style="background: linear-gradient(135deg, #f59e0b, #d97706);">+ Nuova Cartella</button>
+                    <button onclick="addPlayer()">+ Nuovo Player</button>
+                </div>
+            </div>
+
+            <div id="players-list" class="grid"></div>
+
+        </section>
+
+        <section id="docs" class="panel">
+
+            <div class="topbar">
+                <h1>Documenti</h1>
+                <div style="display: flex; gap: 10px;">
+                    <button onclick="addFolder('docs')" style="background: linear-gradient(135deg, #f59e0b, #d97706);">+ Nuova Cartella</button>
+                    <button onclick="addDoc()">+ Aggiungi</button>
+                </div>
+            </div>
+
+            <div id="docs-list" class="grid"></div>
+
+        </section>
+
+        <section id="notes" class="panel">
+
+            <div class="topbar">
+                <h1>Note</h1>
+                <div style="display: flex; gap: 10px;">
+                    <button onclick="addFolder('notes')" style="background: linear-gradient(135deg, #f59e0b, #d97706);">+ Nuova Cartella</button>
+                    <button onclick="addNote()">+ Nuova Nota</button>
+                </div>
+            </div>
+
+            <div id="notes-list" class="grid"></div>
+
+        </section>
+
+        <section id="media" class="panel">
+
+            <div class="topbar">
+                <h1>Archivio Utilità</h1>
+                <div style="display: flex; gap: 10px;">
+                    <button onclick="addFolder('media')" style="background: linear-gradient(135deg, #f59e0b, #d97706);">+ Nuova Cartella</button>
+                    <button onclick="addMedia()">+ Aggiungi</button>
+                </div>
+            </div>
+
+            <div id="media-list" class="grid"></div>
+
+        </section>
+
+        <section id="commands" class="panel">
+
+            <div class="topbar">
+                <h1>Comandi RP</h1>
+                <div style="display: flex; gap: 10px;">
+                    <button onclick="addFolder('commands')" style="background: linear-gradient(135deg, #f59e0b, #d97706);">+ Nuova Cartella</button>
+                    <button onclick="addCommand()">+ Aggiungi</button>
+                </div>
+            </div>
+
+            <div id="commands-list" class="grid"></div>
+
+        </section>
+
+        <section id="admin" class="panel">
+
+            <div class="topbar">
+                <h1>Admin Panel</h1>
+                <div style="display: flex; gap: 10px;">
+                    <button onclick="addFolder('admin')" style="background: linear-gradient(135deg, #f59e0b, #d97706);">+ Nuova Cartella</button>
+                    <button onclick="saveGlobalLink()">+ Nuovo Link</button>
+                </div>
+            </div>
+
+            <div id="global-links" class="grid"></div>
+
+        </section>
+
+    </main>
+
+</div>
+
+<footer>
+    Horde RP - Gestionale GM - Solo a scopo ludico &copy; 2026 • Vitrio - Tutti i diritti riservati
+</footer>
+
+<script src="firebase-config.js"></script>
+<script src="script.js"></script>
+
+</body>
+</html>

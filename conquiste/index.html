@@ -1,0 +1,487 @@
+<!DOCTYPE html>
+<html lang="it">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Gestionale Conquiste | Horde Rp</title>
+    <link rel="icon" type="image/x-icon" href="../assets/logo.ico">
+    <link href="https://fonts.googleapis.com/css2?family=Cinzel:wght@400;600;700&family=Quicksand:wght@300;400;500;600;700&display=swap" rel="stylesheet">
+    <link rel="stylesheet" href="style.css">
+</head>
+<body>
+
+    <style>
+    /* Reset e overlay a tutto schermo */
+    #schermata-manutenzione {
+        position: fixed;
+        top: 0;
+        left: 0;
+        width: 100vw;
+        height: 100vh;
+        background-color: #0b0f19;
+        background-image: 
+            radial-gradient(at 0% 0%, hsla(253,16%,7%,1) 0, transparent 50%), 
+            radial-gradient(at 50% 0%, hsla(225,39%,30%,0.3) 0, transparent 50%),
+            radial-gradient(at 100% 0%, hsla(339,49%,30%,0.2) 0, transparent 50%);
+        z-index: 999999;
+        display: none; /* Gestito in tempo reale dallo script tramite il file status.txt */
+        justify-content: center;
+        align-items: center;
+        font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+        color: #f3f4f6;
+        text-align: center;
+        box-sizing: border-box;
+        padding: 24px;
+    }
+
+    /* Card centrale minimale (effetto Glassmorphism) */
+    #schermata-manutenzione .card-manutenzione {
+        background: rgba(17, 24, 39, 0.7);
+        backdrop-filter: blur(12px);
+        -webkit-backdrop-filter: blur(12px);
+        border: 1px solid rgba(255, 255, 255, 0.08);
+        padding: 48px 32px;
+        border-radius: 24px;
+        box-shadow: 0 20px 40px rgba(0, 0, 0, 0.4);
+        max-width: 480px;
+        width: 100%;
+    }
+
+    /* Badge di stato superiore */
+    #schermata-manutenzione .badge-manutenzione {
+        display: inline-flex;
+        align-items: center;
+        gap: 8px;
+        background: rgba(59, 130, 246, 0.1);
+        border: 1px solid rgba(59, 130, 246, 0.2);
+        color: #60a5fa;
+        padding: 6px 14px;
+        border-radius: 100px;
+        font-size: 0.75rem;
+        font-weight: 600;
+        letter-spacing: 0.05em;
+        text-transform: uppercase;
+        margin-bottom: 28px;
+    }
+
+    /* Pallino pulsante nel badge */
+    #schermata-manutenzione .badge-dot {
+        width: 6px;
+        height: 6px;
+        background-color: #3b82f6;
+        border-radius: 50%;
+        animation: pulse-dot-manutenzione 2s cubic-bezier(0.4, 0, 0.6, 1) infinite;
+    }
+
+    /* Titolo */
+    #schermata-manutenzione .titolo-manutenzione {
+        font-size: 2rem;
+        font-weight: 700;
+        letter-spacing: -0.025em;
+        margin-bottom: 16px;
+        color: #ffffff;
+    }
+
+    /* Testo descrittivo */
+    #schermata-manutenzione .testo-manutenzione {
+        font-size: 1rem;
+        line-height: 1.6;
+        color: #9ca3af;
+        margin-bottom: 32px;
+    }
+
+    /* Evidenziazione nome developer */
+    #schermata-manutenzione .dev-name {
+        color: #60a5fa;
+        font-weight: 600;
+    }
+
+    /* Loader lineare */
+    #schermata-manutenzione .progress-bar-container {
+        width: 120px;
+        height: 3px;
+        background: rgba(255, 255, 255, 0.1);
+        border-radius: 10px;
+        margin: 0 auto 32px auto;
+        overflow: hidden;
+        position: relative;
+    }
+
+    #schermata-manutenzione .progress-bar-line {
+        width: 40%;
+        height: 100%;
+        background: linear-gradient(90deg, #3b82f6, #8b5cf6);
+        border-radius: 10px;
+        position: absolute;
+        animation: loading-bar-manutenzione 1.5s ease-in-out infinite;
+    }
+
+    /* Footer personalizzato */
+    #schermata-manutenzione .footer-manutenzione {
+        font-size: 0.8rem;
+        line-height: 1.5;
+        color: #6b7280;
+        border-top: 1px solid rgba(255, 255, 255, 0.05);
+        padding-top: 20px;
+    }
+    
+    #schermata-manutenzione .footer-highlight {
+        color: #9ca3af;
+    }
+
+    @keyframes loading-bar-manutenzione {
+        0% { left: -40%; }
+        50% { left: 100%; }
+        100% { left: 100%; }
+    }
+
+    @keyframes pulse-dot-manutenzione {
+        0%, 100% { opacity: 1; transform: scale(1); }
+        50% { opacity: .4; transform: scale(0.9); }
+    }
+</style>
+
+<div id="schermata-manutenzione">
+    <div class="card-manutenzione">
+        <div class="badge-manutenzione">
+            <span class="badge-dot"></span>
+            Aggiornamento in corso
+        </div>
+        <h1 class="titolo-manutenzione">Sito in manutenzione</h1>
+        <p class="testo-manutenzione">
+            Il developer <span class="dev-name">Vitrio</span> sta lavorando per migliorare il sito e implementare nuove funzionalità. Il servizio tornerà regolare a breve.
+        </p>
+        <div class="progress-bar-container">
+            <div class="progress-bar-line"></div>
+        </div>
+        <div class="footer-manutenzione">
+            Vitrio - Tutti i diritti riservati<br>
+            <span class="footer-highlight">Sito in manutenzione! Torniamo a breve!</span>
+        </div>
+    </div>
+</div>
+
+<script>
+    (function() {
+        const manutenzioneDiv = document.getElementById('schermata-manutenzione');
+        
+        function controllaStatoManutenzione() {
+            // Carica il file status.txt dal server evitando la cache del browser
+            fetch('status.txt?t=' + new Date().getTime())
+                .then(response => {
+                    if (!response.ok) throw new Error('File status non trovato');
+                    return response.text();
+                })
+                .then(stato => {
+                    const statoPulito = stato.trim().toLowerCase();
+                    
+                    if (statoPulito === 'on') {
+                        manutenzioneDiv.style.display = 'flex'; // Attiva la schermata per tutti
+                    } else {
+                        manutenzioneDiv.style.display = 'none'; // Nasconde la schermata
+                    }
+                })
+                .catch(err => {
+                    console.log('Errore controllo manutenzione:', err);
+                });
+        }
+
+        // Controllo iniziale immediato
+        controllaStatoManutenzione();
+
+        // Controllo automatico ogni 5 secondi
+        setInterval(controllaStatoManutenzione, 5000);
+    })();
+</script>
+
+    <div id="toast-container"></div>
+
+    <div id="custom-modal-overlay">
+        <div class="modal-box">
+            <h2 id="modal-title">Attenzione</h2>
+            <p id="modal-message">Sei sicuro di voler procedere?</p>
+            <div class="modal-buttons">
+                <button class="modal-btn btn-cancel" id="modal-btn-cancel">Annulla</button>
+                <button class="modal-btn btn-confirm" id="modal-btn-confirm">Conferma</button>
+            </div>
+        </div>
+    </div>
+
+    <div id="login-overlay">
+        <div class="login-box glass-panel">
+            <img src="../assets/logo.png" alt="Aeterna Logo" class="custom-logo" onerror="this.style.display='none'">
+            
+            <!-- LOGIN MEMBRO -->
+            <div id="login-membro-box">
+                <h1>DATABASE CONQUISTE</h1>
+                <p>Codice a 4 cifre + Password</p>
+                <input type="text" id="login-codice" class="auth-input" maxlength="4" pattern="[0-9]*" inputmode="numeric" placeholder="••••" style="text-align:center; letter-spacing:8px; font-size:1.3rem;">
+                <input type="password" id="login-password" class="auth-input" placeholder="Password">
+                <button id="btn-login" class="auth-btn">Accedi</button>
+                <p style="margin-top:18px; font-size:0.75rem; color:var(--text-secondary); cursor:pointer; text-transform:uppercase; letter-spacing:1px;" id="link-login-gestore">
+                    Accesso Gestore →
+                </p>
+            </div>
+
+            <!-- LOGIN GESTORE -->
+            <div id="login-gestore-box" style="display:none;">
+                <h1>ACCESSO GESTORE</h1>
+                <p>vampiri.gestore@horde.it</p>
+                <input type="password" id="login-admin-password" class="auth-input" placeholder="Password Gestore">
+                <button id="btn-login-gestore" class="auth-btn">Entra come Gestore</button>
+                <p style="margin-top:18px; font-size:0.75rem; color:var(--text-secondary); cursor:pointer; text-transform:uppercase; letter-spacing:1px;" id="link-login-membro">
+                    ← Torna al login membro
+                </p>
+            </div>
+        </div>
+    </div>
+
+    <div id="app-container">
+        
+        <div id="topbar" class="glass-panel">
+            <div class="topbar-header">
+                <img src="../assets/logo.png" alt="Aeterna Logo" class="custom-logo topbar-logo" onerror="this.style.display='none'">
+                <div class="topbar-header-text">
+                    <h1>CONQUISTE HORDE RP</h1>
+                    <p class="subtitle">Gestione Territori</p>
+                </div>
+            </div>
+            <div class="nav-menu">
+                <a href="../" class="tab-btn" style="text-decoration:none;display:inline-flex;align-items:center;" title="Torna al Portale">🏠 Portale</a>
+                <button class="tab-btn active" data-target="conquiste">🗺️ Territori</button>
+                <button class="tab-btn" data-target="punti">📍 Punti Conquista</button>
+                <button class="tab-btn" data-target="risorse">🗄️ Database</button>
+                <button class="tab-btn" data-target="gestione" id="tab-gestione" style="display:none;">⚙️ Gestione</button>
+            </div>
+            <div class="topbar-actions">
+                <button id="btn-logout">Esci</button>
+            </div>
+        </div>
+
+        <div id="main-content">
+            
+            <div id="view-conquiste" class="view-area active">
+                <div class="conquiste-layout">
+                    
+                    <div id="factions-panel" class="glass-panel">
+                        <h3>Assegna Dominio</h3>
+                        <p style="font-size: 0.8rem; color: var(--text-secondary); margin-bottom: 15px;">Seleziona la fazione, poi clicca la griglia centrale.</p>
+                        
+                        <div class="faction-card" data-color="transparent" data-id="nessuno" style="border: 1px dashed var(--text-secondary); margin-bottom: 20px;">
+                            <span class="faction-name" style="color: var(--text-secondary);">✖️ Rimuovi Conquista</span>
+                        </div>
+
+                        <div class="faction-group-title">Ghoul</div>
+                        <div class="factions-grid">
+                            <div class="faction-card" data-color="rgba(144, 238, 144, 0.8)" data-id="ghoul"><div class="faction-color-dot" style="background: #03e903;"></div><span class="faction-name">Dinastia</span></div>
+                            <div class="faction-card" data-color="rgba(0, 100, 0, 0.9)" data-id="rsg"><div class="faction-color-dot" style="background: #006400;"></div><span class="faction-name">RSG</span></div>
+                        </div>
+
+                        <div class="faction-group-title">Lycan</div>
+                        <div class="factions-grid">
+                            <div class="faction-card" data-color="rgba(128, 128, 128, 0.7)" data-id="lycan" style="grid-column: span 2;"><div class="faction-color-dot" style="background: #808080;"></div><span class="faction-name">Dinastia</span></div>
+                            <div class="faction-card" data-color="rgba(64, 64, 64, 0.8)" data-id="bloodbound"><div class="faction-color-dot" style="background: #404040;"></div><span class="faction-name">Bloodbound</span></div>
+                            <div class="faction-card" data-color="rgba(211, 211, 211, 0.7)" data-id="wulfing"><div class="faction-color-dot" style="background: #D3D3D3;"></div><span class="faction-name">Wulfing</span></div>
+                        </div>
+
+                        <div class="faction-group-title">Kitzune</div>
+                        <div class="factions-grid">
+                            <div class="faction-card" data-color="rgba(255, 165, 0, 0.7)" data-id="kitzune" style="grid-column: span 2;"><div class="faction-color-dot" style="background: #FFA500;"></div><span class="faction-name">Dinastia</span></div>
+                            <div class="faction-card" data-color="rgba(255, 255, 0, 0.8)" data-id="onimaru"><div class="faction-color-dot" style="background: #FFFF00;"></div><span class="faction-name">Onimaru</span></div>
+                            <div class="faction-card" data-color="rgba(218, 165, 32, 0.7)" data-id="inugami"><div class="faction-color-dot" style="background: #DAA520;"></div><span class="faction-name">Inugami</span></div>
+                        </div>
+
+                        <div class="faction-group-title">Vampiri</div>
+                        <div class="factions-grid">
+                            <div class="faction-card" data-color="rgba(255, 102, 102, 0.7)" data-id="vampiri"><div class="faction-color-dot" style="background: #ff0000;"></div><span class="faction-name">Dinastia</span></div>
+                            <div class="faction-card" data-color="rgba(139, 0, 0, 0.8)" data-id="noctis"><div class="faction-color-dot" style="background: #8B0000;"></div><span class="faction-name">Noctis Aeterna</span></div>
+                        </div>
+
+                        <div class="faction-group-title">Demoni</div>
+                        <div class="factions-grid">
+                            <div class="faction-card" data-color="rgba(147, 112, 219, 0.7)" data-id="demoni"><div class="faction-color-dot" style="background: #5500ff;"></div><span class="faction-name">Dinastia</span></div>
+                            <div class="faction-card" data-color="rgba(75, 0, 130, 0.8)" data-id="aeterna"><div class="faction-color-dot" style="background: #4B0082;"></div><span class="faction-name">Aeterna Mortis</span></div>
+                        </div>
+                    </div>
+
+                    <div class="mappa-wrapper" id="wrapper-conquiste">
+                        <div id="griglia"></div>
+                    </div>
+
+                    <div class="right-column">
+                        <div id="stats-panel" class="glass-panel">
+                            <h3>🏆 Classifica Globale</h3>
+                            <div id="stats-content">
+                                <p style="font-size:0.8rem; color:var(--text-secondary); text-align:center;">Caricamento uplink...</p>
+                            </div>
+                        </div>
+
+                        <div id="activity-log-panel" class="glass-panel">
+                            <h3>📜 Attività recenti</h3>
+                            <div id="activity-log-content">
+                                </div>
+                        </div>
+                    </div>
+
+                </div>
+            </div>
+
+            <div id="view-punti" class="view-area">
+                <div class="punti-layout">
+                    
+                    <div class="punti-sidebar glass-panel">
+                        <h3 class="punti-sidebar-title">📍 Punti Conquista</h3>
+                        <p class="punti-sidebar-desc">Aggiungi i punti, assegna il quadrante e segna se è già conquistato. Clicca sulla mappa per il blip preciso.</p>
+                        
+                        <div class="tool-group">
+                            <label>Nome Punto</label>
+                            <input type="text" id="punto-nome" class="form-input form-input-compact" placeholder="Es. Torre Radio, Bunker Nord...">
+                        </div>
+                        <div class="tool-group">
+                            <label>Quadrante</label>
+                            <input type="text" id="punto-quadrante" class="form-input form-input-compact" placeholder="Es. C4" maxlength="3" style="text-transform:uppercase;">
+                        </div>
+                        <div class="tool-group tool-group-check">
+                            <label class="check-label">
+                                <input type="checkbox" id="punto-owned">
+                                <span>Già posseduto / conquistato</span>
+                            </label>
+                        </div>
+                        <p class="punti-pos-hint" id="punto-pos-hint">Posizione blip: clicca sulla mappa (opzionale)</p>
+                        <input type="hidden" id="punto-x" value="">
+                        <input type="hidden" id="punto-y" value="">
+                        <button class="auth-btn" id="btn-salva-punto">Aggiungi Punto</button>
+                        <button class="auth-btn btn-annulla-punto" id="btn-annulla-punto" style="display:none;">Annulla modifica</button>
+                        
+                        <div class="punti-legend">
+                            <h4>Legenda</h4>
+                            <div class="legend-row"><span class="blip-dot owned"></span> Posseduto</div>
+                            <div class="legend-row"><span class="blip-dot missing"></span> Mancante</div>
+                            <div id="punti-stats" class="punti-stats"></div>
+                        </div>
+
+                        <h4 class="punti-list-title">Elenco punti</h4>
+                        <div id="punti-lista" class="punti-lista">
+                            <p class="punti-empty">Caricamento...</p>
+                        </div>
+                    </div>
+
+                    <div class="mappa-outer" id="mappa-outer-punti">
+                        <div class="mappa-wrapper" id="wrapper-punti">
+                            <div class="punti-map-inner" id="punti-map-inner">
+                                <div id="punti-grid-layer"></div>
+                                <div id="punti-click-overlay" title="Clicca per posizionare il blip"></div>
+                            </div>
+                            <!-- Blip FUORI dallo scale: restano nitidi a qualsiasi zoom -->
+                            <div id="punti-blips-layer"></div>
+                        </div>
+                        <div class="mappa-controls">
+                            <div class="mappa-zoom-bar">
+                                <button type="button" id="btn-zoom-in" title="Zoom +">+</button>
+                                <span id="zoom-level-label">100%</span>
+                                <button type="button" id="btn-zoom-out" title="Zoom −">−</button>
+                                <button type="button" id="btn-zoom-reset" title="Reset">⟲</button>
+                            </div>
+                        </div>
+                    </div>
+
+                </div>
+            </div>
+
+            <div id="view-risorse" class="view-area">
+                <div class="database-container">
+                    
+                    <div class="db-header">
+                        <h2>Gestione Database Punti</h2>
+                        <div style="display:flex; align-items:center; gap:20px;">
+                            <button class="auth-btn btn-sync-huge" id="btn-salva-risorse">SINCRONIZZA DATABASE</button>
+                        </div>
+                    </div>
+                    
+                    <div class="resources-section">
+                        <h3>💍 Anelli delle Dinastie</h3>
+                        <p style="font-size: 0.9rem; color: var(--text-secondary); margin-bottom: 15px;">Imposta qui il numero di partenza o aggiungi anelli. Scenderanno automaticamente alla conquista.</p>
+                        <div class="resources-grid" id="grid-anelli"></div>
+                    </div>
+
+                    <div class="resources-section">
+                        <h3>Aree di Raccolta (Materiali)</h3>
+                        <div class="resources-grid" id="grid-materiali"></div>
+                    </div>
+
+                    <div class="resources-section">
+                        <h3>Zone Commerciali (Mercanti)</h3>
+                        <div class="resources-grid" id="grid-mercanti"></div>
+                    </div>
+                    
+                    <div class="resources-section">
+                        <h3>Altari (Conversione)</h3>
+                        <div class="resources-grid" id="grid-altari"></div>
+                    </div>
+
+                </div>
+            </div>
+
+            <div id="view-gestione" class="view-area">
+                <div class="database-container">
+                    <div class="db-header">
+                        <h2>⚙️ Gestione Utenti</h2>
+                    </div>
+
+                    <div class="gestione-form glass-panel">
+                        <h3>Crea / Aggiorna Utente</h3>
+                        <div class="gestione-form-grid">
+                            <input type="text" id="admin-user-nome" class="form-input" placeholder="Nome utente">
+                            <input type="text" id="admin-user-grado" class="form-input" placeholder="Ruolo / Grado (opzionale)">
+                            <input type="text" id="admin-user-codice" class="form-input" maxlength="4" pattern="[0-9]*" inputmode="numeric" placeholder="Codice 4 cifre">
+                            <input type="text" id="admin-user-password" class="form-input" placeholder="Password">
+                        </div>
+                        <p class="gestione-perm-label">Permessi sezioni:</p>
+                        <div id="admin-permessi-box" class="gestione-permessi">
+                            <label><input type="checkbox" class="perm-check" value="conquiste" checked> 🗺️ Territori</label>
+                            <label><input type="checkbox" class="perm-check" value="punti" checked> 📍 Punti Conquista</label>
+                            <label><input type="checkbox" class="perm-check" value="risorse"> 🗄️ Database</label>
+                        </div>
+                        <button class="auth-btn" id="btn-salva-utente">Salva Utente</button>
+                    </div>
+
+                    <div class="gestione-panel glass-panel">
+                        <h3>Utenti registrati</h3>
+                        <div class="gestione-table-wrap">
+                            <table class="gestione-table">
+                                <thead>
+                                    <tr>
+                                        <th style="width:28%;">Nome</th>
+                                        <th style="width:14%;">Codice</th>
+                                        <th style="width:36%;">Permessi</th>
+                                        <th style="width:22%;">Azioni</th>
+                                    </tr>
+                                </thead>
+                                <tbody id="admin-utenti-body"></tbody>
+                            </table>
+                        </div>
+                    </div>
+
+                    <div class="gestione-panel glass-panel">
+                        <div class="gestione-log-header">
+                            <h3>📜 Registro movimenti utenti</h3>
+                            <input type="text" id="search-admin-log" class="form-input" placeholder="Filtra per utente o azione...">
+                        </div>
+                        <p style="font-size:0.8rem; color:var(--text-secondary); margin-bottom:12px;">Qui vedi <b>quale utente</b> ha eseguito ogni azione (login, conquiste, punti, database…). Su «Attività recenti» restano i messaggi operativi di sempre.</p>
+                        <div id="admin-activity-log" style="max-height:420px; overflow-y:auto; display:flex; flex-direction:column; gap:10px;">
+                            <p style="font-size:0.8rem; color:var(--text-secondary); text-align:center;">Caricamento log...</p>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+        </div>
+    </div>
+
+<footer class="main-footer">
+        <p>Horde RP - Gestionale Conquiste - Solo a scopo ludico &copy; 2026 • Vitrio - Tutti i diritti riservati</p>
+    </footer>
+
+    <script type="module" src="script.js"></script>
+</body>
+</html>
