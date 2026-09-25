@@ -306,7 +306,7 @@
             <div class="nav-link" onclick="window.showSection('gestione')">Gestione</div>
         </div>
         <div class="nav-logout">
-            <button type="button" id="nav-hamburger" class="nav-hamburger" aria-label="Menu" aria-expanded="false">
+            <button type="button" id="nav-hamburger" class="nav-hamburger" aria-label="Apri menu sezioni" title="Menu" aria-expanded="false">
                 <span></span><span></span><span></span>
             </button>
             <div class="nav-link" onclick="window.logoutVampiro()" style="color: var(--withdraw-red);">Esci</div>
@@ -1394,7 +1394,7 @@
   });
   links.querySelectorAll('.nav-link').forEach(function(el) {
     el.addEventListener('click', function() {
-      if (window.matchMedia('(max-width: 768px)').matches) {
+      if (window.matchMedia('(max-width: 1100px)').matches) {
         links.classList.remove('nav-open');
         btn.classList.remove('is-open');
         btn.setAttribute('aria-expanded', 'false');

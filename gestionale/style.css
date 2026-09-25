@@ -1347,3 +1347,212 @@ footer:hover strong { color: var(--blood-red); }
         grid-template-columns: 1fr !important;
     }
 }
+
+
+/* =========================================================
+   MOBILE / TABLET NAV — forzato (vince su regole precedenti)
+   Attivo sotto 1100px: telefono + tablet in verticale
+   ========================================================= */
+
+.nav-hamburger {
+    display: none;
+    box-sizing: border-box;
+    flex-direction: column;
+    justify-content: center;
+    align-items: center;
+    gap: 5px;
+    width: 44px;
+    height: 44px;
+    min-width: 44px;
+    padding: 10px;
+    margin: 0 4px 0 0;
+    background: rgba(18,18,18,0.95) !important;
+    border: 1px solid rgba(197,160,89,0.55) !important;
+    border-radius: 8px;
+    cursor: pointer;
+    z-index: 1001;
+    flex-shrink: 0;
+}
+.nav-hamburger span {
+    display: block !important;
+    height: 2px;
+    width: 20px;
+    background: #c5a059 !important;
+    border-radius: 1px;
+    transition: transform 0.25s ease, opacity 0.25s ease;
+    pointer-events: none;
+}
+.nav-hamburger.is-open span:nth-child(1) {
+    transform: translateY(7px) rotate(45deg);
+}
+.nav-hamburger.is-open span:nth-child(2) {
+    opacity: 0;
+}
+.nav-hamburger.is-open span:nth-child(3) {
+    transform: translateY(-7px) rotate(-45deg);
+}
+
+@media screen and (max-width: 1100px) {
+    nav {
+        display: flex !important;
+        flex-direction: row !important;
+        flex-wrap: wrap !important;
+        grid-template-columns: none !important;
+        align-items: center !important;
+        justify-content: space-between !important;
+        height: auto !important;
+        min-height: 56px !important;
+        padding: 8px 10px !important;
+        gap: 6px !important;
+        position: sticky !important;
+        top: 0 !important;
+        z-index: 999 !important;
+    }
+
+    .logo-container {
+        display: flex !important;
+        flex: 1 1 auto !important;
+        min-width: 0 !important;
+        justify-self: auto !important;
+        gap: 10px !important;
+    }
+    .logo-container h1 {
+        font-size: 0.8rem !important;
+        white-space: nowrap !important;
+        overflow: hidden !important;
+        text-overflow: ellipsis !important;
+        max-width: 42vw;
+    }
+    .logo-img {
+        width: 38px !important;
+        height: 38px !important;
+        flex-shrink: 0 !important;
+    }
+
+    /* LE 3 LINETTE — sempre visibili sotto 1100px */
+    .nav-hamburger {
+        display: flex !important;
+        visibility: visible !important;
+        opacity: 1 !important;
+    }
+
+    .nav-logout {
+        display: flex !important;
+        flex-direction: row !important;
+        align-items: center !important;
+        justify-content: flex-end !important;
+        gap: 4px !important;
+        margin-left: auto !important;
+        justify-self: auto !important;
+        flex: 0 0 auto !important;
+    }
+    .nav-logout > .nav-link {
+        padding: 8px 10px !important;
+        font-size: 0.75rem !important;
+    }
+
+    /* Link nascosti finché non apri il menu */
+    .nav-links {
+        display: none !important;
+        flex-direction: column !important;
+        align-items: stretch !important;
+        width: 100% !important;
+        flex: 0 0 100% !important;
+        order: 99 !important;
+        gap: 0 !important;
+        padding: 6px 0 8px !important;
+        margin: 0 !important;
+        border-top: 1px solid rgba(197,160,89,0.2) !important;
+        max-height: min(75vh, 520px) !important;
+        overflow-y: auto !important;
+        -webkit-overflow-scrolling: touch !important;
+        background: rgba(10,10,10,0.97) !important;
+        border-radius: 0 0 10px 10px;
+    }
+    .nav-links.nav-open {
+        display: flex !important;
+    }
+    .nav-links .nav-link {
+        display: block !important;
+        width: 100% !important;
+        box-sizing: border-box !important;
+        font-size: 0.95rem !important;
+        padding: 14px 16px !important;
+        white-space: normal !important;
+        text-align: left !important;
+        border-bottom: 1px solid rgba(197,160,89,0.1) !important;
+        opacity: 1 !important;
+    }
+
+    .container {
+        padding: 10px 8px !important;
+        margin: 0.5rem auto !important;
+        max-width: 100% !important;
+        width: 100% !important;
+        box-sizing: border-box !important;
+    }
+    .vamp-card {
+        padding: 12px 10px !important;
+        max-width: 100% !important;
+        width: 100% !important;
+        box-sizing: border-box !important;
+        overflow-x: auto !important;
+    }
+    .section {
+        max-width: 100% !important;
+        overflow-x: hidden !important;
+        box-sizing: border-box !important;
+    }
+    .stats-grid {
+        grid-template-columns: repeat(auto-fit, minmax(130px, 1fr)) !important;
+        gap: 10px !important;
+    }
+    .form-grid, .dashboard-grid, .admin-grid-menu {
+        grid-template-columns: 1fr !important;
+    }
+    .permessi-grid {
+        grid-template-columns: 1fr !important;
+    }
+    .scroll-container, .admin-table-scroll {
+        overflow-x: auto !important;
+        -webkit-overflow-scrolling: touch !important;
+        max-width: 100% !important;
+    }
+    table {
+        min-width: 460px;
+        font-size: 0.72rem !important;
+    }
+    .inv-grid-container {
+        grid-template-columns: repeat(auto-fill, minmax(88px, 1fr)) !important;
+    }
+    .vamp-card [style*="display: grid"],
+    .vamp-card [style*="display:grid"] {
+        grid-template-columns: 1fr !important;
+    }
+    input, select, button, textarea {
+        max-width: 100% !important;
+        box-sizing: border-box !important;
+    }
+}
+
+/* Portrait stretto */
+@media screen and (max-width: 480px) {
+    body { background-attachment: scroll !important; }
+    .logo-container h1 { font-size: 0.7rem !important; max-width: 36vw; }
+    .logo-img { width: 34px !important; height: 34px !important; }
+    .container { padding: 8px 6px !important; }
+    .vamp-card { padding: 10px 8px !important; }
+    input, select, button, textarea { font-size: 16px !important; }
+    #global-lock .vamp-card {
+        max-width: 96vw !important;
+        margin: 10px !important;
+        padding: 18px 12px !important;
+    }
+    h2 { font-size: 0.95rem !important; }
+    #btn-foto-float {
+        bottom: 12px !important;
+        right: 8px !important;
+        padding: 10px 12px !important;
+        font-size: 0.72rem !important;
+    }
+}
