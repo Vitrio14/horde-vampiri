@@ -795,3 +795,16 @@ header {
 @media (max-width: 500px) {
     .portale-btn { top: 8px; right: 8px; font-size: 0.75rem; padding: 4px 8px; }
 }
+
+
+/* RESPONSIVE UNIFICATO EXTRA */
+@media (max-width: 600px) {
+    header { padding: 24px 12px 8px !important; }
+    .logo { max-width: 110px !important; }
+    .portale-btn { top: 8px; right: 8px; font-size: 0.72rem; padding: 5px 8px; }
+    .card { padding: 20px 14px !important; margin: 0 8px; }
+    .main-wrapper { padding: 8px; }
+    input, select, button, textarea { font-size: 16px !important; }
+    .form-group label { font-size: 0.85rem; }
+    .top-action-bar { flex-direction: column; gap: 8px; }
+}

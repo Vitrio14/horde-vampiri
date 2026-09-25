@@ -77,16 +77,18 @@
         }
         .portal-grid {
             display: grid;
-            grid-template-columns: repeat(auto-fit, minmax(260px, 1fr));
-            gap: 24px;
-            max-width: 1100px;
+            grid-template-columns: repeat(2, minmax(0, 240px));
+            gap: 18px;
+            max-width: 520px;
             width: 100%;
+            margin: 0 auto;
+            justify-content: center;
         }
         .portal-card {
             background: var(--glass-bg);
             border: 1px solid var(--glass-border);
-            border-radius: 16px;
-            padding: 36px 28px;
+            border-radius: 14px;
+            padding: 22px 16px;
             text-align: center;
             cursor: pointer;
             transition: var(--transition-smooth);
@@ -98,43 +100,69 @@
             align-items: center;
             backdrop-filter: blur(12px);
             -webkit-backdrop-filter: blur(12px);
+            min-height: 0;
         }
         .portal-card:hover {
-            transform: translateY(-8px);
+            transform: translateY(-6px);
             border-color: var(--gold-accent);
             box-shadow: 0 12px 40px rgba(0,0,0,0.9), 0 0 30px rgba(197, 160, 89, 0.2);
         }
         .portal-card .icon {
-            font-size: 2.8rem;
-            margin-bottom: 18px;
+            font-size: 2rem;
+            margin-bottom: 10px;
             line-height: 1;
         }
         .portal-card h2 {
             font-family: 'Cinzel', serif;
-            font-size: 1.25rem;
+            font-size: 1.05rem;
             color: var(--gold-accent);
-            margin-bottom: 10px;
+            margin-bottom: 8px;
             letter-spacing: 1px;
         }
         .portal-card p {
-            font-size: 0.9rem;
+            font-size: 0.78rem;
             color: var(--text-dim);
-            line-height: 1.5;
+            line-height: 1.4;
         }
         .portal-card.gestionale:hover { border-color: #c5a059; }
         .portal-card.bg:hover { border-color: #8b0000; }
         .portal-card.conquiste:hover { border-color: #c5a059; }
         .portal-card.gm:hover { border-color: #af0000; }
         footer {
-            margin-top: 56px;
+            margin-top: 40px;
             text-align: center;
             color: var(--text-dim);
-            font-size: 0.8rem;
+            font-size: 0.75rem;
             opacity: 0.7;
         }
-        @media (max-width: 600px) {
+        /* Tablet */
+        @media (max-width: 700px) {
             .header h1 { font-size: 1.7rem; }
-            .portal-card { padding: 28px 20px; }
+            .header img { width: 90px; }
+            .portal-grid {
+                grid-template-columns: repeat(2, minmax(0, 1fr));
+                max-width: 420px;
+                gap: 14px;
+            }
+            .portal-card { padding: 18px 12px; }
+            .portal-card .icon { font-size: 1.7rem; }
+            .portal-card h2 { font-size: 0.95rem; }
+            .portal-card p { font-size: 0.72rem; }
+        }
+        /* Telefono */
+        @media (max-width: 420px) {
+            body { padding: 24px 12px; }
+            .header h1 { font-size: 1.35rem; letter-spacing: 1px; }
+            .header p { font-size: 0.9rem; }
+            .portal-grid {
+                grid-template-columns: 1fr 1fr;
+                max-width: 100%;
+                gap: 10px;
+            }
+            .portal-card { padding: 14px 8px; border-radius: 12px; }
+            .portal-card .icon { font-size: 1.5rem; margin-bottom: 6px; }
+            .portal-card h2 { font-size: 0.82rem; margin-bottom: 4px; }
+            .portal-card p { font-size: 0.65rem; line-height: 1.3; }
         }
     </style>
 </head>
@@ -142,14 +170,14 @@
     <div class="header">
         <img src="assets/logo.png" alt="Logo Horde Vampiri">
         <h1>Horde Vampiri</h1>
-        <p>Portale unificato — scegli lo strumento a cui accedere</p>
+        <p>Portale unico — scegli lo strumento a cui accedere</p>
     </div>
 
     <div class="portal-grid">
         <a href="gestionale/" class="portal-card gestionale">
             <div class="icon">🩸</div>
             <h2>Gestionale</h2>
-            <p>Albero genealogico, vendite, materiali, inventario, nidi e gestione completa della Horde.</p>
+            <p>Accesso all'area gestionale dinastica.</p>
         </a>
         <a href="bg/" class="portal-card bg">
             <div class="icon">📜</div>
@@ -159,17 +187,17 @@
         <a href="conquiste/" class="portal-card conquiste">
             <div class="icon">⚔️</div>
             <h2>Database Conquiste</h2>
-            <p>Mappa e gestione dei territori conquistati dalla Horde.</p>
+            <p>Mappa e gestione dei territori conquistati della dinastia.</p>
         </a>
         <a href="gm/" class="portal-card gm">
             <div class="icon">👑</div>
             <h2>Pannello GM</h2>
-            <p>Accesso riservato ai Game Master: quest, giocatori, note e strumenti admin.</p>
+            <p>Accesso riservato ai Game Master.</p>
         </a>
     </div>
 
     <footer>
-        Horde RP · Portale unificato · Firebase multi-progetto mantenuto
+       Horde RP - Gestionale Vampiri - Solo a scopo ludico &copy; 2026 • Vitrio - Tutti i diritti riservati
     </footer>
 </body>
 </html>

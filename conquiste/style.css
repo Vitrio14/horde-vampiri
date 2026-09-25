@@ -1095,3 +1095,39 @@ textarea.form-input { resize: vertical; min-height: 100px; }
     pointer-events: none;
     margin: 0;
 }
+
+
+/* RESPONSIVE UNIFICATO */
+@media (max-width: 900px) {
+    #topbar {
+        flex-direction: column;
+        align-items: stretch;
+        height: auto !important;
+        padding: 10px 12px;
+        gap: 10px;
+    }
+    .topbar-header { justify-content: center; }
+    .nav-menu {
+        flex-wrap: wrap;
+        justify-content: center;
+        gap: 8px;
+        height: auto;
+    }
+    .tab-btn { font-size: 0.75rem; padding: 6px 10px; }
+    .conquiste-layout {
+        flex-direction: column !important;
+    }
+    .punti-sidebar, #factions-panel {
+        width: 100% !important;
+        max-width: 100% !important;
+    }
+    .mappa-wrapper, .mappa-outer {
+        max-width: 100%;
+        overflow-x: auto;
+    }
+}
+@media (max-width: 500px) {
+    .topbar-header-text h1 { font-size: 1rem; }
+    .login-box { max-width: 95vw; margin: 12px; padding: 20px 14px; }
+    input, select, button, textarea { font-size: 16px !important; }
+}

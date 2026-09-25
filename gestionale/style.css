@@ -1146,3 +1146,34 @@ footer:hover strong { color: var(--blood-red); }
     background: transparent !important;
     opacity: 0 !important;
 }
+
+
+/* RESPONSIVE UNIFICATO */
+@media (max-width: 900px) {
+    nav {
+        flex-wrap: wrap;
+        height: auto !important;
+        min-height: var(--nav-height);
+        padding: 8px 10px;
+        gap: 6px;
+    }
+    .nav-links {
+        flex-wrap: wrap;
+        justify-content: center;
+        gap: 4px 8px;
+        width: 100%;
+    }
+    .nav-link {
+        font-size: 0.75rem !important;
+        padding: 6px 8px !important;
+    }
+    .logo-container h1 { font-size: 0.9rem; }
+    .logo-img { max-height: 40px; width: auto; }
+    .container { padding: 12px 10px; }
+    .vamp-card { padding: 16px 12px; }
+}
+@media (max-width: 500px) {
+    .nav-link { font-size: 0.7rem !important; padding: 5px 6px !important; }
+    input, select, button, textarea { font-size: 16px !important; } /* evita zoom iOS */
+    #global-lock .vamp-card { max-width: 95vw !important; margin: 12px; }
+}

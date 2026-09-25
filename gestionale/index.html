@@ -265,7 +265,8 @@
                 <input type="text" id="global-codice" maxlength="4" pattern="[0-9]*" inputmode="numeric" style="text-align: center; font-size: 1.3rem; margin-bottom: 12px; letter-spacing: 8px;" placeholder="••••" onkeydown="if(event.key==='Enter') document.getElementById('global-pass').focus()">
                 <input type="password" id="global-pass" style="text-align: center; font-size: 1.1rem; margin-bottom: 20px;" placeholder="Password" onkeydown="if(event.key==='Enter') window.unlockSite()">
                 <button onclick="window.unlockSite()">Entra</button>
-                <p style="margin-top: 22px; font-size: 0.7rem; color: var(--gold-dim); cursor: pointer; text-transform: uppercase; letter-spacing: 1px;" onclick="window.mostraLoginGestore()">
+                <p style="margin-top:14px;text-align:center;"><a href="../" style="color:var(--gold-accent,#c5a059);text-decoration:none;font-size:0.8rem;">← Torna alla home</a></p>
+                <p style="margin-top: 18px; font-size: 0.7rem; color: var(--gold-dim); cursor: pointer; text-transform: uppercase; letter-spacing: 1px;" onclick="window.mostraLoginGestore()">
                     Accesso Gestore →
                 </p>
             </div>
@@ -277,7 +278,8 @@
                 <p style="font-size: 0.6rem; margin-bottom: 25px; opacity: 0.3; text-transform: uppercase;">Inserire la chiave del sangue</p>
                 <input type="password" id="global-admin-pass" style="text-align: center; font-size: 1.1rem; margin-bottom: 20px;" placeholder="Password Gestore" onkeydown="if(event.key==='Enter') window.unlockGestore()">
                 <button onclick="window.unlockGestore()">Entra come Gestore</button>
-                <p style="margin-top: 22px; font-size: 0.7rem; color: var(--gold-dim); cursor: pointer; text-transform: uppercase; letter-spacing: 1px;" onclick="window.mostraLoginMembro()">
+                <p style="margin-top:14px;text-align:center;"><a href="../" style="color:var(--gold-accent,#c5a059);text-decoration:none;font-size:0.8rem;">← Torna alla home</a></p>
+                <p style="margin-top: 16px; font-size: 0.7rem; color: var(--gold-dim); cursor: pointer; text-transform: uppercase; letter-spacing: 1px;" onclick="window.mostraLoginMembro()">
                     ← Torna al login membro
                 </p>
             </div>
@@ -291,7 +293,7 @@
             <h1>Horde RP <span style="font-weight:300; opacity:0.4; margin:0 5px;">|</span> Vampiri</h1>
         </div>
         <div class="nav-links">
-            <a href="../" class="nav-link" title="Torna al Portale">🏠 Portale</a>
+            <a href="../" class="nav-link" title="Torna al Portale">Home</a>
             <div class="nav-link" onclick="window.showSection('albero')">Albero</div>
             <div class="nav-link active" onclick="window.showSection('generale')">Generale</div>
             <div class="nav-link" onclick="window.showSection('vendite')">Vendite</div>
@@ -844,8 +846,8 @@
                         <input type="password" id="admin-pass" style="text-align: center; margin: 20px 0;" onkeydown="if(event.key==='Enter') window.checkAccess()" placeholder="Password">
                     </div>
                     <button onclick="window.checkAccess()">Entra</button>
-                    
-                    <p style="margin-top: 20px; font-size: 0.7rem; color: var(--gold-dim); cursor: pointer; text-transform: uppercase; letter-spacing: 1px;" 
+                    <p style="margin-top:14px;text-align:center;"><a href="../" style="color:var(--gold-accent,#c5a059);text-decoration:none;font-size:0.8rem;">← Torna alla home</a></p>
+                    <p style="margin-top: 16px; font-size: 0.7rem; color: var(--gold-dim); cursor: pointer; text-transform: uppercase; letter-spacing: 1px;" 
                        onclick="location.reload()">
                         Torna al login membro
                     </p>

@@ -769,3 +769,37 @@ footer {
     background: rgba(197,160,89,0.12);
     border-color: #c5a059;
 }
+
+
+/* RESPONSIVE UNIFICATO */
+@media (max-width: 900px) {
+    #dashboard { flex-direction: column; }
+    .sidebar {
+        width: 100% !important;
+        max-width: 100%;
+        flex-direction: row;
+        flex-wrap: wrap;
+        justify-content: center;
+        align-items: center;
+        padding: 12px;
+        gap: 6px;
+        height: auto !important;
+        position: relative !important;
+    }
+    .sidebar .main-logo { max-width: 60px; margin-bottom: 0 !important; }
+    .sidebar h2 { width: 100%; text-align: center; margin: 4px 0 8px; font-size: 0.95rem; }
+    .sidebar button, .portale-btn-sidebar {
+        width: auto !important;
+        flex: 0 0 auto;
+        padding: 8px 12px;
+        font-size: 0.75rem;
+        margin: 2px;
+    }
+    main { padding: 12px; width: 100%; }
+    .panel .grid { grid-template-columns: 1fr !important; }
+}
+@media (max-width: 500px) {
+    .login-box { max-width: 95vw; padding: 24px 16px; }
+    input, select, button, textarea { font-size: 16px !important; }
+    .main-logo { max-width: 80px; }
+}
