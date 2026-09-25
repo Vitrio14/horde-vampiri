@@ -323,7 +323,7 @@ bgForm.addEventListener('submit', (e) => {
                 "https://discord.com/api/webhooks/1525137419567890635/48cnj0-0COKJ5EEjkKuMHba0KIGlghz8O4G0D8mLND-mhEjINUa3BMBexxQoVKpwLPMY",
                 "<@&1284193565194326189>", // Tag ruolo GM fuori dall'embed
                 "Horde V5 | Nuovo Background Ricevuto",
-                "È stato inviato un nuovo background in attesa di revisione da parte di un GM, collegati al seguente link: https://horde-bg-vampiri.vitriotv.com.",
+                "È stato inviato un nuovo background in attesa di revisione da parte di un GM, collegati al seguente link: https://horde-vampiri.vitriotv.com/bg/.",
                 0x8b0000, 
                 [
                     { name: "👤 Discord User", value: finalPayload.discordUser, inline: true },
@@ -581,7 +581,7 @@ window.reviewBackground = function(docId, nextStatus) {
             if (isApproved) {
                 embedDescription += '\n\n**Il tuo background è stato accettato. Non ci sono altre azioni da compiere.**';
             } else {
-                embedDescription += '\n\n**Sono richieste delle modifiche.**\nCollegati al sito per correggere e rinviare: https://horde-bg-vampiri.vitriotv.com';
+                embedDescription += '\n\n**Sono richieste delle modifiche.**\nCollegati al sito per correggere e rinviare: https://horde-vampiri.vitriotv.com/bg/';
                 embedFields.push({ name: "Note/Istruzioni dal GM", value: feedbackText, inline: false });
             }
 
