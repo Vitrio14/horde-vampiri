@@ -1148,32 +1148,202 @@ footer:hover strong { color: var(--blood-red); }
 }
 
 
-/* RESPONSIVE UNIFICATO */
-@media (max-width: 900px) {
+/* ===== Hamburger (nascosto su desktop) ===== */
+.nav-hamburger {
+    display: none;
+    flex-direction: column;
+    justify-content: center;
+    gap: 5px;
+    width: 42px;
+    height: 42px;
+    padding: 8px;
+    margin-right: 8px;
+    background: rgba(18,18,18,0.85);
+    border: 1px solid var(--glass-border);
+    border-radius: 8px;
+    cursor: pointer;
+}
+.nav-hamburger span {
+    display: block;
+    height: 2px;
+    width: 100%;
+    background: var(--gold-accent);
+    border-radius: 1px;
+    transition: transform 0.25s, opacity 0.25s;
+}
+.nav-hamburger.is-open span:nth-child(1) { transform: translateY(7px) rotate(45deg); }
+.nav-hamburger.is-open span:nth-child(2) { opacity: 0; }
+.nav-hamburger.is-open span:nth-child(3) { transform: translateY(-7px) rotate(-45deg); }
+
+/* Foto flottante */
+#btn-foto-float {
+    position: fixed;
+    bottom: 20px;
+    right: 16px;
+    z-index: 900;
+    display: none;
+    align-items: center;
+    justify-content: center;
+    gap: 6px;
+    padding: 12px 16px;
+    background: rgba(18, 18, 18, 0.92);
+    border: 1px solid var(--gold-accent);
+    border-radius: 999px;
+    color: var(--gold-accent);
+    text-decoration: none;
+    font-family: 'Cinzel', serif;
+    font-size: 0.8rem;
+    letter-spacing: 1px;
+    box-shadow: 0 8px 24px rgba(0,0,0,0.7), 0 0 12px rgba(197,160,89,0.25);
+    backdrop-filter: blur(10px);
+}
+#btn-foto-float:hover {
+    background: rgba(197,160,89,0.15);
+}
+
+/* RESPONSIVE — telefono (tablet resta layout desktop compatto) */
+@media (max-width: 768px) {
     nav {
+        display: flex !important;
         flex-wrap: wrap;
+        grid-template-columns: none;
         height: auto !important;
-        min-height: var(--nav-height);
-        padding: 8px 10px;
-        gap: 6px;
+        min-height: 56px;
+        padding: 8px 12px;
+        gap: 8px;
+        align-items: center;
+    }
+    .logo-container {
+        flex: 1;
+        min-width: 0;
+    }
+    .logo-container h1 {
+        font-size: 0.85rem;
+        overflow: hidden;
+        text-overflow: ellipsis;
+    }
+    .logo-img {
+        width: 40px !important;
+        height: 40px !important;
+    }
+    .nav-hamburger { display: flex; }
+    .nav-logout {
+        display: flex;
+        align-items: center;
+        gap: 4px;
+        margin-left: auto;
     }
     .nav-links {
-        flex-wrap: wrap;
-        justify-content: center;
-        gap: 4px 8px;
+        display: none;
+        flex-direction: column;
+        align-items: stretch;
         width: 100%;
+        order: 10;
+        gap: 0;
+        padding: 8px 0 4px;
+        border-top: 1px solid var(--glass-border);
+        max-height: min(70vh, 480px);
+        overflow-y: auto;
+        -webkit-overflow-scrolling: touch;
     }
-    .nav-link {
+    .nav-links.nav-open {
+        display: flex;
+    }
+    .nav-links .nav-link {
+        font-size: 0.9rem !important;
+        padding: 14px 14px !important;
+        white-space: normal;
+        border-bottom: 1px solid rgba(197,160,89,0.08);
+        text-align: left;
+    }
+    .container {
+        padding: 12px 10px !important;
+        margin: 0.75rem auto !important;
+        max-width: 100%;
+        box-sizing: border-box;
+    }
+    .vamp-card {
+        padding: 14px 12px !important;
+        max-width: 100%;
+        box-sizing: border-box;
+        overflow-x: auto;
+    }
+    .stats-grid {
+        grid-template-columns: repeat(auto-fit, minmax(140px, 1fr)) !important;
+        gap: 12px !important;
+    }
+    .form-grid, .dashboard-grid {
+        grid-template-columns: 1fr !important;
+    }
+    #admin-view-membri .vamp-card > div[style*="grid-template-columns"] {
+        grid-template-columns: 1fr !important;
+    }
+    .permessi-grid { grid-template-columns: 1fr !important; }
+    .scroll-container, .admin-table-scroll {
+        overflow-x: auto !important;
+        -webkit-overflow-scrolling: touch;
+        max-width: 100%;
+    }
+    table {
+        min-width: 480px;
         font-size: 0.75rem !important;
-        padding: 6px 8px !important;
     }
-    .logo-container h1 { font-size: 0.9rem; }
-    .logo-img { max-height: 40px; width: auto; }
-    .container { padding: 12px 10px; }
-    .vamp-card { padding: 16px 12px; }
+    .section {
+        max-width: 100%;
+        overflow-x: hidden;
+    }
+    .admin-grid-menu {
+        grid-template-columns: 1fr !important;
+    }
+    .inv-grid-container {
+        grid-template-columns: repeat(auto-fill, minmax(90px, 1fr)) !important;
+    }
+    .vamp-card [style*="display: grid"],
+    .vamp-card [style*="display:grid"] {
+        grid-template-columns: 1fr !important;
+    }
 }
+
+
 @media (max-width: 500px) {
-    .nav-link { font-size: 0.7rem !important; padding: 5px 6px !important; }
-    input, select, button, textarea { font-size: 16px !important; } /* evita zoom iOS */
-    #global-lock .vamp-card { max-width: 95vw !important; margin: 12px; }
+    body {
+        background-attachment: scroll; /* performance mobile */
+    }
+    .logo-container h1 { font-size: 0.75rem; }
+    .container { padding: 8px 6px !important; }
+    .vamp-card { padding: 12px 10px !important; border-radius: 12px; }
+    input, select, button, textarea {
+        font-size: 16px !important; /* evita zoom iOS */
+        max-width: 100%;
+        box-sizing: border-box;
+    }
+    #global-lock .vamp-card {
+        max-width: 95vw !important;
+        margin: 12px;
+        padding: 20px 14px !important;
+    }
+    #btn-foto-float {
+        bottom: 14px;
+        right: 10px;
+        padding: 10px 14px;
+        font-size: 0.75rem;
+    }
+    h2 { font-size: 1rem !important; }
+    .stat-card { padding: 16px 10px !important; }
+}
+
+/* Fix griglie form troppo larghe */
+@media (max-width: 700px) {
+    div[style*="grid-template-columns: 1fr 1fr 1fr 1fr"],
+    div[style*="grid-template-columns:1fr 1fr 1fr 1fr"] {
+        grid-template-columns: 1fr 1fr !important;
+    }
+}
+@media (max-width: 480px) {
+    div[style*="grid-template-columns: 1fr 1fr 1fr 1fr"],
+    div[style*="grid-template-columns:1fr 1fr 1fr 1fr"],
+    div[style*="grid-template-columns: 1fr 1fr"],
+    div[style*="grid-template-columns:1fr 1fr"] {
+        grid-template-columns: 1fr !important;
+    }
 }

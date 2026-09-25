@@ -54,10 +54,7 @@ const SEZIONI = {
     dungeon: { id: 'dungeon', label: 'Dungeon' },
     conquiste: { id: 'conquiste', label: 'Conquiste' },
     gestione: { id: 'gestione', label: 'Gestione' },
-    'conquiste-ext': { id: 'conquiste-ext', label: '⚔️' },
-    foto: { id: 'foto', label: 'Foto' },
-    bg: { id: 'bg', label: 'BG' },
-    gm: { id: 'gm', label: 'GM' }
+    foto: { id: 'foto', label: 'Foto' }
 };
 
 // --- UTILS ---
@@ -135,7 +132,7 @@ window.unlockSite = async () => {
         }
         
         applyPermissions();
-        const firstPerm = currentUser.permessi.find(p => SEZIONI[p] && p !== 'gestione' && !p.includes('ext') && p !== 'foto' && p !== 'bg' && p !== 'gm') || 'generale';
+        const firstPerm = currentUser.permessi.find(p => SEZIONI[p] && p !== 'gestione' && p !== 'foto') || 'generale';
         window.showSection(firstPerm);
         vampireToast(`Benvenuto, ${currentUser.nome}.`, "success");
         
@@ -230,19 +227,11 @@ function applyPermissions() {
         }
     });
 
-    // Link esterni
-    document.querySelectorAll('.nav-links a.nav-link').forEach(a => {
-        const href = a.getAttribute('href') || "";
-        if (href.includes('conquiste-vampiri')) {
-            a.style.display = (isAdmin || perm.includes('conquiste-ext')) ? '' : 'none';
-        } else if (href.includes('postimages')) {
-            a.style.display = (isAdmin || perm.includes('foto')) ? '' : 'none';
-        } else if (href.includes('horde-bg-vampiri') || href.includes('bg-vampiri')) {
-            a.style.display = (isAdmin || perm.includes('bg')) ? '' : 'none';
-        } else if (href.includes('gm-horde') || href.includes('/gm')) {
-            a.style.display = (isAdmin || perm.includes('gm')) ? '' : 'none';
-        }
-    });
+    // Bottone Foto (flottante) — unico extra rimasto
+    const fotoBtn = document.getElementById('btn-foto-float');
+    if (fotoBtn) {
+        fotoBtn.style.display = (isAdmin || perm.includes('foto')) ? 'flex' : 'none';
+    }
 
     // Nascondi i select "Vampiro" personali se non admin (usa currentUser automaticamente)
     const personalSelectIds = ['vamp-nome', 'mat-vamp-nome', 'saldo-nome', 'inv-user-name', 'calc-search-name'];

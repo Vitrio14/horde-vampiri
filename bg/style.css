@@ -808,3 +808,11 @@ header {
     .form-group label { font-size: 0.85rem; }
     .top-action-bar { flex-direction: column; gap: 8px; }
 }
+
+
+/* RESPONSIVE PHONE EXTRA */
+@media (max-width: 480px) {
+    .card { margin: 0 4px !important; padding: 16px 12px !important; }
+    header { padding-top: 16px !important; }
+    input, select, button, textarea { font-size: 16px !important; width: 100%; max-width: 100%; box-sizing: border-box; }
+}

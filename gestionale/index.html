@@ -304,9 +304,11 @@
             <div class="nav-link" onclick="window.showSection('dungeon')">Nidi</div>
             <div class="nav-link" onclick="window.showSection('conquiste')">Conquiste</div>
             <div class="nav-link" onclick="window.showSection('gestione')">Gestione</div>
-            <a href="https://postimages.org" target="_blank" class="nav-link">Foto</a>
         </div>
         <div class="nav-logout">
+            <button type="button" id="nav-hamburger" class="nav-hamburger" aria-label="Menu" aria-expanded="false">
+                <span></span><span></span><span></span>
+            </button>
             <div class="nav-link" onclick="window.logoutVampiro()" style="color: var(--withdraw-red);">Esci</div>
         </div>
     </nav>
@@ -944,12 +946,9 @@
                                     </div>
                                 </div>
                                 <div class="permessi-group">
-                                    <span class="permessi-group-title">Link esterni</span>
+                                    <span class="permessi-group-title">Extra</span>
                                     <div class="permessi-group-items">
-                                        <label class="perm-label"><input type="checkbox" class="perm-check" value="foto"> Foto</label>
-                                        <label class="perm-label"><input type="checkbox" class="perm-check" value="conquiste-ext"> ⚔️ Conquiste Ext</label>
-                                        <label class="perm-label"><input type="checkbox" class="perm-check" value="bg"> BG</label>
-                                        <label class="perm-label"><input type="checkbox" class="perm-check" value="gm"> GM</label>
+                                        <label class="perm-label"><input type="checkbox" class="perm-check" value="foto"> Foto (postimages)</label>
                                     </div>
                                 </div>
                             </div>
@@ -1379,5 +1378,31 @@
         };
 
     </script>
+
+<!-- Foto flottante (solo con permesso) -->
+<a id="btn-foto-float" href="https://postimages.org" target="_blank" rel="noopener" title="Apri Foto / Postimages" style="display:none;">📸 Foto</a>
+
+<script>
+(function() {
+  const btn = document.getElementById('nav-hamburger');
+  const links = document.querySelector('.nav-links');
+  if (!btn || !links) return;
+  btn.addEventListener('click', function() {
+    const open = links.classList.toggle('nav-open');
+    btn.setAttribute('aria-expanded', open ? 'true' : 'false');
+    btn.classList.toggle('is-open', open);
+  });
+  links.querySelectorAll('.nav-link').forEach(function(el) {
+    el.addEventListener('click', function() {
+      if (window.matchMedia('(max-width: 768px)').matches) {
+        links.classList.remove('nav-open');
+        btn.classList.remove('is-open');
+        btn.setAttribute('aria-expanded', 'false');
+      }
+    });
+  });
+})();
+</script>
+
 </body>
 </html>

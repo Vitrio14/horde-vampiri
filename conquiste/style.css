@@ -1131,3 +1131,37 @@ textarea.form-input { resize: vertical; min-height: 100px; }
     .login-box { max-width: 95vw; margin: 12px; padding: 20px 14px; }
     input, select, button, textarea { font-size: 16px !important; }
 }
+
+
+/* RESPONSIVE PHONE NAV */
+@media (max-width: 600px) {
+    #topbar {
+        padding: 8px !important;
+    }
+    .nav-menu {
+        gap: 6px !important;
+        justify-content: flex-start !important;
+        overflow-x: auto;
+        -webkit-overflow-scrolling: touch;
+        flex-wrap: nowrap !important;
+        max-width: 100%;
+        padding-bottom: 4px;
+    }
+    .tab-btn {
+        flex-shrink: 0;
+        font-size: 0.7rem !important;
+        padding: 8px 10px !important;
+        white-space: nowrap;
+    }
+    .topbar-header-text h1 { font-size: 0.9rem !important; }
+    #main-content, .view-area {
+        padding: 8px !important;
+        max-width: 100%;
+        overflow-x: hidden;
+    }
+    .glass-panel {
+        max-width: 100%;
+        box-sizing: border-box;
+    }
+    input, select, button, textarea { font-size: 16px !important; }
+}

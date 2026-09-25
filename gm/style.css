@@ -803,3 +803,15 @@ footer {
     input, select, button, textarea { font-size: 16px !important; }
     .main-logo { max-width: 80px; }
 }
+
+
+/* RESPONSIVE PHONE EXTRA */
+@media (max-width: 600px) {
+    .sidebar button, .portale-btn-sidebar {
+        font-size: 0.7rem !important;
+        padding: 8px 10px !important;
+    }
+    main { padding: 8px !important; }
+    .panel { max-width: 100%; overflow-x: auto; }
+    input, select, button, textarea { font-size: 16px !important; }
+}
