@@ -1656,7 +1656,13 @@ window.refreshActiveSectionUI = () => {
             renderVampiriLists();
             break;
         case 'lavori':
-            if (typeof window.renderSezioneLavori === 'function') window.renderSezioneLavori();
+            if (typeof window.ricaricaLavoriFromDb === 'function') {
+                window.ricaricaLavoriFromDb().catch(() => {
+                    if (typeof window.renderSezioneLavori === 'function') window.renderSezioneLavori();
+                });
+            } else if (typeof window.renderSezioneLavori === 'function') {
+                window.renderSezioneLavori();
+            }
             break;
         case 'vendite':
             window.renderVendite?.();
@@ -1706,20 +1712,29 @@ function startFirestoreListeners() {
 
     onSnapshot(collection(db, "tipi_lavoro"), (snap) => {
         tipiLavoro = snap.docs.map(d => ({ id: d.id, ...d.data() }));
-        scheduleUI(() => {
+        console.log('[lavori] tipi_lavoro caricati:', tipiLavoro.length);
+        // refresh immediato (non solo idle) così gestore vede i dati
+        try {
             if (typeof window.popolaSelectTipiLavoro === 'function') window.popolaSelectTipiLavoro();
             if (typeof window.renderAdminTipiLavoro === 'function') window.renderAdminTipiLavoro();
             if (typeof window.renderAdminLavoriMembri === 'function') window.renderAdminLavoriMembri();
             if (isSectionActive('lavori') && typeof window.renderSezioneLavori === 'function') window.renderSezioneLavori();
-        });
+        } catch (e) { console.error('[lavori] render tipi', e); }
+    }, (err) => {
+        console.error('[lavori] onSnapshot tipi_lavoro', err);
+        vampireToast('Errore lettura tipi lavoro: ' + (err.code || err.message || err), 'error');
     });
 
     onSnapshot(collection(db, "lavori_membri"), (snap) => {
         lavoriMembri = snap.docs.map(d => ({ id: d.id, ...d.data() }));
-        scheduleUI(() => {
+        console.log('[lavori] lavori_membri caricati:', lavoriMembri.length);
+        try {
             if (typeof window.renderAdminLavoriMembri === 'function') window.renderAdminLavoriMembri();
             if (isSectionActive('lavori') && typeof window.renderSezioneLavori === 'function') window.renderSezioneLavori();
-        });
+        } catch (e) { console.error('[lavori] render membri', e); }
+    }, (err) => {
+        console.error('[lavori] onSnapshot lavori_membri', err);
+        vampireToast('Errore lettura assegnazioni lavori: ' + (err.code || err.message || err), 'error');
     });
 
     onSnapshot(collection(db, "tipi_materiale"), (snapshot) => {
@@ -2407,6 +2422,11 @@ window.salvaTipoLavoro = async function() {
             vampireToast('Tipo lavoro creato.', 'success');
         }
         window.resetFormTipoLavoro();
+        // onSnapshot aggiorna, ma forziamo subito UI
+        setTimeout(() => {
+            if (typeof window.renderAdminTipiLavoro === 'function') window.renderAdminTipiLavoro();
+            if (typeof window.popolaSelectTipiLavoro === 'function') window.popolaSelectTipiLavoro();
+        }, 150);
     } catch (err) {
         console.error(err);
         vampireToast('Errore: ' + (err.message || err), 'error');
@@ -2450,6 +2470,29 @@ window.eliminaTipoLavoro = async function(id) {
         if (editId && editId.value === id) window.resetFormTipoLavoro();
     } catch (err) {
         vampireToast('Errore: ' + (err.message || err), 'error');
+    }
+};
+
+
+/** Ricarica forzata da Firestore (utile se il gestore non vede i dati) */
+window.ricaricaLavoriFromDb = async function() {
+    try {
+        const [snapTipi, snapMembri] = await Promise.all([
+            getDocs(collection(db, 'tipi_lavoro')),
+            getDocs(collection(db, 'lavori_membri'))
+        ]);
+        tipiLavoro = snapTipi.docs.map(d => ({ id: d.id, ...d.data() }));
+        lavoriMembri = snapMembri.docs.map(d => ({ id: d.id, ...d.data() }));
+        console.log('[lavori] ricarica forzata', tipiLavoro.length, lavoriMembri.length);
+        if (typeof window.popolaSelectTipiLavoro === 'function') window.popolaSelectTipiLavoro();
+        if (typeof window.renderAdminTipiLavoro === 'function') window.renderAdminTipiLavoro();
+        if (typeof window.renderAdminLavoriMembri === 'function') window.renderAdminLavoriMembri();
+        if (typeof window.renderSezioneLavori === 'function') window.renderSezioneLavori();
+        return { tipi: tipiLavoro.length, membri: lavoriMembri.length };
+    } catch (err) {
+        console.error('[lavori] ricarica', err);
+        vampireToast('Errore ricarica lavori: ' + (err.code || err.message || err), 'error');
+        throw err;
     }
 };
 
@@ -2520,9 +2563,13 @@ window.salvaLavoroMembro = async function() {
         document.getElementById('adm-lavoro-edit-id').value = '';
         document.getElementById('adm-lavoro-tipo').value = '';
         document.getElementById('adm-lavoro-livello').value = '1';
+        setTimeout(() => {
+            if (typeof window.renderAdminLavoriMembri === 'function') window.renderAdminLavoriMembri();
+            if (typeof window.renderSezioneLavori === 'function') window.renderSezioneLavori();
+        }, 150);
     } catch (err) {
         console.error(err);
-        vampireToast('Errore: ' + (err.message || err), 'error');
+        vampireToast('Errore salvataggio lavoro: ' + (err.code || err.message || err), 'error');
     }
 };
 
