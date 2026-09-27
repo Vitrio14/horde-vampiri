@@ -1367,26 +1367,84 @@ window.openInvQuickAction = async (itemID) => {
     let utente = (currentUser && !currentUser.isAdmin) ? currentUser.nome : document.getElementById('inv-user-name').value;
     if(!utente) return vampireToast("Identificati prima di operare!", "error");
     const item = inventarioDati.find(i => i.id === itemID);
+    if (!item) return vampireToast("Oggetto non trovato.", "error");
+
     const { value: formValues } = await Swal.fire({
         title: itemID,
-        html: `<div style="color:#aaa; font-size:0.8rem; margin-bottom:15px; text-transform:uppercase;">Disponibilità: ${item.qty}</div>` +
-              `<select id="swal-action" class="swal2-input"><option value="prendi">Preleva</option><option value="deposita">Deposita</option></select>` +
-              `<input id="swal-qty" type="number" class="swal2-input" placeholder="Quantità">` +
-              `<input id="swal-motivo" type="text" class="swal2-input" placeholder="Causale">`,
-        background: '#121212', color: '#e0e0e0', showCancelButton: true, confirmButtonColor: '#8b0000',
-        preConfirm: () => ({ action: document.getElementById('swal-action').value, qty: parseInt(document.getElementById('swal-qty').value), motivo: document.getElementById('swal-motivo').value })
+        html: `
+            <div style="color:#aaa; font-size:0.8rem; margin-bottom:18px; text-transform:uppercase;">Disponibilità: <strong style="color:#c5a059">${item.qty}</strong></div>
+            <input type="hidden" id="swal-action" value="prendi">
+            <div style="display:flex; gap:10px; justify-content:center; margin-bottom:16px;">
+                <button type="button" id="swal-btn-preleva"
+                    style="flex:1; padding:12px 10px; cursor:pointer; font-family:inherit; font-size:0.8rem; font-weight:700; letter-spacing:1px; text-transform:uppercase; background:rgba(231,76,60,0.28); color:#e74c3c; border:2px solid #e74c3c; border-radius:8px; box-shadow:0 0 12px rgba(231,76,60,0.35);">
+                    − Preleva
+                </button>
+                <button type="button" id="swal-btn-deposita"
+                    style="flex:1; padding:12px 10px; cursor:pointer; font-family:inherit; font-size:0.8rem; font-weight:700; letter-spacing:1px; text-transform:uppercase; background:rgba(46,204,113,0.1); color:#2ecc71; border:2px solid rgba(46,204,113,0.45); border-radius:8px;">
+                    + Deposita
+                </button>
+            </div>
+            <input id="swal-qty" type="number" class="swal2-input" placeholder="Quantità" min="1" style="margin-bottom:8px;">
+            <input id="swal-motivo" type="text" class="swal2-input" placeholder="Causale">
+        `,
+        background: '#121212',
+        color: '#e0e0e0',
+        showCancelButton: true,
+        confirmButtonColor: '#8b0000',
+        confirmButtonText: 'Conferma',
+        cancelButtonText: 'Annulla',
+        didOpen: () => {
+            const actionEl = document.getElementById('swal-action');
+            const btnPre = document.getElementById('swal-btn-preleva');
+            const btnDep = document.getElementById('swal-btn-deposita');
+            const selectAction = (action) => {
+                actionEl.value = action;
+                if (action === 'prendi') {
+                    btnPre.style.background = 'rgba(231,76,60,0.28)';
+                    btnPre.style.borderColor = '#e74c3c';
+                    btnPre.style.boxShadow = '0 0 12px rgba(231,76,60,0.35)';
+                    btnDep.style.background = 'rgba(46,204,113,0.1)';
+                    btnDep.style.borderColor = 'rgba(46,204,113,0.45)';
+                    btnDep.style.boxShadow = 'none';
+                } else {
+                    btnDep.style.background = 'rgba(46,204,113,0.28)';
+                    btnDep.style.borderColor = '#2ecc71';
+                    btnDep.style.boxShadow = '0 0 12px rgba(46,204,113,0.35)';
+                    btnPre.style.background = 'rgba(231,76,60,0.1)';
+                    btnPre.style.borderColor = 'rgba(231,76,60,0.45)';
+                    btnPre.style.boxShadow = 'none';
+                }
+            };
+            btnPre.addEventListener('click', (e) => { e.preventDefault(); selectAction('prendi'); });
+            btnDep.addEventListener('click', (e) => { e.preventDefault(); selectAction('deposita'); });
+            selectAction('prendi');
+            setTimeout(() => document.getElementById('swal-qty')?.focus(), 50);
+        },
+        preConfirm: () => {
+            const action = document.getElementById('swal-action')?.value || 'prendi';
+            const qty = parseInt(document.getElementById('swal-qty')?.value, 10);
+            const motivo = (document.getElementById('swal-motivo')?.value || '').trim();
+            if (!qty || qty <= 0) {
+                Swal.showValidationMessage('Inserisci una quantità valida.');
+                return false;
+            }
+            if (!motivo) {
+                Swal.showValidationMessage('Inserisci la causale.');
+                return false;
+            }
+            return { action, qty, motivo };
+        }
     });
 
     if (formValues) {
         const { action, qty, motivo } = formValues;
-        if(!qty || !motivo) return vampireToast("Dati mancanti per l'inventario.", "error");
         const newQty = action === "prendi" ? item.qty - qty : item.qty + qty;
-        if(newQty < 0) return vampireToast("Scorte insufficienti nel deposito.", "error");
+        if (newQty < 0) return vampireToast("Scorte insufficienti nel deposito.", "error");
         const now = new Date();
         await updateDoc(doc(db, "inventario", itemID), { qty: newQty });
-        await addDoc(collection(db, "logs"), { 
-            utente, tipo: action, item: itemID, qty, motivo, timestamp: Date.now(), 
-            dataStr: now.toLocaleDateString('it-IT'), ora: now.toLocaleTimeString('it-IT') 
+        await addDoc(collection(db, "logs"), {
+            utente, tipo: action, item: itemID, qty, motivo, timestamp: Date.now(),
+            dataStr: now.toLocaleDateString('it-IT'), ora: now.toLocaleTimeString('it-IT')
         });
         vampireToast(`Oggetto ${action === 'prendi' ? 'prelevato' : 'depositato'} con successo.`, "success");
     }
@@ -1413,11 +1471,73 @@ window.adminUpdateSaldo = async () => {
     vampireToast("Saldo globale aggiornato manualmente.", "success");
 };
 
+window.resetFormInventarioAdmin = () => {
+    const editEl = document.getElementById('admin-item-edit-id');
+    if (editEl) editEl.value = "";
+    const nameEl = document.getElementById('admin-item-name');
+    if (nameEl) {
+        nameEl.value = "";
+        nameEl.readOnly = false;
+    }
+    if (document.getElementById('admin-item-qty')) document.getElementById('admin-item-qty').value = "0";
+    if (document.getElementById('admin-item-cat')) document.getElementById('admin-item-cat').value = "Inventario 1";
+    const sel = document.getElementById('admin-item-foto');
+    if (sel) sel.value = "";
+    const btn = document.getElementById('admin-item-save-btn');
+    if (btn) btn.textContent = "Aggiungi";
+};
+
+window.caricaItemPerEdit = (itemId) => {
+    const item = inventarioDati.find(i => i.id === itemId);
+    if (!item) return vampireToast("Oggetto non trovato.", "error");
+
+    let editEl = document.getElementById('admin-item-edit-id');
+    if (!editEl) {
+        editEl = document.createElement('input');
+        editEl.type = 'hidden';
+        editEl.id = 'admin-item-edit-id';
+        const formArea = document.getElementById('admin-item-name')?.closest('.vamp-card');
+        if (formArea) formArea.appendChild(editEl);
+        else document.body.appendChild(editEl);
+    }
+    editEl.value = item.id;
+
+    const nameEl = document.getElementById('admin-item-name');
+    if (nameEl) {
+        nameEl.value = item.id;
+        nameEl.readOnly = false;
+    }
+    if (document.getElementById('admin-item-qty')) document.getElementById('admin-item-qty').value = item.qty ?? 0;
+    if (document.getElementById('admin-item-cat')) {
+        document.getElementById('admin-item-cat').value = item.categoria || "Inventario 1";
+    }
+
+    const fotoSel = document.getElementById('admin-item-foto');
+    if (fotoSel) {
+        let matched = "";
+        if (item.imageFileName) {
+            const byName = itemImagesLib.find(x => x.fileName === item.imageFileName);
+            if (byName) matched = byName.id;
+        }
+        if (!matched && item.foto) {
+            const byUrl = itemImagesLib.find(x => x.dataUrl === item.foto);
+            if (byUrl) matched = byUrl.id;
+        }
+        fotoSel.value = matched;
+    }
+
+    const btn = document.getElementById('admin-item-save-btn');
+    if (btn) btn.textContent = "Salva modifiche";
+    vampireToast("Dati caricati. Modifica e premi Salva modifiche.", "info");
+    nameEl?.scrollIntoView({ behavior: 'smooth', block: 'center' });
+};
+
 window.adminUpdateItem = async () => {
     const n = document.getElementById('admin-item-name').value.trim();
     const c = document.getElementById('admin-item-cat').value;
     const imgId = document.getElementById('admin-item-foto')?.value || "";
     const q = parseInt(document.getElementById('admin-item-qty').value) || 0;
+    const editId = (document.getElementById('admin-item-edit-id')?.value || "").trim();
 
     if (!n) return vampireToast("Nome obbligatorio.", "error");
 
@@ -1429,14 +1549,28 @@ window.adminUpdateItem = async () => {
             foto = found.dataUrl || foto;
             imageFileName = found.fileName || "";
         }
+    } else if (editId) {
+        const existing = inventarioDati.find(i => i.id === editId);
+        if (existing) {
+            if (existing.foto) foto = existing.foto;
+            if (existing.imageFileName) imageFileName = existing.imageFileName;
+        }
     }
 
-    await setDoc(doc(db, "inventario", n), { qty: q, categoria: c, foto, imageFileName });
-    document.getElementById('admin-item-name').value = "";
-    document.getElementById('admin-item-qty').value = "0";
-    const sel = document.getElementById('admin-item-foto');
-    if (sel) sel.value = "";
-    vampireToast("Elemento inventario aggiornato.", "success");
+    try {
+        if (editId && editId !== n) {
+            await setDoc(doc(db, "inventario", n), { qty: q, categoria: c, foto, imageFileName });
+            await deleteDoc(doc(db, "inventario", editId));
+            vampireToast(`Oggetto rinominato in "${n}" e aggiornato.`, "success");
+        } else {
+            await setDoc(doc(db, "inventario", n), { qty: q, categoria: c, foto, imageFileName }, { merge: true });
+            vampireToast(editId ? "Elemento inventario aggiornato." : "Elemento inventario aggiunto.", "success");
+        }
+        window.resetFormInventarioAdmin();
+    } catch (err) {
+        console.error(err);
+        vampireToast("Errore salvataggio: " + (err.message || err), "error");
+    }
 };
 
 window.adminUpdateQty = async (item, val) => {
@@ -1448,6 +1582,9 @@ window.adminDeleteItem = async (item) => {
     const res = await Swal.fire({ title: 'Eliminare?', icon: 'warning', showCancelButton: true, confirmButtonColor: '#8b0000', background: '#111' });
     if(res.isConfirmed) { 
         await deleteDoc(doc(db, "inventario", item)); 
+        if ((document.getElementById('admin-item-edit-id')?.value || '') === item) {
+            window.resetFormInventarioAdmin();
+        }
         vampireToast("Oggetto eliminato dal database.", "success"); 
     }
 };
@@ -1479,9 +1616,21 @@ window.adminDeleteSaldoLog = async (id) => {
 window.renderAdminTable = () => {
     const tbody = document.getElementById('admin-table-body');
     if(!tbody) return;
-    const searchTerm = document.getElementById('search-admin-inv').value.toLowerCase();
+    const searchTerm = (document.getElementById('search-admin-inv')?.value || '').toLowerCase();
+    const safeId = (id) => String(id).replace(/\\/g, '\\\\').replace(/'/g, "\\'");
     tbody.innerHTML = inventarioDati.filter(i => i.id && i.id.toLowerCase().includes(searchTerm)).sort((a,b) => a.id.localeCompare(b.id))
-        .map(i => `<tr><td>${i.id}</td><td>${i.categoria}</td><td><input type="number" value="${i.qty}" onchange="window.adminUpdateQty('${i.id}', this.value)"></td><td><button class="btn-delete" onclick="window.adminDeleteItem('${i.id}')">ELIMINA</button></td></tr>`).join('');
+        .map(i => {
+            const sid = safeId(i.id);
+            return `<tr>
+                <td>${i.id}</td>
+                <td>${i.categoria || ''}</td>
+                <td><input type="number" value="${i.qty}" onchange="window.adminUpdateQty('${sid}', this.value)" style="width:80px; text-align:center;"></td>
+                <td style="white-space:nowrap;">
+                    <button class="btn-delete" style="border-color:var(--gold-accent);color:var(--gold-accent);margin-right:6px;" onclick="window.caricaItemPerEdit('${sid}')">MODIFICA</button>
+                    <button class="btn-delete" onclick="window.adminDeleteItem('${sid}')">ELIMINA</button>
+                </td>
+            </tr>`;
+        }).join('') || '<tr><td colspan="4" style="opacity:0.5;text-align:center;">Nessun oggetto in inventario.</td></tr>';
 };
 
 window.renderAdminLogs = () => {
