@@ -32,6 +32,8 @@ let documenti = [];
 let itemImagesLib = []; // { id, fileName, dataUrl, size, createdAt }
 let tipiMateriale = []; // { id, nome, prezzoUnitario, percPropria, percDinastia, percEkaton, sezioni:[], attivo }
 let alberoNodi = []; // { id, nome, cognome, clan, anno, parentId, foto, note, ordine, createdAt }
+let tipiLavoro = []; // { id, nome, sblocchi: [{ livello, item }], createdAt }
+let lavoriMembri = []; // { id, vampiro, lavoroId, lavoroNome, livello } — più record per stesso vampiro
 
 let squadraDungeonTemp = [];
 let squadraConquistaTemp = [];
@@ -46,6 +48,7 @@ const VALORE_UNITARIO = 30; // fallback legacy
 const SEZIONI = {
     albero: { id: 'albero', label: 'Albero' },
     generale: { id: 'generale', label: 'Generale' },
+    lavori: { id: 'lavori', label: 'Lavori' },
     vendite: { id: 'vendite', label: 'Vendite' },
     materiali: { id: 'materiali', label: 'Vendita Materiali' },
     saldo: { id: 'saldo', label: 'Saldo' },
@@ -304,8 +307,12 @@ function refreshAdminUI() {
     window.renderAdminMateriali(); 
     if (typeof window.renderAdminTipiMateriale === 'function') window.renderAdminTipiMateriale();
     if (typeof window.renderAdminAlbero === 'function') window.renderAdminAlbero();
+    if (typeof window.renderAdminLavoriMembri === 'function') window.renderAdminLavoriMembri();
+    if (typeof window.renderAdminTipiLavoro === 'function') window.renderAdminTipiLavoro();
+    if (typeof window.popolaSelectTipiLavoro === 'function') window.popolaSelectTipiLavoro();
     renderVampiriLists(); 
     renderDinamici(); 
+    if (typeof window.renderSezioneLavori === 'function' && isSectionActive('lavori')) window.renderSezioneLavori();
     aggiornaStats(); 
     aggiornaStatsDungeon();
     aggiornaStatsConquiste();
@@ -455,7 +462,7 @@ window.aggiungiVampiro = async () => {
     if(document.getElementById('admin-vamp-password')) document.getElementById('admin-vamp-password').value = "";
     // Reset checkboxes a default
     document.querySelectorAll('.perm-check').forEach(cb => {
-        cb.checked = ['albero','generale','vendite','materiali','saldo','inventario','dungeon','conquiste'].includes(cb.value);
+        cb.checked = ['albero','generale','lavori','vendite','materiali','saldo','inventario','dungeon','conquiste'].includes(cb.value);
     });
     
     vampireToast("Membro salvato correttamente.", "success");
@@ -1648,6 +1655,9 @@ window.refreshActiveSectionUI = () => {
             renderClassifiche();
             renderVampiriLists();
             break;
+        case 'lavori':
+            if (typeof window.renderSezioneLavori === 'function') window.renderSezioneLavori();
+            break;
         case 'vendite':
             window.renderVendite?.();
             aggiornaStats?.();
@@ -1688,7 +1698,28 @@ function startFirestoreListeners() {
     // --- FASE 1: essenziale subito (login / select / generale leggero) ---
     onSnapshot(collection(db, "membri"), (snap) => {
         listaVampiri = snap.docs.map(doc => doc.data());
-        scheduleUI(() => renderVampiriLists());
+        scheduleUI(() => {
+            renderVampiriLists();
+            if (isSectionActive('lavori') && typeof window.renderSezioneLavori === 'function') window.renderSezioneLavori();
+        });
+    });
+
+    onSnapshot(collection(db, "tipi_lavoro"), (snap) => {
+        tipiLavoro = snap.docs.map(d => ({ id: d.id, ...d.data() }));
+        scheduleUI(() => {
+            if (typeof window.popolaSelectTipiLavoro === 'function') window.popolaSelectTipiLavoro();
+            if (typeof window.renderAdminTipiLavoro === 'function') window.renderAdminTipiLavoro();
+            if (typeof window.renderAdminLavoriMembri === 'function') window.renderAdminLavoriMembri();
+            if (isSectionActive('lavori') && typeof window.renderSezioneLavori === 'function') window.renderSezioneLavori();
+        });
+    });
+
+    onSnapshot(collection(db, "lavori_membri"), (snap) => {
+        lavoriMembri = snap.docs.map(d => ({ id: d.id, ...d.data() }));
+        scheduleUI(() => {
+            if (typeof window.renderAdminLavoriMembri === 'function') window.renderAdminLavoriMembri();
+            if (isSectionActive('lavori') && typeof window.renderSezioneLavori === 'function') window.renderSezioneLavori();
+        });
     });
 
     onSnapshot(collection(db, "tipi_materiale"), (snapshot) => {
@@ -2183,6 +2214,642 @@ window.updateMatPreview = () => {
 // Legacy stubs (vecchi controlli rimossi dall'UI)
 window.toggleTipoVendita = () => {};
 window.updateMatTot = () => window.updateMatPreview();
+
+
+
+
+// =========================================================
+// --- GESTIONE LAVORI (tipi, sblocchi+ingredienti, multi-job) ---
+// =========================================================
+
+/** Buffer sblocchi in form admin: { livello, item, ingredienti } */
+let sblocchiTemp = [];
+let sbloccoEditIdx = -1;
+
+const escHtml = (str) => String(str ?? '')
+    .replace(/&/g, '&amp;')
+    .replace(/</g, '&lt;')
+    .replace(/>/g, '&gt;')
+    .replace(/"/g, '&quot;');
+
+window.popolaSelectTipiLavoro = function() {
+    const sel = document.getElementById('adm-lavoro-tipo');
+    if (sel) {
+        const prev = sel.value;
+        const sorted = [...tipiLavoro].sort((a, b) => (a.nome || '').localeCompare(b.nome || '', 'it'));
+        sel.innerHTML = '<option value="">— Seleziona lavoro —</option>' +
+            sorted.map(t => `<option value="${t.id}">${escHtml(t.nome || t.id)}</option>`).join('');
+        if (prev && [...sel.options].some(o => o.value === prev)) sel.value = prev;
+    }
+    const filtro = document.getElementById('lavori-filtro-tipo');
+    if (filtro) {
+        const prev = filtro.value;
+        const sorted = [...tipiLavoro].sort((a, b) => (a.nome || '').localeCompare(b.nome || '', 'it'));
+        filtro.innerHTML = '<option value="">— Tutti i lavori —</option>' +
+            sorted.map(t => `<option value="${t.id}">${escHtml(t.nome || t.id)}</option>`).join('');
+        if (prev && [...filtro.options].some(o => o.value === prev)) filtro.value = prev;
+    }
+};
+
+function syncSbloccoFormBtn() {
+    const btn = document.getElementById('adm-sblocco-btn');
+    if (!btn) return;
+    if (sbloccoEditIdx >= 0) {
+        btn.textContent = '💾 Aggiorna livello';
+    } else {
+        btn.textContent = '+ Aggiungi livello';
+    }
+}
+
+function renderSblocchiTempLista() {
+    const box = document.getElementById('adm-sblocchi-lista');
+    if (!box) return;
+    if (!sblocchiTemp.length) {
+        box.innerHTML = '<p style="opacity:0.5;font-size:0.7rem;margin:0;padding:6px 0;">Nessuno sblocco. Aggiungi livelli dal form.</p>';
+        return;
+    }
+    const sorted = [...sblocchiTemp].sort((a, b) => a.livello - b.livello);
+    box.innerHTML = sorted.map((s) => {
+        const realIdx = sblocchiTemp.indexOf(s);
+        const editing = realIdx === sbloccoEditIdx;
+        return `<div class="adm-sblocco-row${editing ? ' is-editing' : ''}">
+            <div class="adm-sblocco-main">
+                <span class="adm-sblocco-lv">Lv ${s.livello}</span>
+                <span class="adm-sblocco-item">${escHtml(s.item) || '—'}</span>
+                ${s.ingredienti ? `<span class="adm-sblocco-ing">🧪 ${escHtml(s.ingredienti)}</span>` : ''}
+            </div>
+            <div class="adm-sblocco-actions">
+                <button type="button" class="btn-delete" style="border-color:var(--gold-accent);color:var(--gold-accent);" onclick="window.caricaSbloccoTempPerEdit(${realIdx})">Modifica</button>
+                <button type="button" class="btn-delete" onclick="window.rimuoviSbloccoTemp(${realIdx})">X</button>
+            </div>
+        </div>`;
+    }).join('');
+}
+
+window.caricaSbloccoTempPerEdit = function(idx) {
+    if (idx < 0 || idx >= sblocchiTemp.length) return;
+    const s = sblocchiTemp[idx];
+    sbloccoEditIdx = idx;
+    const livEl = document.getElementById('adm-sblocco-livello');
+    const itemEl = document.getElementById('adm-sblocco-item');
+    const ingEl = document.getElementById('adm-sblocco-ingredienti');
+    if (livEl) livEl.value = String(s.livello ?? 1);
+    if (itemEl) { itemEl.value = s.item || ''; itemEl.focus(); }
+    if (ingEl) ingEl.value = s.ingredienti || '';
+    syncSbloccoFormBtn();
+    renderSblocchiTempLista();
+    vampireToast(`Modifica Lv ${s.livello}: aggiorna e conferma.`, 'info');
+};
+
+window.annullaEditSbloccoTemp = function() {
+    sbloccoEditIdx = -1;
+    const itemEl = document.getElementById('adm-sblocco-item');
+    const ingEl = document.getElementById('adm-sblocco-ingredienti');
+    if (itemEl) itemEl.value = '';
+    if (ingEl) ingEl.value = '';
+    syncSbloccoFormBtn();
+    renderSblocchiTempLista();
+};
+
+window.aggiungiSbloccoTemp = function() {
+    const livEl = document.getElementById('adm-sblocco-livello');
+    const itemEl = document.getElementById('adm-sblocco-item');
+    const ingEl = document.getElementById('adm-sblocco-ingredienti');
+    const livello = parseInt(livEl?.value, 10);
+    const item = (itemEl?.value || '').trim();
+    const ingredienti = (ingEl?.value || '').trim();
+    if (!livello || livello < 1) return vampireToast('Livello non valido (min 1).', 'error');
+    if (!item) return vampireToast('Inserisci cosa si sblocca.', 'error');
+
+    const payload = { livello, item, ingredienti };
+
+    if (sbloccoEditIdx >= 0 && sbloccoEditIdx < sblocchiTemp.length) {
+        // Aggiorna solo la riga in modifica (stesso o altro livello ok: più item per livello ammessi)
+        sblocchiTemp[sbloccoEditIdx] = payload;
+        vampireToast(`Voce aggiornata (Lv ${livello}).`, 'success');
+        sbloccoEditIdx = -1;
+    } else {
+        // Sempre nuova voce: puoi avere più item allo stesso livello
+        sblocchiTemp.push(payload);
+        const nStesso = sblocchiTemp.filter(s => s.livello === livello).length;
+        vampireToast(
+            nStesso > 1
+                ? `Aggiunto (Lv ${livello}, ${nStesso} item a questo livello).`
+                : `Sblocco Lv ${livello} aggiunto.`,
+            'success'
+        );
+    }
+    if (itemEl) itemEl.value = '';
+    if (ingEl) ingEl.value = '';
+    // Resta sullo stesso livello per aggiungere un altro item facilmente
+    if (livEl) livEl.value = String(livello);
+    syncSbloccoFormBtn();
+    renderSblocchiTempLista();
+};
+
+window.rimuoviSbloccoTemp = function(idx) {
+    if (idx < 0 || idx >= sblocchiTemp.length) return;
+    if (sbloccoEditIdx === idx) sbloccoEditIdx = -1;
+    else if (sbloccoEditIdx > idx) sbloccoEditIdx -= 1;
+    sblocchiTemp.splice(idx, 1);
+    syncSbloccoFormBtn();
+    renderSblocchiTempLista();
+};
+
+window.resetFormTipoLavoro = function() {
+    const nome = document.getElementById('adm-tipo-lavoro-nome');
+    const editId = document.getElementById('adm-tipo-lavoro-edit-id');
+    if (nome) nome.value = '';
+    if (editId) editId.value = '';
+    sblocchiTemp = [];
+    sbloccoEditIdx = -1;
+    const livEl = document.getElementById('adm-sblocco-livello');
+    const itemEl = document.getElementById('adm-sblocco-item');
+    const ingEl = document.getElementById('adm-sblocco-ingredienti');
+    if (livEl) livEl.value = '1';
+    if (itemEl) itemEl.value = '';
+    if (ingEl) ingEl.value = '';
+    syncSbloccoFormBtn();
+    renderSblocchiTempLista();
+};
+
+window.salvaTipoLavoro = async function() {
+    if (!currentUser || !currentUser.isAdmin) return vampireToast('Solo il gestore può modificare i lavori.', 'error');
+    const nome = (document.getElementById('adm-tipo-lavoro-nome')?.value || '').trim();
+    const editId = (document.getElementById('adm-tipo-lavoro-edit-id')?.value || '').trim();
+    if (!nome) return vampireToast('Inserisci il nome del lavoro.', 'error');
+
+    const data = {
+        nome,
+        sblocchi: [...sblocchiTemp]
+            .map(s => ({
+                livello: Number(s.livello) || 1,
+                item: String(s.item || ''),
+                ingredienti: String(s.ingredienti || '')
+            }))
+            .sort((a, b) => a.livello - b.livello),
+        updatedAt: Date.now()
+    };
+
+    try {
+        if (editId) {
+            await setDoc(doc(db, 'tipi_lavoro', editId), data, { merge: true });
+            const daAggiornare = lavoriMembri.filter(m => m.lavoroId === editId);
+            for (const m of daAggiornare) {
+                if (m.lavoroNome !== nome) {
+                    await updateDoc(doc(db, 'lavori_membri', m.id), { lavoroNome: nome });
+                }
+            }
+            vampireToast('Tipo lavoro aggiornato.', 'success');
+        } else {
+            data.createdAt = Date.now();
+            await addDoc(collection(db, 'tipi_lavoro'), data);
+            vampireToast('Tipo lavoro creato.', 'success');
+        }
+        window.resetFormTipoLavoro();
+    } catch (err) {
+        console.error(err);
+        vampireToast('Errore: ' + (err.message || err), 'error');
+    }
+};
+
+window.caricaTipoLavoroPerEdit = function(id) {
+    const t = tipiLavoro.find(x => x.id === id);
+    if (!t) return;
+    document.getElementById('adm-tipo-lavoro-edit-id').value = t.id;
+    document.getElementById('adm-tipo-lavoro-nome').value = t.nome || '';
+    sblocchiTemp = Array.isArray(t.sblocchi)
+        ? t.sblocchi.map(s => ({
+            livello: Number(s.livello) || 1,
+            item: String(s.item || ''),
+            ingredienti: String(s.ingredienti || '')
+        }))
+        : [];
+    sbloccoEditIdx = -1;
+    syncSbloccoFormBtn();
+    renderSblocchiTempLista();
+    document.getElementById('adm-tipo-lavoro-nome')?.scrollIntoView({ behavior: 'smooth', block: 'center' });
+    vampireToast('Tipo caricato. Modifica livelli e premi Salva Tipo.', 'info');
+};
+
+window.eliminaTipoLavoro = async function(id) {
+    const res = await Swal.fire({
+        title: 'Eliminare questo tipo di lavoro?',
+        text: 'Le assegnazioni ai membri restano ma il tipo sparisce dalla lista.',
+        icon: 'warning',
+        showCancelButton: true,
+        confirmButtonColor: '#8b0000',
+        background: '#111',
+        color: '#fff'
+    });
+    if (!res.isConfirmed) return;
+    try {
+        await deleteDoc(doc(db, 'tipi_lavoro', id));
+        vampireToast('Tipo lavoro eliminato.', 'success');
+        const editId = document.getElementById('adm-tipo-lavoro-edit-id');
+        if (editId && editId.value === id) window.resetFormTipoLavoro();
+    } catch (err) {
+        vampireToast('Errore: ' + (err.message || err), 'error');
+    }
+};
+
+window.renderAdminTipiLavoro = function() {
+    const tbody = document.getElementById('admin-tipi-lavoro-body');
+    if (!tbody) return;
+    const sorted = [...tipiLavoro].sort((a, b) => (a.nome || '').localeCompare(b.nome || '', 'it'));
+    tbody.innerHTML = sorted.map(t => {
+        const sbl = Array.isArray(t.sblocchi) ? [...t.sblocchi].sort((a, b) => a.livello - b.livello) : [];
+        const sblHtml = sbl.length
+            ? sbl.map(s => {
+                const ing = s.ingredienti ? ` <span style="opacity:0.65;font-size:0.6rem;">(${escHtml(s.ingredienti)})</span>` : '';
+                return `<span style="display:inline-block;margin:2px 4px 2px 0;padding:2px 7px;background:rgba(197,160,89,0.1);border:1px solid rgba(197,160,89,0.25);border-radius:4px;font-size:0.62rem;"><b>Lv${s.livello}</b> ${escHtml(s.item) || '—'}${ing}</span>`;
+            }).join('')
+            : '<span style="opacity:0.4;">Nessuno</span>';
+        return `<tr>
+            <td><strong>${escHtml(t.nome) || '—'}</strong></td>
+            <td style="text-align:left;">${sblHtml}</td>
+            <td>
+                <button class="btn-delete" style="border-color:var(--gold-accent);color:var(--gold-accent);margin-right:4px;" onclick="window.caricaTipoLavoroPerEdit('${t.id}')">Modifica</button>
+                <button class="btn-delete" onclick="window.eliminaTipoLavoro('${t.id}')">Elimina</button>
+            </td>
+        </tr>`;
+    }).join('') || '<tr><td colspan="3" style="opacity:0.5;text-align:center;">Nessun tipo di lavoro.</td></tr>';
+};
+
+// --- Assegnazioni membri (multi-job) ---
+
+window.salvaLavoroMembro = async function() {
+    if (!currentUser || !currentUser.isAdmin) return vampireToast('Solo il gestore può assegnare lavori.', 'error');
+    const vamp = (document.getElementById('adm-lavoro-vamp')?.value || '').trim();
+    const lavoroId = (document.getElementById('adm-lavoro-tipo')?.value || '').trim();
+    const livello = parseInt(document.getElementById('adm-lavoro-livello')?.value, 10);
+    const editId = (document.getElementById('adm-lavoro-edit-id')?.value || '').trim();
+
+    if (!vamp) return vampireToast('Seleziona un vampiro.', 'error');
+    if (!lavoroId) return vampireToast('Seleziona un lavoro.', 'error');
+    if (!livello || livello < 1) return vampireToast('Livello non valido (min 1).', 'error');
+
+    const tipo = tipiLavoro.find(t => t.id === lavoroId);
+    if (!tipo) return vampireToast('Tipo lavoro non trovato.', 'error');
+
+    const data = {
+        vampiro: vamp,
+        lavoroId,
+        lavoroNome: tipo.nome || '',
+        livello,
+        updatedAt: Date.now()
+    };
+
+    try {
+        if (editId) {
+            await setDoc(doc(db, 'lavori_membri', editId), data, { merge: true });
+            vampireToast('Assegnazione aggiornata.', 'success');
+        } else {
+            const sameJob = lavoriMembri.find(m =>
+                (m.vampiro || '').toLowerCase() === vamp.toLowerCase() && m.lavoroId === lavoroId
+            );
+            if (sameJob) {
+                await setDoc(doc(db, 'lavori_membri', sameJob.id), data, { merge: true });
+                vampireToast('Livello del lavoro aggiornato.', 'success');
+            } else {
+                data.createdAt = Date.now();
+                await addDoc(collection(db, 'lavori_membri'), data);
+                vampireToast('Lavoro assegnato.', 'success');
+            }
+        }
+        document.getElementById('adm-lavoro-edit-id').value = '';
+        document.getElementById('adm-lavoro-tipo').value = '';
+        document.getElementById('adm-lavoro-livello').value = '1';
+    } catch (err) {
+        console.error(err);
+        vampireToast('Errore: ' + (err.message || err), 'error');
+    }
+};
+
+window.caricaLavoroMembroPerEdit = function(id) {
+    const m = lavoriMembri.find(x => x.id === id);
+    if (!m) return;
+    document.getElementById('adm-lavoro-edit-id').value = m.id;
+    document.getElementById('adm-lavoro-vamp').value = m.vampiro || '';
+    window.popolaSelectTipiLavoro();
+    document.getElementById('adm-lavoro-tipo').value = m.lavoroId || '';
+    document.getElementById('adm-lavoro-livello').value = m.livello ?? 1;
+    vampireToast('Dati caricati. Modifica e premi Salva.', 'info');
+};
+
+window.eliminaLavoroMembro = async function(id) {
+    const res = await Swal.fire({
+        title: 'Rimuovere questo lavoro dal membro?',
+        text: 'Gli altri lavori del membro restano.',
+        icon: 'warning',
+        showCancelButton: true,
+        confirmButtonColor: '#8b0000',
+        background: '#111',
+        color: '#fff'
+    });
+    if (!res.isConfirmed) return;
+    try {
+        await deleteDoc(doc(db, 'lavori_membri', id));
+        vampireToast('Assegnazione rimossa.', 'success');
+    } catch (err) {
+        vampireToast('Errore: ' + (err.message || err), 'error');
+    }
+};
+
+window.cambiaLivelloLavoro = async function(id, delta) {
+    if (!currentUser || !currentUser.isAdmin) return;
+    const m = lavoriMembri.find(x => x.id === id);
+    if (!m) return;
+    const nuovo = Math.max(1, (Number(m.livello) || 1) + delta);
+    if (nuovo === m.livello) return;
+    try {
+        await updateDoc(doc(db, 'lavori_membri', id), { livello: nuovo, updatedAt: Date.now() });
+        vampireToast(`${m.vampiro} · ${m.lavoroNome}: livello ${nuovo}`, 'success');
+    } catch (err) {
+        vampireToast('Errore: ' + (err.message || err), 'error');
+    }
+};
+
+window.renderAdminLavoriMembri = function() {
+    const tbody = document.getElementById('admin-lavori-membri-body');
+    if (!tbody) return;
+    const search = (document.getElementById('search-admin-lavori')?.value || '').toLowerCase().trim();
+    let list = [...lavoriMembri];
+    if (search) {
+        list = list.filter(m =>
+            (m.vampiro || '').toLowerCase().includes(search) ||
+            (m.lavoroNome || '').toLowerCase().includes(search)
+        );
+    }
+    list.sort((a, b) => {
+        const n = (a.vampiro || '').localeCompare(b.vampiro || '', 'it');
+        if (n !== 0) return n;
+        return (a.lavoroNome || '').localeCompare(b.lavoroNome || '', 'it');
+    });
+    tbody.innerHTML = list.map(m => `
+        <tr>
+            <td><strong>${escHtml(m.vampiro) || '—'}</strong></td>
+            <td style="color:var(--gold-accent)">${escHtml(m.lavoroNome) || '—'}</td>
+            <td style="font-size:1rem; font-weight:700;">${m.livello ?? 1}</td>
+            <td style="white-space:nowrap;">
+                <button class="btn-delete" style="border-color:var(--success-green);color:var(--success-green);margin-right:3px;" onclick="window.cambiaLivelloLavoro('${m.id}', 1)">▲ +</button>
+                <button class="btn-delete" style="border-color:var(--gold-dim);color:var(--gold-dim);margin-right:3px;" onclick="window.cambiaLivelloLavoro('${m.id}', -1)">▼ −</button>
+                <button class="btn-delete" style="border-color:var(--gold-accent);color:var(--gold-accent);margin-right:3px;" onclick="window.caricaLavoroMembroPerEdit('${m.id}')">Modifica</button>
+                <button class="btn-delete" onclick="window.eliminaLavoroMembro('${m.id}')">Elimina</button>
+            </td>
+        </tr>
+    `).join('') || '<tr><td colspan="4" style="opacity:0.5;text-align:center;">Nessuna assegnazione.</td></tr>';
+};
+
+function getSblocchiPerLivello(lavoroId, livello) {
+    const tipo = tipiLavoro.find(t => t.id === lavoroId);
+    if (!tipo || !Array.isArray(tipo.sblocchi)) return [];
+    const liv = Number(livello) || 0;
+    return [...tipo.sblocchi]
+        .filter(s => Number(s.livello) <= liv)
+        .sort((a, b) => a.livello - b.livello);
+}
+
+function getTuttiSblocchi(lavoroId) {
+    const tipo = tipiLavoro.find(t => t.id === lavoroId);
+    if (!tipo || !Array.isArray(tipo.sblocchi)) return [];
+    return [...tipo.sblocchi].sort((a, b) => a.livello - b.livello);
+}
+
+/** Popup con box oro separati + ingredienti */
+window.mostraSblocchiLavoro = function(membroId) {
+    const m = lavoriMembri.find(x => x.id === membroId);
+    if (!m) return vampireToast('Assegnazione non trovata.', 'error');
+    const sblocchi = getSblocchiPerLivello(m.lavoroId, m.livello);
+    const tipo = tipiLavoro.find(t => t.id === m.lavoroId);
+
+    let cards;
+    if (!sblocchi.length) {
+        cards = '<div class="sbx"><div class="sbx-value" style="opacity:0.6;">Nessuno sblocco fino a questo livello.</div></div>';
+    } else {
+        cards = sblocchi.map(s => {
+            const item = escHtml(s.item) || '—';
+            const ing = s.ingredienti
+                ? escHtml(s.ingredienti)
+                : '<span style="opacity:0.5;font-style:italic;">Non indicato</span>';
+            return (
+                '<div class="sbx">' +
+                  '<div class="sbx-label">Livello ' + (Number(s.livello) || 1) + '</div>' +
+                  '<div class="sbx-value">' + item + '</div>' +
+                  '<div class="sbx-sep"></div>' +
+                  '<div class="sbx-label">Serve</div>' +
+                  '<div class="sbx-value sbx-ing">' + ing + '</div>' +
+                '</div>'
+            );
+        }).join('');
+    }
+
+    Swal.fire({
+        title: escHtml(m.vampiro || 'Membro'),
+        html:
+            '<div class="sbx-head"><strong>' + escHtml(m.lavoroNome || tipo?.nome || '—') +
+            '</strong> · Lv ' + (m.livello ?? 1) + '</div>' +
+            '<div class="sbx-list">' + cards + '</div>',
+        background: '#0e0e0e',
+        color: '#e0e0e0',
+        width: 300,
+        confirmButtonColor: '#8b0000',
+        confirmButtonText: 'Chiudi',
+        customClass: { popup: 'swal-sblocchi-popup' }
+    });
+};
+
+window.renderSezioneLavori = function() {
+    window.popolaSelectTipiLavoro();
+
+    const listaBox = document.getElementById('lavori-membri-lista');
+    const mieiBox = document.getElementById('lavori-miei-box');
+    const catalogo = document.getElementById('lavori-catalogo');
+    if (!catalogo) return;
+
+    const nomeUser = currentUser && !currentUser.isAdmin ? currentUser.nome : null;
+    const search = (document.getElementById('search-lavori-membri')?.value || '').toLowerCase().trim();
+
+    // --- Lista membri con lavori ---
+    if (listaBox) {
+        const byVamp = {};
+        lavoriMembri.forEach(m => {
+            const key = m.vampiro || '—';
+            if (!byVamp[key]) byVamp[key] = [];
+            byVamp[key].push(m);
+        });
+        let nomi = Object.keys(byVamp).sort((a, b) => a.localeCompare(b, 'it'));
+        if (search) {
+            nomi = nomi.filter(n => {
+                if (n.toLowerCase().includes(search)) return true;
+                return byVamp[n].some(j => (j.lavoroNome || '').toLowerCase().includes(search));
+            });
+        }
+        if (!nomi.length) {
+            listaBox.innerHTML = '<p class="lavori-empty">Nessun lavoro assegnato ai membri.</p>';
+        } else {
+            listaBox.innerHTML = nomi.map(nome => {
+                const jobs = byVamp[nome].sort((a, b) => (a.lavoroNome || '').localeCompare(b.lavoroNome || '', 'it'));
+                const isMe = nomeUser && nome.toLowerCase() === nomeUser.toLowerCase();
+                const chips = jobs.map(m => `
+                    <button type="button" class="lavoro-chip" title="Vedi sblocchi fino al tuo livello"
+                        onclick="window.mostraSblocchiLavoro('${m.id}')">
+                        <span class="lavoro-chip-name">${escHtml(m.lavoroNome) || '—'}</span>
+                        <span class="lavoro-chip-lv">Lv ${m.livello ?? 1}</span>
+                    </button>
+                `).join('');
+                return `
+                    <div class="lavori-membro-row${isMe ? ' is-me' : ''}">
+                        <div class="lavori-membro-nome">${escHtml(nome)}${isMe ? ' <span class="lavori-tu">tu</span>' : ''}</div>
+                        <div class="lavori-membro-chips">${chips}</div>
+                    </div>`;
+            }).join('');
+        }
+    }
+
+    // --- I miei lavori (se loggato come membro) ---
+    const miei = nomeUser
+        ? lavoriMembri.filter(m => (m.vampiro || '').toLowerCase() === nomeUser.toLowerCase())
+        : [];
+    if (mieiBox) {
+        if (!nomeUser) {
+            mieiBox.innerHTML = '';
+        } else if (!miei.length) {
+            mieiBox.innerHTML = '<p class="lavori-empty">Non hai ancora un lavoro assegnato.</p>';
+        } else {
+            mieiBox.innerHTML = '<div class="lavori-miei-grid">' + miei.map(m => `
+                <div class="lavori-mio-card" onclick="window.focusLavoroCatalogo('${m.lavoroId}')">
+                    <div class="lavori-mio-nome">${escHtml(m.lavoroNome) || '—'}</div>
+                    <div class="lavori-mio-lv">Livello ${m.livello ?? 1}</div>
+                </div>
+            `).join('') + '</div>';
+        }
+    }
+
+    // --- Catalogo: solo badge livelli cliccabili ---
+    const filtroId = document.getElementById('lavori-filtro-tipo')?.value || '';
+    let tipi = [...tipiLavoro].sort((a, b) => (a.nome || '').localeCompare(b.nome || '', 'it'));
+    if (filtroId) tipi = tipi.filter(t => t.id === filtroId);
+
+    if (!tipi.length) {
+        catalogo.innerHTML = '<p class="lavori-empty">Nessun lavoro configurato dal gestore.</p>';
+        return;
+    }
+
+    const mieiIds = new Set(miei.map(m => m.lavoroId));
+    const mioLivelloByJob = {};
+    miei.forEach(m => { mioLivelloByJob[m.lavoroId] = Number(m.livello) || 1; });
+
+    catalogo.innerHTML = tipi.map(t => {
+        const isMine = mieiIds.has(t.id);
+        const myLv = mioLivelloByJob[t.id] || 0;
+        const sbl = getTuttiSblocchi(t.id);
+        // Un pulsante per livello (anche se ci sono più item)
+        const byLv = {};
+        sbl.forEach(s => {
+            const lv = Number(s.livello) || 1;
+            if (!byLv[lv]) byLv[lv] = 0;
+            byLv[lv]++;
+        });
+        const livelliUnici = Object.keys(byLv).map(Number).sort((a, b) => a - b);
+        const levelsHtml = livelliUnici.length
+            ? livelliUnici.map(lv => {
+                const unlocked = isMine && lv <= myLv;
+                const count = byLv[lv];
+                return `
+                    <button type="button"
+                        class="lavoro-lv-btn${unlocked ? ' is-unlocked' : ''}"
+                        onclick="window.mostraDettaglioLivello('${t.id}', ${lv})"
+                        title="${count} item a questo livello">
+                        Lv ${lv}${count > 1 ? ` <span class="lv-count">×${count}</span>` : ''}
+                        ${unlocked ? '<span class="dot-ok"></span>' : ''}
+                    </button>`;
+            }).join('')
+            : '<span class="lavori-empty" style="padding:0;">Nessun livello</span>';
+
+        return `
+            <div class="lavoro-tipo-card${isMine ? ' is-mine' : ''}" id="lavoro-card-${t.id}">
+                <div class="lavoro-tipo-title">
+                    <h3>${escHtml(t.nome) || '—'}</h3>
+                    ${isMine ? `<span class="lavoro-tipo-mine-tag">Tuo · Lv ${myLv}</span>` : ''}
+                </div>
+                <p class="lavoro-hint">Clicca un livello per vedere oggetto e ingredienti</p>
+                <div class="lavoro-lv-row">${levelsHtml}</div>
+            </div>`;
+    }).join('');
+};
+
+/** Dettaglio singolo livello: oggetto + ingredienti in box oro */
+window.mostraDettaglioLivello = function(lavoroId, livello) {
+    const tipo = tipiLavoro.find(t => t.id === lavoroId);
+    if (!tipo) return vampireToast('Lavoro non trovato.', 'error');
+    const items = (Array.isArray(tipo.sblocchi) ? tipo.sblocchi : [])
+        .filter(x => Number(x.livello) === Number(livello))
+        .sort((a, b) => String(a.item || '').localeCompare(String(b.item || ''), 'it'));
+    if (!items.length) return vampireToast('Nessuno sblocco a questo livello.', 'error');
+
+    const nomeUser = currentUser && !currentUser.isAdmin ? currentUser.nome : null;
+    let mioLv = 0;
+    if (nomeUser) {
+        const mine = lavoriMembri.find(m =>
+            (m.vampiro || '').toLowerCase() === nomeUser.toLowerCase() && m.lavoroId === lavoroId
+        );
+        if (mine) mioLv = Number(mine.livello) || 0;
+    }
+    const unlocked = mioLv > 0 && Number(livello) <= mioLv;
+
+    const cards = items.map(s => {
+        const item = escHtml(s.item) || '—';
+        const ing = s.ingredienti
+            ? escHtml(s.ingredienti)
+            : '<span style="opacity:0.5;font-style:italic;">Non indicato</span>';
+        return (
+            '<div class="sbx">' +
+              '<div class="sbx-label">Cosa ottiene</div>' +
+              '<div class="sbx-value">' + item + '</div>' +
+              '<div class="sbx-sep"></div>' +
+              '<div class="sbx-label">Serve</div>' +
+              '<div class="sbx-value sbx-ing">' + ing + '</div>' +
+            '</div>'
+        );
+    }).join('');
+
+    Swal.fire({
+        title: escHtml(tipo.nome || 'Lavoro'),
+        html:
+            '<div class="sbx-head">Livello ' + (Number(livello) || 1) +
+            ' · ' + items.length + ' item' +
+            (unlocked ? ' · <span style="color:#2ecc71">Sbloccato</span>' : '') +
+            '</div>' +
+            '<div class="sbx-list">' + cards + '</div>',
+        background: '#0e0e0e',
+        color: '#e0e0e0',
+        width: 300,
+        confirmButtonColor: '#8b0000',
+        confirmButtonText: 'Chiudi',
+        customClass: { popup: 'swal-sblocchi-popup' }
+    });
+};
+
+window.focusLavoroCatalogo = function(lavoroId) {
+    const filtro = document.getElementById('lavori-filtro-tipo');
+    if (filtro) filtro.value = lavoroId || '';
+    window.renderSezioneLavori();
+    setTimeout(() => {
+        document.getElementById('lavoro-card-' + lavoroId)?.scrollIntoView({ behavior: 'smooth', block: 'start' });
+    }, 50);
+};
+
+
+// Listener refresh: anche sezione lavori
+// (già in onSnapshot tipi_lavoro / lavori_membri — aggiungiamo renderSezioneLavori)
+
+if (typeof document !== 'undefined') {
+    document.addEventListener('DOMContentLoaded', () => {
+        try { renderSblocchiTempLista(); } catch (e) {}
+    });
+}
+
 
 // --- PROTEZIONE INTERFACCIA ---
 document.addEventListener('contextmenu', event => event.preventDefault());

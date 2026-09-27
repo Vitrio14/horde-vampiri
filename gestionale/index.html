@@ -296,6 +296,7 @@
             <a href="../" class="nav-link" title="Torna al Portale">Home</a>
             <div class="nav-link" onclick="window.showSection('albero')">Albero</div>
             <div class="nav-link active" onclick="window.showSection('generale')">Generale</div>
+            <div class="nav-link" onclick="window.showSection('lavori')">Lavori</div>
             <div class="nav-link" onclick="window.showSection('vendite')">Vendite</div>
             <div class="nav-link" onclick="window.showSection('materiali')">Vendita Materiali</div>
             <div class="nav-link" onclick="window.showSection('saldo')">Saldo</div>
@@ -378,6 +379,33 @@
                     <h3>Membri e Ranghi</h3>
                     <div id="lista-membri-dinamica" style="margin-top: 15px; text-align: left; width: 100%; border-left: 1px solid var(--blood-red); padding-left: 15px;"></div>
                 </div>
+
+            </div>
+        </section>
+
+
+        <section id="lavori" class="section">
+            <div class="vamp-card">
+                <h2 style="text-align:center;">⚒️ Lavori della Dinastia</h2>
+                <p style="font-size:0.75rem; color:var(--text-dim); text-align:center; margin-bottom:22px; max-width:640px; margin-left:auto; margin-right:auto;">
+                    Lista membri con i loro lavori. Sotto, scegli un mestiere e <strong style="color:var(--gold-accent);">clicca un livello</strong> per vedere oggetto e ingredienti.
+                </p>
+
+                <h3 class="lavori-subhead">Membri e lavori</h3>
+                <div class="search-box" style="max-width:420px; margin:0 auto 12px;">
+                    <input type="text" id="search-lavori-membri" placeholder="Cerca membro o lavoro..." onkeyup="window.renderSezioneLavori()">
+                </div>
+                <div id="lavori-membri-lista" class="lavori-membri-lista"></div>
+
+                <h3 class="lavori-subhead" style="margin-top:28px;">Catalogo mestieri</h3>
+                <div id="lavori-miei-box" style="margin-bottom:16px;"></div>
+                <div class="form-group" style="max-width:360px; margin:0 auto 16px;">
+                    <label>Filtra per tipo di lavoro</label>
+                    <select id="lavori-filtro-tipo" onchange="window.renderSezioneLavori()">
+                        <option value="">— Tutti i lavori —</option>
+                    </select>
+                </div>
+                <div id="lavori-catalogo" class="lavori-catalogo"></div>
             </div>
         </section>
 
@@ -891,6 +919,10 @@
                         <h3>🌳 Albero Genealogico</h3>
                         <p>Nodi, foto, legami di sangue e download PNG</p>
                     </div>
+                    <div class="admin-menu-card" onclick="window.apriAdminView('lavori')">
+                        <h3>⚒️ Gestione Lavori</h3>
+                        <p>Assegna lavori multipli, livelli e sblocchi per i membri</p>
+                    </div>
                 </div>
 
                 <div id="admin-view-comunicazioni" class="admin-sub-view" style="display: none;">
@@ -936,6 +968,7 @@
                                     <div class="permessi-group-items">
                                         <label class="perm-label"><input type="checkbox" class="perm-check" value="albero" checked> Albero</label>
                                         <label class="perm-label"><input type="checkbox" class="perm-check" value="generale" checked> Generale</label>
+                                        <label class="perm-label"><input type="checkbox" class="perm-check" value="lavori" checked> Lavori</label>
                                         <label class="perm-label"><input type="checkbox" class="perm-check" value="vendite" checked> Vendite</label>
                                         <label class="perm-label"><input type="checkbox" class="perm-check" value="materiali" checked> Vendita Materiali</label>
                                         <label class="perm-label"><input type="checkbox" class="perm-check" value="saldo" checked> Saldo</label>
@@ -1342,6 +1375,113 @@
                     </div>
                 </div>
 
+
+                <div id="admin-view-lavori" class="admin-sub-view" style="display: none;">
+                    <button class="btn-indietro" onclick="window.tornaAdminMenu()">🔙 Torna alla Dashboard</button>
+
+                    <div class="vamp-card">
+                        <h2>⚒️ Assegna Lavoro a un Membro</h2>
+                        <p style="font-size:0.75rem; color:var(--text-dim); margin-bottom:18px;">
+                            Un vampiro può avere <strong>più lavori</strong>. Seleziona vampiro, tipo lavoro e livello, poi Salva.
+                            Usa ▲ / ▼ sulla lista per cambiare il livello di ogni lavoro.
+                        </p>
+                        <div style="display: grid; grid-template-columns: 1fr 1fr 1fr auto; gap: 15px; align-items: flex-end; margin-bottom: 20px;">
+                            <div class="form-group" style="margin:0">
+                                <label>Vampiro</label>
+                                <select id="adm-lavoro-vamp" class="vampiro-select-list"></select>
+                            </div>
+                            <div class="form-group" style="margin:0">
+                                <label>Lavoro</label>
+                                <select id="adm-lavoro-tipo">
+                                    <option value="">— Seleziona lavoro —</option>
+                                </select>
+                            </div>
+                            <div class="form-group" style="margin:0">
+                                <label>Livello</label>
+                                <input type="number" id="adm-lavoro-livello" value="1" min="1" step="1">
+                            </div>
+                            <button type="button" onclick="window.salvaLavoroMembro()" style="width:auto; padding:14px 25px;">Salva</button>
+                        </div>
+                        <input type="hidden" id="adm-lavoro-edit-id" value="">
+                        <div class="search-box">
+                            <input type="text" id="search-admin-lavori" placeholder="Cerca vampiro o lavoro..." onkeyup="window.renderAdminLavoriMembri()">
+                        </div>
+                        <div class="scroll-container" style="max-height:360px;">
+                            <table style="font-size:0.75rem;">
+                                <thead>
+                                    <tr>
+                                        <th>Vampiro</th>
+                                        <th>Lavoro</th>
+                                        <th>Livello</th>
+                                        <th>Azioni</th>
+                                    </tr>
+                                </thead>
+                                <tbody id="admin-lavori-membri-body"></tbody>
+                            </table>
+                        </div>
+                    </div>
+
+                    <div class="vamp-card">
+                        <h2>🧱 Tipi di Lavoro e Sblocchi per Livello</h2>
+                        <p style="font-size:0.75rem; color:var(--text-dim); margin-bottom:18px;">
+                            Definisci i lavori disponibili e cosa si sblocca a ogni livello (es. Livello 1 → Acciaio, Livello 2 → Seta).
+                        </p>
+                        <div style="display: grid; grid-template-columns: 1fr auto; gap: 15px; align-items: flex-end; margin-bottom: 18px;">
+                            <div class="form-group" style="margin:0">
+                                <label>Nome lavoro</label>
+                                <input type="text" id="adm-tipo-lavoro-nome" placeholder="es. Fabbro, Tessitore, Alchimista...">
+                            </div>
+                            <button type="button" onclick="window.salvaTipoLavoro()" style="width:auto; padding:14px 25px;">Salva Tipo</button>
+                        </div>
+                        <input type="hidden" id="adm-tipo-lavoro-edit-id" value="">
+
+                        <div style="background:rgba(0,0,0,0.35); border:1px solid rgba(197,160,89,0.2); border-radius:8px; padding:16px; margin-bottom:18px;">
+                            <h3 style="font-size:0.8rem; color:var(--gold-accent); margin-bottom:8px; text-transform:uppercase; letter-spacing:1px;">Sblocchi per livello</h3>
+                            <p style="font-size:0.7rem; color:var(--text-dim); margin-bottom:12px; line-height:1.4;">
+                                Puoi aggiungere <strong style="color:var(--gold-accent);">più oggetti allo stesso livello</strong>
+                                (es. Lv1 → Panno e Lv1 → Disinfettante). Per ciascuno indica ingredienti.
+                                Clicca <strong style="color:var(--gold-accent);">Modifica</strong> su una riga per correggerla, poi <strong>Salva Tipo</strong>.
+                            </p>
+                            <div style="display: grid; grid-template-columns: 90px 1fr; gap: 12px; margin-bottom: 10px;">
+                                <div class="form-group" style="margin:0">
+                                    <label>Livello</label>
+                                    <input type="number" id="adm-sblocco-livello" value="1" min="1" step="1">
+                                </div>
+                                <div class="form-group" style="margin:0">
+                                    <label>Cosa sblocca (oggetto)</label>
+                                    <input type="text" id="adm-sblocco-item" placeholder="es. Panno pulito, Acciaio, Seta...">
+                                </div>
+                            </div>
+                            <div class="form-group" style="margin:0 0 12px 0;">
+                                <label>Ingredienti / cosa serve</label>
+                                <input type="text" id="adm-sblocco-ingredienti" placeholder="es. 1 panno sporco + 1 disinfettante">
+                            </div>
+                            <div style="display:flex; gap:10px; flex-wrap:wrap; margin-bottom:12px;">
+                                <button type="button" id="adm-sblocco-btn" onclick="window.aggiungiSbloccoTemp()" style="width:auto; padding:12px 18px;">+ Aggiungi livello</button>
+                                <button type="button" onclick="window.annullaEditSbloccoTemp()" style="width:auto; padding:12px 18px; border-color:#555; color:#888;">Annulla edit</button>
+                            </div>
+                            <div id="adm-sblocchi-lista" class="adm-sblocchi-scroll"></div>
+                        </div>
+
+                        <div style="display:flex; gap:12px; flex-wrap:wrap; margin-bottom:20px;">
+                            <button type="button" onclick="window.resetFormTipoLavoro()" style="width:auto; padding:14px 25px; border-color:#555; color:#888;">Annulla / Nuovo</button>
+                        </div>
+
+                        <div class="scroll-container" style="max-height:320px;">
+                            <table style="font-size:0.75rem;">
+                                <thead>
+                                    <tr>
+                                        <th>Nome lavoro</th>
+                                        <th>Sblocchi</th>
+                                        <th>Azioni</th>
+                                    </tr>
+                                </thead>
+                                <tbody id="admin-tipi-lavoro-body"></tbody>
+                            </table>
+                        </div>
+                    </div>
+                </div>
+
                 <div style="text-align: center; margin-top: 40px; margin-bottom: 20px;">
                     <button onclick="window.logoutAdmin()" style="background: transparent; border: 1px solid #444; width: auto; color: #555; display: inline-block;">Chiudi Sessione Gestore</button>
                 </div>
@@ -1365,6 +1505,12 @@
             const targetView = document.getElementById('admin-view-' + viewId);
             if(targetView) {
                 targetView.style.display = 'block';
+            }
+
+            if (viewId === 'lavori') {
+                if (typeof window.popolaSelectTipiLavoro === 'function') window.popolaSelectTipiLavoro();
+                if (typeof window.renderAdminLavoriMembri === 'function') window.renderAdminLavoriMembri();
+                if (typeof window.renderAdminTipiLavoro === 'function') window.renderAdminTipiLavoro();
             }
         };
 

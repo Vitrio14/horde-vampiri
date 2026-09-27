@@ -1556,3 +1556,507 @@ footer:hover strong { color: var(--blood-red); }
         font-size: 0.72rem !important;
     }
 }
+
+
+/* ===== LAVORI: admin sblocchi compatti + scroll ===== */
+.adm-sblocchi-scroll {
+    max-height: 220px;
+    overflow-y: auto;
+    padding-right: 4px;
+    margin-top: 4px;
+}
+.adm-sblocco-row {
+    display: flex;
+    justify-content: space-between;
+    align-items: flex-start;
+    gap: 8px;
+    padding: 6px 8px;
+    margin-bottom: 5px;
+    background: rgba(0,0,0,0.28);
+    border: 1px solid rgba(197,160,89,0.18);
+    border-left: 3px solid #c5a059;
+    border-radius: 5px;
+    font-size: 0.72rem;
+}
+.adm-sblocco-row.is-editing {
+    background: rgba(197,160,89,0.12);
+    border-color: rgba(197,160,89,0.5);
+}
+.adm-sblocco-main {
+    min-width: 0;
+    flex: 1;
+    display: flex;
+    flex-direction: column;
+    gap: 2px;
+}
+.adm-sblocco-lv {
+    font-weight: 800;
+    color: #c5a059;
+    font-size: 0.62rem;
+    letter-spacing: 0.8px;
+    text-transform: uppercase;
+}
+.adm-sblocco-item {
+    color: #e8e0d0;
+    word-break: break-word;
+    overflow-wrap: anywhere;
+    line-height: 1.3;
+}
+.adm-sblocco-ing {
+    color: #9a9080;
+    font-size: 0.65rem;
+    word-break: break-word;
+    overflow-wrap: anywhere;
+    line-height: 1.3;
+}
+.adm-sblocco-actions {
+    display: flex;
+    flex-direction: column;
+    gap: 3px;
+    flex-shrink: 0;
+}
+.adm-sblocco-actions .btn-delete {
+    padding: 3px 8px !important;
+    font-size: 0.58rem !important;
+}
+
+/* ===== Sezione Lavori (navbar) ===== */
+.lavori-miei-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(160px, 1fr));
+    gap: 12px;
+    margin-bottom: 8px;
+}
+.lavori-mio-card {
+    background: rgba(197,160,89,0.08);
+    border: 1px solid rgba(197,160,89,0.4);
+    border-radius: 8px;
+    padding: 14px 12px;
+    text-align: center;
+    cursor: pointer;
+    transition: border-color 0.2s, transform 0.2s;
+}
+.lavori-mio-card:hover {
+    border-color: var(--gold-accent);
+    transform: translateY(-2px);
+}
+.lavori-mio-nome {
+    font-family: 'Cinzel', serif;
+    color: var(--gold-accent);
+    font-size: 0.95rem;
+    font-weight: 700;
+    margin-bottom: 4px;
+}
+.lavori-mio-lv {
+    font-size: 0.75rem;
+    color: var(--text-dim);
+}
+
+.lavori-catalogo {
+    display: flex;
+    flex-direction: column;
+    gap: 22px;
+}
+.lavoro-tipo-card {
+    background: rgba(14,14,14,0.94);
+    border: 1px solid rgba(197,160,89,0.22);
+    border-radius: 0 14px 0 14px;
+    padding: 18px 16px 16px;
+    box-shadow: 0 8px 24px rgba(0,0,0,0.4);
+}
+.lavoro-tipo-card.is-mine {
+    border-color: rgba(197,160,89,0.55);
+    box-shadow: 0 8px 28px rgba(0,0,0,0.5), 0 0 18px rgba(197,160,89,0.08);
+}
+.lavoro-tipo-title {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    flex-wrap: wrap;
+    gap: 8px;
+    margin-bottom: 14px;
+    padding-bottom: 10px;
+    border-bottom: 1px solid rgba(139,0,0,0.35);
+}
+.lavoro-tipo-title h3 {
+    margin: 0;
+    font-size: 1rem;
+    color: var(--gold-accent);
+    letter-spacing: 1.5px;
+}
+.lavoro-tipo-mine-tag {
+    font-size: 0.65rem;
+    font-weight: 800;
+    text-transform: uppercase;
+    letter-spacing: 1px;
+    color: #c5a059;
+    border: 1px solid rgba(197,160,89,0.45);
+    padding: 4px 10px;
+    border-radius: 999px;
+    background: rgba(197,160,89,0.1);
+}
+.lavoro-livelli-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fill, minmax(200px, 1fr));
+    gap: 10px;
+}
+.lavoro-livello-card {
+    background: linear-gradient(145deg, rgba(28,24,18,0.98), rgba(16,14,12,0.98));
+    border: 1px solid rgba(197,160,89,0.28);
+    border-left: 3px solid rgba(197,160,89,0.55);
+    border-radius: 8px;
+    padding: 11px 12px;
+    min-height: 0;
+}
+.lavoro-livello-card.is-unlocked {
+    border-color: rgba(197,160,89,0.55);
+    box-shadow: inset 0 0 16px rgba(197,160,89,0.06);
+}
+.lavoro-livello-head {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    margin-bottom: 6px;
+    gap: 6px;
+}
+.lavoro-livello-badge {
+    font-size: 0.62rem;
+    font-weight: 800;
+    letter-spacing: 1px;
+    text-transform: uppercase;
+    color: #c5a059;
+}
+.lavoro-livello-ok {
+    font-size: 0.58rem;
+    color: var(--success-green);
+    font-weight: 700;
+    text-transform: uppercase;
+}
+.lavoro-livello-item {
+    font-size: 0.88rem;
+    color: #eee6d8;
+    font-weight: 600;
+    line-height: 1.35;
+    word-break: break-word;
+    overflow-wrap: anywhere;
+    margin-bottom: 6px;
+}
+.lavoro-livello-ing {
+    font-size: 0.72rem;
+    color: #b0a690;
+    line-height: 1.4;
+    word-break: break-word;
+    overflow-wrap: anywhere;
+    white-space: pre-wrap;
+    border-top: 1px dashed rgba(197,160,89,0.2);
+    padding-top: 6px;
+}
+.lavoro-livello-ing strong {
+    color: #c5a059;
+    font-weight: 700;
+}
+.lavoro-livello-ing.is-muted {
+    opacity: 0.55;
+    font-style: italic;
+    border-top: none;
+    padding-top: 0;
+}
+
+/* ===== Popup sblocchi lavori (centrato, compatto) ===== */
+.swal-sblocchi-popup.swal2-popup {
+    width: 300px !important;
+    max-width: 92vw !important;
+    padding: 1rem 0.75rem 0.9rem !important;
+    border: 1px solid rgba(197,160,89,0.4) !important;
+    box-shadow: 0 12px 36px rgba(0,0,0,0.85) !important;
+}
+.swal-sblocchi-popup .swal2-title {
+    color: #c5a059 !important;
+    font-family: 'Cinzel', serif !important;
+    font-size: 0.9rem !important;
+    letter-spacing: 1.5px !important;
+    text-align: center !important;
+    margin: 0 0 8px !important;
+    padding: 0 !important;
+    line-height: 1.3 !important;
+}
+.swal-sblocchi-popup .swal2-html-container {
+    margin: 0 !important;
+    padding: 0 !important;
+    text-align: center !important;
+    overflow: visible !important;
+}
+.swal-sblocchi-popup .swal2-actions {
+    margin: 10px 0 0 !important;
+}
+.swal-sblocchi-popup .swal2-confirm {
+    padding: 7px 20px !important;
+    font-size: 0.65rem !important;
+    letter-spacing: 1px !important;
+}
+
+.sbx-head {
+    text-align: center;
+    font-size: 0.75rem;
+    color: #b0a890;
+    padding: 6px 8px;
+    margin: 0 0 8px;
+    border: 1px solid rgba(197,160,89,0.25);
+    border-radius: 6px;
+    background: rgba(197,160,89,0.06);
+    line-height: 1.3;
+}
+.sbx-head strong { color: #c5a059; }
+
+.sbx-list {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    gap: 8px;
+    max-height: 240px;
+    overflow-y: auto;
+    overflow-x: hidden;
+    width: 100%;
+    padding: 0 2px;
+    box-sizing: border-box;
+}
+
+.sbx {
+    width: 100%;
+    box-sizing: border-box;
+    text-align: center;
+    padding: 10px 12px;
+    border: 1px solid rgba(197,160,89,0.4);
+    border-radius: 7px;
+    background: rgba(20,18,14,0.98);
+}
+
+.sbx-label {
+    display: block;
+    text-align: center;
+    font-size: 0.58rem;
+    font-weight: 800;
+    letter-spacing: 1.3px;
+    text-transform: uppercase;
+    color: #c5a059;
+    margin: 0 0 4px;
+    line-height: 1.2;
+}
+
+.sbx-value {
+    display: block;
+    text-align: center;
+    font-size: 0.82rem;
+    font-weight: 600;
+    color: #ebe4d6;
+    line-height: 1.35;
+    word-break: break-word;
+    overflow-wrap: anywhere;
+    white-space: pre-wrap;
+    margin: 0;
+}
+
+.sbx-value.sbx-ing {
+    font-size: 0.74rem;
+    font-weight: 500;
+    color: #a89e8c;
+}
+
+.sbx-sep {
+    height: 0;
+    border: none;
+    border-top: 1px dashed rgba(197,160,89,0.28);
+    margin: 8px 0;
+    width: 100%;
+}
+
+/* ===== Lavori: lista membri + livelli cliccabili ===== */
+.lavori-subhead {
+    font-family: 'Cinzel', serif;
+    font-size: 0.85rem;
+    color: var(--gold-accent);
+    letter-spacing: 1.5px;
+    text-transform: uppercase;
+    text-align: center;
+    margin: 0 0 14px;
+    padding-bottom: 8px;
+    border-bottom: 1px solid rgba(139,0,0,0.35);
+}
+.lavori-empty {
+    text-align: center;
+    font-size: 0.75rem;
+    color: var(--text-dim);
+    opacity: 0.7;
+    padding: 16px 8px;
+}
+.lavori-membri-lista {
+    max-height: 280px;
+    overflow-y: auto;
+    border: 1px solid rgba(197,160,89,0.2);
+    border-radius: 8px;
+    background: rgba(0,0,0,0.25);
+    padding: 6px 8px;
+}
+.lavori-membro-row {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    gap: 10px;
+    padding: 10px 8px;
+    border-bottom: 1px solid rgba(255,255,255,0.05);
+}
+.lavori-membro-row:last-child { border-bottom: none; }
+.lavori-membro-row.is-me {
+    background: rgba(197,160,89,0.07);
+    border-radius: 6px;
+}
+.lavori-membro-nome {
+    font-weight: 700;
+    font-size: 0.85rem;
+    color: var(--text-light);
+    min-width: 100px;
+}
+.lavori-tu {
+    font-size: 0.6rem;
+    text-transform: uppercase;
+    letter-spacing: 1px;
+    color: var(--gold-accent);
+    border: 1px solid rgba(197,160,89,0.4);
+    padding: 1px 6px;
+    border-radius: 999px;
+    margin-left: 4px;
+}
+.lavori-membro-chips {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 6px;
+    flex: 1;
+}
+.lavoro-chip {
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+    width: auto !important;
+    padding: 6px 10px !important;
+    font-size: 0.7rem !important;
+    letter-spacing: 0.5px !important;
+    text-transform: none !important;
+    border-color: rgba(197,160,89,0.4) !important;
+    color: var(--gold-accent) !important;
+    background: rgba(197,160,89,0.06);
+    border-radius: 6px;
+}
+.lavoro-chip::before { display: none !important; }
+.lavoro-chip:hover {
+    background: rgba(197,160,89,0.15) !important;
+    color: #fff !important;
+}
+.lavoro-chip-name { font-weight: 600; }
+.lavoro-chip-lv {
+    opacity: 0.75;
+    font-size: 0.65rem;
+    border-left: 1px solid rgba(197,160,89,0.35);
+    padding-left: 6px;
+}
+
+.lavoro-hint {
+    font-size: 0.65rem;
+    color: var(--text-dim);
+    margin: -6px 0 12px;
+    opacity: 0.8;
+}
+.lavoro-lv-row {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 8px;
+}
+.lavoro-lv-btn {
+    width: auto !important;
+    min-width: 64px;
+    padding: 10px 14px !important;
+    font-size: 0.75rem !important;
+    letter-spacing: 1px !important;
+    border-color: rgba(197,160,89,0.4) !important;
+    color: var(--gold-accent) !important;
+    background: rgba(20,18,14,0.9);
+    border-radius: 8px;
+    position: relative;
+}
+.lavoro-lv-btn::before { display: none !important; }
+.lavoro-lv-btn:hover {
+    background: rgba(197,160,89,0.15) !important;
+    color: #fff !important;
+    border-color: var(--gold-accent) !important;
+}
+.lavoro-lv-btn.is-unlocked {
+    border-color: rgba(46,204,113,0.45) !important;
+    box-shadow: inset 0 0 12px rgba(46,204,113,0.08);
+}
+.lavoro-lv-btn .dot-ok {
+    display: inline-block;
+    width: 6px;
+    height: 6px;
+    border-radius: 50%;
+    background: var(--success-green);
+    margin-left: 6px;
+    vertical-align: middle;
+}
+
+/* Nascondi griglia livelli vecchia se presente */
+.lavoro-livelli-grid { display: none !important; }
+
+.lavoro-lv-btn .lv-count {
+    font-size: 0.62rem;
+    opacity: 0.75;
+    font-weight: 600;
+    margin-left: 2px;
+}
+
+
+/* ===== Scroll anti-overflow su sezioni Lavori e box dinamici ===== */
+.lavori-membri-lista {
+    max-height: min(280px, 42vh) !important;
+    overflow-y: auto !important;
+    -webkit-overflow-scrolling: touch;
+}
+.lavori-catalogo {
+    max-height: min(520px, 58vh);
+    overflow-y: auto;
+    padding-right: 4px;
+    -webkit-overflow-scrolling: touch;
+}
+.lavoro-tipo-card {
+    max-width: 100%;
+}
+.adm-sblocchi-scroll {
+    max-height: 200px !important;
+    overflow-y: auto !important;
+    -webkit-overflow-scrolling: touch;
+}
+#admin-view-lavori .scroll-container {
+    max-height: 280px !important;
+    overflow-y: auto !important;
+}
+#lavori .vamp-card {
+    max-width: 100%;
+}
+#lista-membri-dinamica,
+#comunicazioni-box,
+#documenti-box,
+#top-settimana-box,
+#top-sempre-box,
+#top-mat-box,
+#top-mat-sempre-box,
+#morsi-vamp-sett-box,
+#morsi-sett-box,
+#morsi-sempre-box {
+    max-height: 220px;
+    overflow-y: auto;
+    -webkit-overflow-scrolling: touch;
+}
+.morsi-grid-classifiche .coming-soon-card > div:last-child,
+.morsi-grid-classifiche [id^="top-"],
+.morsi-grid-classifiche [id^="morsi-"] {
+    max-height: 260px;
+    overflow-y: auto;
+}
