@@ -243,6 +243,7 @@
 
         <button onclick="showSection('quests')">Quest</button>
         <button onclick="showSection('players')">Giocatori</button>
+        <button onclick="showSection('frammenti')">Frammenti</button>
         <button onclick="showSection('docs')">Documenti</button>
         <button onclick="showSection('notes')">Note</button>
         <button onclick="showSection('media')">Archivio</button>
@@ -281,7 +282,30 @@
                 </div>
             </div>
 
-            <div id="players-list" class="grid"></div>
+            <div id="players-list" class="grid grid-compact"></div>
+
+        </section>
+
+        <section id="frammenti" class="panel">
+
+            <div class="topbar">
+                <h1>Frammenti</h1>
+                <div style="display: flex; gap: 10px; flex-wrap: wrap;">
+                    <button onclick="addFrammentoEvent()">+ Nuovo Evento</button>
+                    <button onclick="addFrammento()">+ Assegna Frammenti</button>
+                </div>
+            </div>
+
+            <div class="frammenti-layout">
+                <div class="frammenti-events-box">
+                    <h2 class="frammenti-subtitle"><i class="fa-solid fa-calendar-days"></i> Eventi disponibili</h2>
+                    <div id="frammenti-events-list" class="grid grid-compact"></div>
+                </div>
+                <div class="frammenti-assignments-box">
+                    <h2 class="frammenti-subtitle"><i class="fa-solid fa-gem"></i> Assegnazioni Frammenti</h2>
+                    <div id="frammenti-list" class="grid grid-compact"></div>
+                </div>
+            </div>
 
         </section>
 

@@ -770,6 +770,135 @@ footer {
     border-color: #c5a059;
 }
 
+/* ========== FRAMMENTI + COMPACT CARDS ========== */
+.frammenti-layout {
+    display: flex;
+    flex-direction: column;
+    gap: 28px;
+}
+.frammenti-subtitle {
+    font-family: 'Cinzel', serif;
+    color: var(--gold-accent);
+    font-size: 1rem;
+    letter-spacing: 1.5px;
+    margin-bottom: 12px;
+    border-bottom: 1px dashed rgba(139, 0, 0, 0.4);
+    padding-bottom: 6px;
+}
+.grid-compact {
+    grid-template-columns: repeat(auto-fill, minmax(260px, 1fr)) !important;
+    gap: 16px !important;
+}
+.grid-compact .card {
+    padding: 16px 18px !important;
+}
+.grid-compact .card h3 {
+    font-size: 0.95rem !important;
+    margin-bottom: 10px !important;
+    padding-bottom: 6px !important;
+}
+.grid-compact .card p {
+    font-size: 0.85rem !important;
+    margin-bottom: 8px !important;
+    line-height: 1.45 !important;
+}
+.grid-compact .action-buttons {
+    padding-top: 12px !important;
+    gap: 8px !important;
+}
+.grid-compact .action-buttons button {
+    padding: 8px 10px !important;
+    font-size: 0.7rem !important;
+}
+.grid-compact .status {
+    padding: 4px 10px !important;
+    font-size: 0.65rem !important;
+    margin-top: 6px !important;
+    margin-bottom: 8px !important;
+}
+.status.consegnato {
+    background: rgba(46, 204, 113, 0.1);
+    color: var(--success-green);
+    border-color: var(--success-green);
+    box-shadow: inset 5px 0 15px rgba(46, 204, 113, 0.2);
+}
+.status.non_consegnato {
+    background: rgba(231, 76, 60, 0.1);
+    color: var(--withdraw-red);
+    border-color: var(--withdraw-red);
+    box-shadow: inset 5px 0 15px rgba(231, 76, 60, 0.2);
+}
+.btn-frammenti {
+    background: transparent !important;
+    border: 1px solid rgba(139, 0, 0, 0.5) !important;
+    color: #c5a059 !important;
+    padding: 8px 12px !important;
+    font-size: 1rem !important;
+    min-width: auto !important;
+    flex: 0 0 auto !important;
+}
+.btn-frammenti:hover {
+    border-color: var(--blood-light) !important;
+    box-shadow: 0 0 12px rgba(139, 0, 0, 0.35) !important;
+}
+.frammenti-recap-table {
+    width: 100%;
+    border-collapse: collapse;
+    margin: 12px 0;
+    font-size: 0.9rem;
+}
+.frammenti-recap-table th,
+.frammenti-recap-table td {
+    text-align: left;
+    padding: 8px 10px;
+    border-bottom: 1px solid rgba(255,255,255,0.06);
+    color: var(--text-light);
+}
+.frammenti-recap-table th {
+    color: var(--gold-accent);
+    font-family: 'Cinzel', serif;
+    font-size: 0.75rem;
+    letter-spacing: 1px;
+    text-transform: uppercase;
+}
+.frammenti-recap-total {
+    margin-top: 16px;
+    padding: 12px 14px;
+    background: rgba(139, 0, 0, 0.15);
+    border-left: 3px solid var(--blood-red);
+    font-weight: 700;
+    color: var(--gold-accent);
+}
+
+/* Scrollbar nei popup SweetAlert e liste lunghe */
+.swal2-html-container {
+    max-height: 70vh !important;
+    overflow-y: auto !important;
+    overflow-x: hidden !important;
+}
+.swal2-html-container::-webkit-scrollbar,
+.frammenti-recap-scroll::-webkit-scrollbar {
+    width: 6px;
+    height: 6px;
+}
+.swal2-html-container::-webkit-scrollbar-track,
+.frammenti-recap-scroll::-webkit-scrollbar-track {
+    background: rgba(7, 7, 7, 0.9);
+}
+.swal2-html-container::-webkit-scrollbar-thumb,
+.frammenti-recap-scroll::-webkit-scrollbar-thumb {
+    background: linear-gradient(180deg, var(--blood-red), var(--dark-void));
+    border: 1px solid rgba(197, 160, 89, 0.3);
+}
+.swal2-html-container::-webkit-scrollbar-thumb:hover,
+.frammenti-recap-scroll::-webkit-scrollbar-thumb:hover {
+    background: linear-gradient(180deg, var(--blood-light), var(--blood-red));
+}
+.frammenti-recap-scroll {
+    max-height: 200px;
+    overflow-y: auto;
+    padding-right: 4px;
+}
 
 /* RESPONSIVE UNIFICATO */
 @media (max-width: 900px) {

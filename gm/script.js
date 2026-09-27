@@ -7,6 +7,13 @@ let currentPlayersFolder = null;
 let currentCommandsFolder = null;
 let currentAdminFolder = null;
 
+/** Formatta numeri in stile italiano: 10000 → 10.000 */
+function formatNumber(n) {
+    const num = Number(n);
+    if (isNaN(num)) return '0';
+    return num.toLocaleString('it-IT');
+}
+
 function login() {
 
     const email = document.getElementById('email').value;
@@ -47,6 +54,8 @@ function login() {
             loadCommands();
             loadGlobalLinks();
             loadPlayers();
+            loadFrammentiEvents();
+            loadFrammenti();
         })
 
         .catch((error) => {
@@ -1247,6 +1256,13 @@ function loadPlayers() {
                                         Apri
                                     </button>
                                     <button
+                                        class="btn-frammenti"
+                                        onclick="openPlayerFrammentiModal('${doc.id}', '${(p.name || '').replace(/'/g, "\\'")}')"
+                                        title="Resoconto Frammenti"
+                                    >
+                                        🔮
+                                    </button>
+                                    <button
                                         class="delete-btn"
                                         onclick="confirmDelete('players', '${doc.id}', loadPlayers)"
                                     >
@@ -1393,6 +1409,297 @@ function openPlayerModal(playerId) {
 }
 
 
+/* ========== FRAMMENTI ========== */
+
+function addFrammentoEvent() {
+    Swal.fire({
+        title: 'Nuovo Evento Frammenti',
+        html: `
+            <input id="event-name" class="swal2-input" placeholder="Nome Evento">
+            <input id="event-qty" class="swal2-input" type="number" min="1" value="1" placeholder="Quantità frammenti">
+        `,
+        confirmButtonText: 'Crea Evento',
+        background: '#131a25',
+        preConfirm: () => {
+            const name = (document.getElementById('event-name').value || '').trim();
+            const quantity = parseInt(document.getElementById('event-qty').value, 10);
+            if (!name) {
+                Swal.showValidationMessage('Inserisci un nome evento');
+                return false;
+            }
+            if (!quantity || quantity < 1) {
+                Swal.showValidationMessage('Inserisci una quantità valida (≥ 1)');
+                return false;
+            }
+            return { name, quantity };
+        }
+    }).then((result) => {
+        if (result.isConfirmed && result.value) {
+            db.collection('frammentiEvents').add({
+                name: result.value.name,
+                quantity: result.value.quantity,
+                createdAt: new Date().toISOString()
+            }).then(() => {
+                showToast('Evento creato');
+            });
+        }
+    });
+}
+
+function loadFrammentiEvents() {
+    const container = document.getElementById('frammenti-events-list');
+    if (!container) return;
+
+    db.collection('frammentiEvents').onSnapshot(snapshot => {
+        container.innerHTML = '';
+        if (snapshot.empty) {
+            container.innerHTML = '<p style="color:var(--text-dim);padding:10px;">Nessun evento creato. Usa “+ Nuovo Evento”.</p>';
+            return;
+        }
+        const items = [];
+        snapshot.forEach(doc => items.push({ id: doc.id, ...doc.data() }));
+        items.sort((a, b) => (b.createdAt || '').localeCompare(a.createdAt || ''));
+
+        items.forEach(e => {
+            container.innerHTML += `
+                <div class="card">
+                    <h3>${e.name}</h3>
+                    <p><b>Frammenti:</b> ${formatNumber(e.quantity)}</p>
+                    <div class="action-buttons">
+                        <button class="delete-btn" onclick="confirmDelete('frammentiEvents', '${e.id}', loadFrammentiEvents)">
+                            Elimina
+                        </button>
+                    </div>
+                </div>
+            `;
+        });
+    });
+}
+
+function addFrammento() {
+    Promise.all([
+        db.collection('players').get(),
+        db.collection('frammentiEvents').get()
+    ]).then(([playersSnap, eventsSnap]) => {
+        let playerOptions = '<option value="">Seleziona vampiro</option>';
+        playersSnap.forEach(doc => {
+            const p = doc.data();
+            if (p.name) {
+                playerOptions += `<option value="${p.name.replace(/"/g, '&quot;')}">${p.name}</option>`;
+            }
+        });
+
+        let eventOptions = '<option value="">Seleziona evento</option>';
+        const eventsMap = {};
+        eventsSnap.forEach(doc => {
+            const e = doc.data();
+            eventsMap[doc.id] = e;
+            eventOptions += `<option value="${doc.id}">${e.name} (${formatNumber(e.quantity)} fr.)</option>`;
+        });
+
+        if (playersSnap.empty) {
+            Swal.fire({ icon: 'warning', title: 'Attenzione', text: 'Nessun giocatore presente. Aggiungine uno nella sezione Giocatori.', background: '#131a25' });
+            return;
+        }
+        if (eventsSnap.empty) {
+            Swal.fire({ icon: 'warning', title: 'Attenzione', text: 'Nessun evento presente. Crea prima un evento.', background: '#131a25' });
+            return;
+        }
+
+        Swal.fire({
+            title: 'Assegna Frammenti',
+            html: `
+                <label style="display:block;text-align:left;margin:8px 0 4px 4px;color:#a0a0a0;font-size:13px;font-weight:600;">Vampiro</label>
+                <select id="fr-player" class="swal2-select">${playerOptions}</select>
+                <label style="display:block;text-align:left;margin:8px 0 4px 4px;color:#a0a0a0;font-size:13px;font-weight:600;">Evento</label>
+                <select id="fr-event" class="swal2-select">${eventOptions}</select>
+                <label style="display:block;text-align:left;margin:8px 0 4px 4px;color:#a0a0a0;font-size:13px;font-weight:600;">Stato</label>
+                <select id="fr-status" class="swal2-select">
+                    <option value="non_consegnato">Non consegnato</option>
+                    <option value="consegnato">Consegnato</option>
+                </select>
+                <textarea id="fr-note" class="swal2-textarea" placeholder="Note opzionali"></textarea>
+            `,
+            confirmButtonText: 'Assegna',
+            background: '#131a25',
+            preConfirm: () => {
+                const player = document.getElementById('fr-player').value;
+                const eventId = document.getElementById('fr-event').value;
+                const status = document.getElementById('fr-status').value;
+                const note = (document.getElementById('fr-note').value || '').trim();
+                if (!player) {
+                    Swal.showValidationMessage('Seleziona un vampiro');
+                    return false;
+                }
+                if (!eventId) {
+                    Swal.showValidationMessage('Seleziona un evento');
+                    return false;
+                }
+                const ev = eventsMap[eventId];
+                return {
+                    playerName: player,
+                    eventId,
+                    eventName: ev.name,
+                    quantity: ev.quantity,
+                    status,
+                    note
+                };
+            }
+        }).then((result) => {
+            if (!result.isConfirmed || !result.value) return;
+            const data = {
+                ...result.value,
+                createdAt: new Date().toISOString()
+            };
+            db.collection('frammenti').add(data).then(() => {
+                showToast('Frammenti assegnati');
+            });
+        });
+    });
+}
+
+function loadFrammenti() {
+    const container = document.getElementById('frammenti-list');
+    if (!container) return;
+
+    db.collection('frammenti').onSnapshot(snapshot => {
+        container.innerHTML = '';
+        if (snapshot.empty) {
+            container.innerHTML = '<p style="color:var(--text-dim);padding:10px;">Nessuna assegnazione. Usa “+ Assegna Frammenti”.</p>';
+            return;
+        }
+
+        const items = [];
+        snapshot.forEach(doc => items.push({ id: doc.id, ...doc.data() }));
+        items.sort((a, b) => (b.createdAt || '').localeCompare(a.createdAt || ''));
+
+        items.forEach(f => {
+            const statusLabel = f.status === 'consegnato' ? 'Consegnato' : 'Non consegnato';
+            const statusClass = f.status === 'consegnato' ? 'consegnato' : 'non_consegnato';
+            const toggleLabel = f.status === 'consegnato' ? 'Segna non consegnato' : 'Segna consegnato';
+            const nextStatus = f.status === 'consegnato' ? 'non_consegnato' : 'consegnato';
+
+            container.innerHTML += `
+                <div class="card">
+                    <h3>${f.playerName || '—'}</h3>
+                    <p><b>Evento:</b> ${f.eventName || '—'}</p>
+                    <p><b>Quantità:</b> ${formatNumber(f.quantity || 0)} frammenti</p>
+                    ${f.note ? `<p style="font-size:0.85rem;color:var(--text-dim);"><i>${f.note}</i></p>` : ''}
+                    <div class="status ${statusClass}">${statusLabel}</div>
+                    <div class="action-buttons">
+                        <button class="edit-btn" onclick="toggleFrammentoStatus('${f.id}', '${nextStatus}')">
+                            ${toggleLabel}
+                        </button>
+                        <button class="delete-btn" onclick="confirmDelete('frammenti', '${f.id}', loadFrammenti)">
+                            Elimina
+                        </button>
+                    </div>
+                </div>
+            `;
+        });
+    });
+}
+
+function toggleFrammentoStatus(id, nextStatus) {
+    db.collection('frammenti').doc(id).update({ status: nextStatus }).then(() => {
+        showToast(nextStatus === 'consegnato' ? 'Segnato come consegnato' : 'Segnato come non consegnato');
+    });
+}
+
+function openPlayerFrammentiModal(playerId, playerName) {
+    db.collection('frammenti').get().then(snapshot => {
+        const byEvent = {};
+        let totalAll = 0;
+        let totalConsegnati = 0;
+        let totalNon = 0;
+        const rows = [];
+
+        snapshot.forEach(doc => {
+            const f = doc.data();
+            if (f.playerName !== playerName) return;
+            const qty = Number(f.quantity) || 0;
+            const name = f.eventName || 'Sconosciuto';
+            if (!byEvent[name]) byEvent[name] = { qty: 0, consegnati: 0, non: 0 };
+            byEvent[name].qty += qty;
+            if (f.status === 'consegnato') {
+                byEvent[name].consegnati += qty;
+                totalConsegnati += qty;
+            } else {
+                byEvent[name].non += qty;
+                totalNon += qty;
+            }
+            totalAll += qty;
+            rows.push(f);
+        });
+
+        let tableRows = '';
+        const eventNames = Object.keys(byEvent);
+        if (eventNames.length === 0) {
+            tableRows = '<tr><td colspan="4" style="color:#a0a0a0;">Nessun frammento registrato</td></tr>';
+        } else {
+            eventNames.forEach(name => {
+                const e = byEvent[name];
+                tableRows += `
+                    <tr>
+                        <td>${name}</td>
+                        <td>${formatNumber(e.qty)}</td>
+                        <td style="color:#2ecc71;">${formatNumber(e.consegnati)}</td>
+                        <td style="color:#e74c3c;">${formatNumber(e.non)}</td>
+                    </tr>
+                `;
+            });
+        }
+
+        let detailList = '';
+        if (rows.length > 0) {
+            rows.sort((a, b) => (b.createdAt || '').localeCompare(a.createdAt || ''));
+            detailList = rows.map(f => {
+                const st = f.status === 'consegnato'
+                    ? '<span class="status consegnato" style="margin:0;">Consegnato</span>'
+                    : '<span class="status non_consegnato" style="margin:0;">Non consegnato</span>';
+                return `<li style="margin-bottom:8px;padding-bottom:6px;border-bottom:1px dashed rgba(255,255,255,0.06);">
+                    <b>${f.eventName}</b> — ${formatNumber(f.quantity)} fr. ${st}
+                    ${f.note ? `<br><small style="color:#a0a0a0;">${f.note}</small>` : ''}
+                </li>`;
+            }).join('');
+        } else {
+            detailList = '<li style="color:#a0a0a0;">Nessuna assegnazione</li>';
+        }
+
+        Swal.fire({
+            title: '🔮 Frammenti — ' + playerName,
+            width: 640,
+            background: '#131a25',
+            showConfirmButton: true,
+            confirmButtonText: 'Chiudi',
+            html: `
+                <div style="text-align:left;">
+                    <p style="margin-bottom:8px;color:#a0a0a0;font-size:13px;">Riepilogo per tipo di evento</p>
+                    <table class="frammenti-recap-table">
+                        <thead>
+                            <tr>
+                                <th>Evento</th>
+                                <th>Tot.</th>
+                                <th>Consegnati</th>
+                                <th>Non cons.</th>
+                            </tr>
+                        </thead>
+                        <tbody>${tableRows}</tbody>
+                    </table>
+                    <div class="frammenti-recap-total">
+                        Totale: ${formatNumber(totalAll)} frammenti
+                        &nbsp;·&nbsp; <span style="color:#2ecc71;">${formatNumber(totalConsegnati)} consegnati</span>
+                        &nbsp;·&nbsp; <span style="color:#e74c3c;">${formatNumber(totalNon)} non consegnati</span>
+                    </div>
+                    <p style="margin:18px 0 8px;color:#a0a0a0;font-size:13px;">Dettaglio assegnazioni</p>
+                    <ul class="frammenti-recap-scroll" style="list-style:none;padding:0;">${detailList}</ul>
+                </div>
+            `
+        });
+    });
+}
+
+
 auth.onAuthStateChanged(user => {
 
     if (user && user.email === 'gm.vampiri@horde.it') {
@@ -1410,6 +1717,8 @@ auth.onAuthStateChanged(user => {
         loadCommands();
         loadGlobalLinks();
         loadPlayers();
+        loadFrammentiEvents();
+        loadFrammenti();
 
     } else {
 
