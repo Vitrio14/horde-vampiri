@@ -388,7 +388,7 @@
             <div class="vamp-card">
                 <h2 style="text-align:center;">⚒️ Lavori della Dinastia</h2>
                 <p style="font-size:0.75rem; color:var(--text-dim); text-align:center; margin-bottom:22px; max-width:640px; margin-left:auto; margin-right:auto;">
-                    Lista membri con i loro lavori. Sotto, scegli un mestiere e <strong style="color:var(--gold-accent);">clicca un livello</strong> per vedere oggetto e ingredienti.
+                    Lista membri con i loro lavori. Sotto, scegli un mestiere e <strong style="color:var(--gold-accent);">clicca un livello</strong> per vedere oggetto, ingredienti e strumenti.
                 </p>
 
                 <h3 class="lavori-subhead">Membri e lavori</h3>
@@ -1443,7 +1443,7 @@
                             <h3 style="font-size:0.8rem; color:var(--gold-accent); margin-bottom:8px; text-transform:uppercase; letter-spacing:1px;">Sblocchi per livello</h3>
                             <p style="font-size:0.7rem; color:var(--text-dim); margin-bottom:12px; line-height:1.4;">
                                 Puoi aggiungere <strong style="color:var(--gold-accent);">più oggetti allo stesso livello</strong>
-                                (es. Lv1 → Panno e Lv1 → Disinfettante). Per ciascuno indica ingredienti.
+                                (es. Lv1 → Panno e Lv1 → Disinfettante). Per ciascuno indica ingredienti e strumenti necessari.
                                 Clicca <strong style="color:var(--gold-accent);">Modifica</strong> su una riga per correggerla, poi <strong>Salva Tipo</strong>.
                             </p>
                             <div style="display: grid; grid-template-columns: 90px 1fr; gap: 12px; margin-bottom: 10px;">
@@ -1459,6 +1459,10 @@
                             <div class="form-group" style="margin:0 0 12px 0;">
                                 <label>Ingredienti / cosa serve</label>
                                 <input type="text" id="adm-sblocco-ingredienti" placeholder="es. 1 panno sporco + 1 disinfettante">
+                            </div>
+                            <div class="form-group" style="margin:0 0 12px 0;">
+                                <label>Strumenti necessari</label>
+                                <input type="text" id="adm-sblocco-strumenti" placeholder="es. Martello, Fornace, Tavolo da lavoro...">
                             </div>
                             <div style="display:flex; gap:10px; flex-wrap:wrap; margin-bottom:12px;">
                                 <button type="button" id="adm-sblocco-btn" onclick="window.aggiungiSbloccoTemp()" style="width:auto; padding:12px 18px;">+ Aggiungi livello</button>

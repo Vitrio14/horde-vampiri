@@ -32,7 +32,7 @@ let documenti = [];
 let itemImagesLib = []; // { id, fileName, dataUrl, size, createdAt }
 let tipiMateriale = []; // { id, nome, prezzoUnitario, percPropria, percDinastia, percEkaton, sezioni:[], attivo }
 let alberoNodi = []; // { id, nome, cognome, clan, anno, parentId, foto, note, ordine, createdAt }
-let tipiLavoro = []; // { id, nome, sblocchi: [{ livello, item }], createdAt }
+let tipiLavoro = []; // { id, nome, sblocchi: [{ livello, item, ingredienti, strumenti }], createdAt }
 let lavoriMembri = []; // { id, vampiro, lavoroId, lavoroNome, livello } — più record per stesso vampiro
 
 let squadraDungeonTemp = [];
@@ -2386,7 +2386,7 @@ window.updateMatTot = () => window.updateMatPreview();
 // --- GESTIONE LAVORI (tipi, sblocchi+ingredienti, multi-job) ---
 // =========================================================
 
-/** Buffer sblocchi in form admin: { livello, item, ingredienti } */
+/** Buffer sblocchi in form admin: { livello, item, ingredienti, strumenti } */
 let sblocchiTemp = [];
 let sbloccoEditIdx = -1;
 
@@ -2441,6 +2441,7 @@ function renderSblocchiTempLista() {
                 <span class="adm-sblocco-lv">Lv ${s.livello}</span>
                 <span class="adm-sblocco-item">${escHtml(s.item) || '—'}</span>
                 ${s.ingredienti ? `<span class="adm-sblocco-ing">🧪 ${escHtml(s.ingredienti)}</span>` : ''}
+                ${s.strumenti ? `<span class="adm-sblocco-ing">🔧 ${escHtml(s.strumenti)}</span>` : ''}
             </div>
             <div class="adm-sblocco-actions">
                 <button type="button" class="btn-delete" style="border-color:var(--gold-accent);color:var(--gold-accent);" onclick="window.caricaSbloccoTempPerEdit(${realIdx})">Modifica</button>
@@ -2457,9 +2458,11 @@ window.caricaSbloccoTempPerEdit = function(idx) {
     const livEl = document.getElementById('adm-sblocco-livello');
     const itemEl = document.getElementById('adm-sblocco-item');
     const ingEl = document.getElementById('adm-sblocco-ingredienti');
+    const strEl = document.getElementById('adm-sblocco-strumenti');
     if (livEl) livEl.value = String(s.livello ?? 1);
     if (itemEl) { itemEl.value = s.item || ''; itemEl.focus(); }
     if (ingEl) ingEl.value = s.ingredienti || '';
+    if (strEl) strEl.value = s.strumenti || '';
     syncSbloccoFormBtn();
     renderSblocchiTempLista();
     vampireToast(`Modifica Lv ${s.livello}: aggiorna e conferma.`, 'info');
@@ -2469,8 +2472,10 @@ window.annullaEditSbloccoTemp = function() {
     sbloccoEditIdx = -1;
     const itemEl = document.getElementById('adm-sblocco-item');
     const ingEl = document.getElementById('adm-sblocco-ingredienti');
+    const strEl = document.getElementById('adm-sblocco-strumenti');
     if (itemEl) itemEl.value = '';
     if (ingEl) ingEl.value = '';
+    if (strEl) strEl.value = '';
     syncSbloccoFormBtn();
     renderSblocchiTempLista();
 };
@@ -2479,13 +2484,15 @@ window.aggiungiSbloccoTemp = function() {
     const livEl = document.getElementById('adm-sblocco-livello');
     const itemEl = document.getElementById('adm-sblocco-item');
     const ingEl = document.getElementById('adm-sblocco-ingredienti');
+    const strEl = document.getElementById('adm-sblocco-strumenti');
     const livello = parseInt(livEl?.value, 10);
     const item = (itemEl?.value || '').trim();
     const ingredienti = (ingEl?.value || '').trim();
+    const strumenti = (strEl?.value || '').trim();
     if (!livello || livello < 1) return vampireToast('Livello non valido (min 1).', 'error');
     if (!item) return vampireToast('Inserisci cosa si sblocca.', 'error');
 
-    const payload = { livello, item, ingredienti };
+    const payload = { livello, item, ingredienti, strumenti };
 
     if (sbloccoEditIdx >= 0 && sbloccoEditIdx < sblocchiTemp.length) {
         // Aggiorna solo la riga in modifica (stesso o altro livello ok: più item per livello ammessi)
@@ -2505,6 +2512,7 @@ window.aggiungiSbloccoTemp = function() {
     }
     if (itemEl) itemEl.value = '';
     if (ingEl) ingEl.value = '';
+    if (strEl) strEl.value = '';
     // Resta sullo stesso livello per aggiungere un altro item facilmente
     if (livEl) livEl.value = String(livello);
     syncSbloccoFormBtn();
@@ -2530,9 +2538,11 @@ window.resetFormTipoLavoro = function() {
     const livEl = document.getElementById('adm-sblocco-livello');
     const itemEl = document.getElementById('adm-sblocco-item');
     const ingEl = document.getElementById('adm-sblocco-ingredienti');
+    const strEl = document.getElementById('adm-sblocco-strumenti');
     if (livEl) livEl.value = '1';
     if (itemEl) itemEl.value = '';
     if (ingEl) ingEl.value = '';
+    if (strEl) strEl.value = '';
     syncSbloccoFormBtn();
     renderSblocchiTempLista();
 };
@@ -2549,7 +2559,8 @@ window.salvaTipoLavoro = async function() {
             .map(s => ({
                 livello: Number(s.livello) || 1,
                 item: String(s.item || ''),
-                ingredienti: String(s.ingredienti || '')
+                ingredienti: String(s.ingredienti || ''),
+                strumenti: String(s.strumenti || '')
             }))
             .sort((a, b) => a.livello - b.livello),
         updatedAt: Date.now()
@@ -2591,7 +2602,8 @@ window.caricaTipoLavoroPerEdit = function(id) {
         ? t.sblocchi.map(s => ({
             livello: Number(s.livello) || 1,
             item: String(s.item || ''),
-            ingredienti: String(s.ingredienti || '')
+            ingredienti: String(s.ingredienti || ''),
+            strumenti: String(s.strumenti || '')
         }))
         : [];
     sbloccoEditIdx = -1;
@@ -2653,8 +2665,11 @@ window.renderAdminTipiLavoro = function() {
         const sbl = Array.isArray(t.sblocchi) ? [...t.sblocchi].sort((a, b) => a.livello - b.livello) : [];
         const sblHtml = sbl.length
             ? sbl.map(s => {
-                const ing = s.ingredienti ? ` <span style="opacity:0.65;font-size:0.6rem;">(${escHtml(s.ingredienti)})</span>` : '';
-                return `<span style="display:inline-block;margin:2px 4px 2px 0;padding:2px 7px;background:rgba(197,160,89,0.1);border:1px solid rgba(197,160,89,0.25);border-radius:4px;font-size:0.62rem;"><b>Lv${s.livello}</b> ${escHtml(s.item) || '—'}${ing}</span>`;
+                const extra = [];
+                if (s.ingredienti) extra.push('🧪 ' + escHtml(s.ingredienti));
+                if (s.strumenti) extra.push('🔧 ' + escHtml(s.strumenti));
+                const extraHtml = extra.length ? ` <span style="opacity:0.65;font-size:0.6rem;">(${extra.join(' · ')})</span>` : '';
+                return `<span style="display:inline-block;margin:2px 4px 2px 0;padding:2px 7px;background:rgba(197,160,89,0.1);border:1px solid rgba(197,160,89,0.25);border-radius:4px;font-size:0.62rem;"><b>Lv${s.livello}</b> ${escHtml(s.item) || '—'}${extraHtml}</span>`;
             }).join('')
             : '<span style="opacity:0.4;">Nessuno</span>';
         return `<tr>
@@ -2828,13 +2843,19 @@ window.mostraSblocchiLavoro = function(membroId) {
             const ing = s.ingredienti
                 ? escHtml(s.ingredienti)
                 : '<span style="opacity:0.5;font-style:italic;">Non indicato</span>';
+            const str = s.strumenti
+                ? escHtml(s.strumenti)
+                : '<span style="opacity:0.5;font-style:italic;">Non indicato</span>';
             return (
                 '<div class="sbx">' +
                   '<div class="sbx-label">Livello ' + (Number(s.livello) || 1) + '</div>' +
                   '<div class="sbx-value">' + item + '</div>' +
                   '<div class="sbx-sep"></div>' +
-                  '<div class="sbx-label">Serve</div>' +
+                  '<div class="sbx-label">Ingredienti / cosa serve</div>' +
                   '<div class="sbx-value sbx-ing">' + ing + '</div>' +
+                  '<div class="sbx-sep"></div>' +
+                  '<div class="sbx-label">Strumenti necessari</div>' +
+                  '<div class="sbx-value sbx-ing">' + str + '</div>' +
                 '</div>'
             );
         }).join('');
@@ -2969,7 +2990,7 @@ window.renderSezioneLavori = function() {
                     <h3>${escHtml(t.nome) || '—'}</h3>
                     ${isMine ? `<span class="lavoro-tipo-mine-tag">Tuo · Lv ${myLv}</span>` : ''}
                 </div>
-                <p class="lavoro-hint">Clicca un livello per vedere oggetto e ingredienti</p>
+                <p class="lavoro-hint">Clicca un livello per vedere oggetto, ingredienti e strumenti</p>
                 <div class="lavoro-lv-row">${levelsHtml}</div>
             </div>`;
     }).join('');
@@ -2999,13 +3020,19 @@ window.mostraDettaglioLivello = function(lavoroId, livello) {
         const ing = s.ingredienti
             ? escHtml(s.ingredienti)
             : '<span style="opacity:0.5;font-style:italic;">Non indicato</span>';
+        const str = s.strumenti
+            ? escHtml(s.strumenti)
+            : '<span style="opacity:0.5;font-style:italic;">Non indicato</span>';
         return (
             '<div class="sbx">' +
               '<div class="sbx-label">Cosa ottiene</div>' +
               '<div class="sbx-value">' + item + '</div>' +
               '<div class="sbx-sep"></div>' +
-              '<div class="sbx-label">Serve</div>' +
+              '<div class="sbx-label">Ingredienti / cosa serve</div>' +
               '<div class="sbx-value sbx-ing">' + ing + '</div>' +
+              '<div class="sbx-sep"></div>' +
+              '<div class="sbx-label">Strumenti necessari</div>' +
+              '<div class="sbx-value sbx-ing">' + str + '</div>' +
             '</div>'
         );
     }).join('');
