@@ -1824,7 +1824,39 @@ function loadFrammentiEvents() {
     });
 }
 
-/** Render eventi filtrati per settimana (corrente / passata / tutte) */
+/** Conta assegnazioni consegnate / totali per un evento (da _frammentiAllItems) */
+function getEventDeliveryStats(eventId, eventName) {
+    let total = 0;
+    let cons = 0;
+    (_frammentiAllItems || []).forEach(f => {
+        const match = (f.eventId && f.eventId === eventId) ||
+                      (!f.eventId && f.eventName === eventName);
+        if (!match) return;
+        total += 1;
+        if (f.status === 'consegnato') cons += 1;
+    });
+    return { total, cons };
+}
+
+/**
+ * Stato evento: Concluso solo se status === 'concluso', altrimenti Aperto.
+ * Cerca per id e poi per nome (case-insensitive). Mai restituisce null.
+ */
+function resolveEventStatusLabel(eventId, eventName) {
+    const events = _frammentiAllEvents || [];
+    let ev = null;
+    if (eventId) {
+        ev = events.find(e => e.id === eventId);
+    }
+    if (!ev && eventName) {
+        const target = String(eventName).trim().toLowerCase();
+        ev = events.find(e => String(e.name || '').trim().toLowerCase() === target);
+    }
+    if (!ev) return 'Aperto';
+    return ev.status === 'concluso' ? 'Concluso' : 'Aperto';
+}
+
+/** Render card evento (filtri settimana applicati a monte) */
 function buildEventCardHTML(e) {
     const wk = weekKeyFromEvent(e);
     const weekBadge = `<span class="week-badge">${formatWeekLabel(wk)}</span>`;
@@ -1846,12 +1878,24 @@ function buildEventCardHTML(e) {
         ? 'border-color:#c5a059;color:#c5a059;'
         : 'border-color:#2ecc71;color:#2ecc71;';
 
+    const stats = getEventDeliveryStats(e.id, e.name);
+    let deliveryBadge = '';
+    if (stats.total > 0) {
+        const allDone = stats.cons === stats.total;
+        const color = allDone ? '#2ecc71' : (stats.cons === 0 ? '#e74c3c' : '#f59e0b');
+        const bg = allDone ? 'rgba(46,204,113,0.15)' : (stats.cons === 0 ? 'rgba(231,76,60,0.12)' : 'rgba(245,158,11,0.12)');
+        const border = allDone ? 'rgba(46,204,113,0.4)' : (stats.cons === 0 ? 'rgba(231,76,60,0.35)' : 'rgba(245,158,11,0.4)');
+        deliveryBadge = `<span class="week-badge event-delivery-badge" style="background:${bg};border-color:${border};color:${color};font-weight:700;" title="Consegne: ${stats.cons} su ${stats.total} assegnazioni">${stats.cons}/${stats.total}</span>`;
+    } else {
+        deliveryBadge = `<span class="week-badge event-delivery-badge" style="background:rgba(107,114,128,0.15);border-color:rgba(107,114,128,0.35);color:#9ca3af;" title="Nessuna assegnazione">0/0</span>`;
+    }
+
     return `
         <div class="card event-card ${isConcluso ? 'event-concluso' : ''} ${isRepeatable ? 'event-repeatable' : ''}">
             <h3>${e.name}</h3>
             <p><b>Frammenti per assegnazione:</b> ${formatNumber(e.quantity)}</p>
             ${isRepeatable ? '<p style="font-size:0.8rem;color:#a78bfa;margin-bottom:6px;">Si può assegnare più volte · i punti si sommano</p>' : ''}
-            <div class="event-badges">${repeatBadge} ${weekBadge} ${statusBadge} ${archiveTag}</div>
+            <div class="event-badges">${deliveryBadge} ${repeatBadge} ${weekBadge} ${statusBadge} ${archiveTag}</div>
             <div class="action-buttons event-actions">
                 <button class="edit-btn" onclick="openEventFrammentiView('${e.id}', '${safeName}')" title="Partecipanti e consegne">
                     <i class="fa-solid fa-eye"></i> Partecipanti
@@ -1869,44 +1913,114 @@ function buildEventCardHTML(e) {
 
 function renderFrammentiEventsList() {
     const container = document.getElementById('frammenti-events-list');
+    const conclusiContainer = document.getElementById('frammenti-events-conclusi-list');
     const repContainer = document.getElementById('frammenti-events-repeatable-list');
+    const repConclusiContainer = document.getElementById('frammenti-events-repeatable-conclusi-list');
     if (!container) return;
 
     const items = _frammentiAllEvents || [];
     const normal = items.filter(e => !e.repeatable);
     const repeatable = items.filter(e => !!e.repeatable);
 
-    let filteredNormal = normal.slice();
-    if (frammentiWeekFilter === 'current') {
-        const ck = getWeekBounds().key;
-        filteredNormal = normal.filter(e => weekKeyFromEvent(e) === ck);
-    } else if (frammentiWeekFilter !== 'all') {
-        filteredNormal = normal.filter(e => weekKeyFromEvent(e) === frammentiWeekFilter);
-    }
-    filteredNormal.sort((a, b) => (b.createdAt || '').localeCompare(a.createdAt || ''));
-    repeatable.sort((a, b) => (b.createdAt || '').localeCompare(a.createdAt || ''));
-
-    container.innerHTML = '';
-    if (filteredNormal.length === 0) {
-        const msg = frammentiWeekFilter === 'all'
-            ? 'Nessun evento settimanale. Usa “+ Nuovo Evento”.'
-            : 'Nessun evento settimanale in questa settimana (archiviato o non ancora creato).';
-        container.innerHTML = `<p style="color:var(--text-dim);padding:10px;">${msg}</p>`;
-    } else {
-        filteredNormal.forEach(e => {
-            container.innerHTML += buildEventCardHTML(e);
-        });
-    }
-
-    if (repContainer) {
-        repContainer.innerHTML = '';
-        if (repeatable.length === 0) {
-            repContainer.innerHTML = '<p style="color:var(--text-dim);padding:10px;">Nessun evento ripetibile. In creazione attiva il flag “Evento ripetibile”.</p>';
-        } else {
-            repeatable.forEach(e => {
-                repContainer.innerHTML += buildEventCardHTML(e);
-            });
+    const applyWeekFilter = (list) => {
+        if (frammentiWeekFilter === 'current') {
+            const ck = getWeekBounds().key;
+            return list.filter(e => weekKeyFromEvent(e) === ck);
         }
+        if (frammentiWeekFilter !== 'all') {
+            return list.filter(e => weekKeyFromEvent(e) === frammentiWeekFilter);
+        }
+        return list.slice();
+    };
+
+    let filteredNormal = applyWeekFilter(normal);
+    filteredNormal.sort((a, b) => (b.createdAt || '').localeCompare(a.createdAt || ''));
+
+    const activeNormal = filteredNormal.filter(e => e.status !== 'concluso');
+    const closedNormal = filteredNormal.filter(e => e.status === 'concluso');
+
+    const sortedRep = repeatable.slice().sort((a, b) => (b.createdAt || '').localeCompare(a.createdAt || ''));
+    const activeRep = sortedRep.filter(e => e.status !== 'concluso');
+    const closedRep = sortedRep.filter(e => e.status === 'concluso');
+
+    const emptyMsg = (kind) => {
+        if (kind === 'active-week') {
+            return frammentiWeekFilter === 'all'
+                ? 'Nessun evento settimanale attivo. Usa “+ Nuovo Evento” oppure concludi quelli aperti.'
+                : 'Nessun evento settimanale attivo in questa settimana.';
+        }
+        if (kind === 'closed-week') {
+            return frammentiWeekFilter === 'all'
+                ? 'Nessun evento settimanale concluso.'
+                : 'Nessun evento settimanale concluso in questa settimana.';
+        }
+        if (kind === 'active-rep') return 'Nessun evento ripetibile attivo. In creazione attiva il flag “Evento ripetibile”.';
+        return 'Nessun evento ripetibile concluso.';
+    };
+
+    const fill = (el, list, emptyKind) => {
+        if (!el) return;
+        el.innerHTML = '';
+        if (list.length === 0) {
+            el.innerHTML = `<p style="color:var(--text-dim);padding:10px;">${emptyMsg(emptyKind)}</p>`;
+        } else {
+            list.forEach(e => { el.innerHTML += buildEventCardHTML(e); });
+        }
+    };
+
+    fill(container, activeNormal, 'active-week');
+    fill(conclusiContainer, closedNormal, 'closed-week');
+    fill(repContainer, activeRep, 'active-rep');
+    fill(repConclusiContainer, closedRep, 'closed-rep');
+
+    // Mini-riepiloghi sulle sezioni
+    const sectionDelivery = (list) => {
+        let tot = 0, cons = 0;
+        list.forEach(e => {
+            const s = getEventDeliveryStats(e.id, e.name);
+            tot += s.total;
+            cons += s.cons;
+        });
+        return { tot, cons };
+    };
+
+    const weekHintBase = (() => {
+        if (frammentiWeekFilter === 'all') return '(tutte)';
+        if (frammentiWeekFilter === 'current') {
+            const w = getWeekBounds();
+            return `(sett. ${formatWeekLabel(w)})`;
+        }
+        return `(sett. ${formatWeekLabel(frammentiWeekFilter)})`;
+    })();
+
+    const setHint = (sel, count, delivery, prefix) => {
+        const el = document.querySelector(sel);
+        if (!el) return;
+        const delPart = delivery.tot > 0 ? ` · consegne ${delivery.cons}/${delivery.tot}` : '';
+        const countPart = count === 1 ? '1 evento' : `${count} eventi`;
+        const p = prefix || '';
+        el.textContent = `${p}${p ? ' · ' : ''}${countPart}${delPart}`;
+    };
+
+    const dActive = sectionDelivery(activeNormal);
+    const dClosed = sectionDelivery(closedNormal);
+    const dRepA = sectionDelivery(activeRep);
+    const dRepC = sectionDelivery(closedRep);
+
+    setHint('#frammenti-events-filter-hint', activeNormal.length, dActive, weekHintBase);
+    setHint('#frammenti-events-conclusi-filter-hint', closedNormal.length, dClosed, weekHintBase);
+
+    const repActiveHint = document.getElementById('frammenti-rep-active-hint');
+    if (repActiveHint) {
+        const del = dRepA.tot > 0 ? ` · consegne ${dRepA.cons}/${dRepA.tot}` : '';
+        const c = activeRep.length === 1 ? '1 evento' : `${activeRep.length} eventi`;
+        repActiveHint.textContent = `(restano attivi ogni settimana) · ${c}${del}`;
+    }
+    const repClosedHint = document.getElementById('frammenti-rep-closed-hint');
+    if (repClosedHint) {
+        const del = dRepC.tot > 0 ? ` · consegne ${dRepC.cons}/${dRepC.tot}` : '';
+        const c = closedRep.length === 1 ? '1 evento' : `${closedRep.length} eventi`;
+        repClosedHint.textContent = `${c}${del}`;
     }
 }
 
@@ -2168,7 +2282,6 @@ function onFrammentiWeekChange() {
 function updateFrammentiWeekLabel() {
     const labelEl = document.getElementById('frammenti-week-label');
     const hintEl = document.getElementById('frammenti-filter-hint');
-    const eventsHintEl = document.getElementById('frammenti-events-filter-hint');
     if (!labelEl) return;
 
     let hintText = '';
@@ -2184,7 +2297,7 @@ function updateFrammentiWeekLabel() {
         hintText = `(sett. ${formatWeekLabel(frammentiWeekFilter)})`;
     }
     if (hintEl) hintEl.textContent = hintText;
-    if (eventsHintEl) eventsHintEl.textContent = hintText;
+    // I mini-riepiloghi (eventi + consegne) li scrive renderFrammentiEventsList
 }
 
 /** Unisce settimane da assegnazioni + eventi per il selettore */
@@ -2279,6 +2392,9 @@ function loadFrammenti() {
         _frammentiAllItems = items;
         refreshFrammentiWeekSelect();
         renderFrammentiList(items);
+        if (typeof renderFrammentiEventsList === 'function') {
+            renderFrammentiEventsList();
+        }
     });
 }
 
@@ -2305,9 +2421,10 @@ function buildRecapTablesFromItems(items) {
         byPlayer[player].qty += qty;
         if (isCons) byPlayer[player].cons += qty; else byPlayer[player].non += qty;
 
-        if (!byEvent[event]) byEvent[event] = { qty: 0, cons: 0, non: 0 };
+        if (!byEvent[event]) byEvent[event] = { qty: 0, cons: 0, non: 0, eventId: f.eventId || null };
         byEvent[event].qty += qty;
         if (isCons) byEvent[event].cons += qty; else byEvent[event].non += qty;
+        if (!byEvent[event].eventId && f.eventId) byEvent[event].eventId = f.eventId;
 
         if (!byWeek[wk]) byWeek[wk] = { qty: 0, cons: 0, non: 0 };
         byWeek[wk].qty += qty;
@@ -2329,8 +2446,12 @@ function buildRecapTablesFromItems(items) {
     let eventRows = '';
     Object.keys(byEvent).sort((a, b) => byEvent[b].qty - byEvent[a].qty).forEach(name => {
         const e = byEvent[name];
+        const evStatus = resolveEventStatusLabel(e.eventId || null, name);
+        const statusCell = evStatus === 'Concluso'
+            ? '<span style="color:#2ecc71;font-weight:600;">Concluso</span>'
+            : '<span style="color:#c5a059;font-weight:600;">Aperto</span>';
         eventRows += `<tr>
-            <td>${name}</td>
+            <td>${name}<br><small>${statusCell}</small></td>
             <td>${formatNumber(e.qty)}</td>
             <td style="color:#2ecc71;">${formatNumber(e.cons)}</td>
             <td style="color:#e74c3c;">${formatNumber(e.non)}</td>
@@ -2518,9 +2639,14 @@ function buildPlayerFrammentiContent(items, playerId, playerName) {
     } else {
         eventNames.forEach(name => {
             const e = byEvent[name];
+            const sample = items.find(x => (x.eventName || 'Sconosciuto') === name);
+            const evStatus = resolveEventStatusLabel(sample && sample.eventId, name);
+            const statusCell = evStatus === 'Concluso'
+                ? '<span style="color:#2ecc71;font-weight:600;">Concluso</span>'
+                : '<span style="color:#c5a059;font-weight:600;">Aperto</span>';
             tableRows += `
                 <tr>
-                    <td>${name}</td>
+                    <td>${name}<br><small>${statusCell}</small></td>
                     <td>${formatNumber(e.qty)}</td>
                     <td style="color:#2ecc71;">${formatNumber(e.consegnati)}</td>
                     <td style="color:#e74c3c;">${formatNumber(e.non)}</td>
@@ -2558,9 +2684,13 @@ function buildPlayerFrammentiContent(items, playerId, playerName) {
             const repTag = f.repeatable
                 ? ' <span style="color:#a78bfa;font-size:0.7rem;">(ripetibile)</span>'
                 : '';
+            const evStatus = resolveEventStatusLabel(f.eventId, f.eventName);
+            const evStatusHtml = evStatus === 'Concluso'
+                ? ' <span style="color:#2ecc71;font-size:0.7rem;font-weight:600;">· Concluso</span>'
+                : ' <span style="color:#c5a059;font-size:0.7rem;font-weight:600;">· Aperto</span>';
             return `<li style="margin-bottom:8px;padding-bottom:6px;border-bottom:1px dashed rgba(255,255,255,0.06);display:flex;justify-content:space-between;align-items:flex-start;gap:10px;">
                 <div>
-                    <b>${f.eventName || '—'}</b>${repTag} — ${formatNumber(f.quantity)} fr. ${st}
+                    <b>${f.eventName || '—'}</b>${repTag}${evStatusHtml} — ${formatNumber(f.quantity)} fr. ${st}
                     <br><small style="color:#a78bfa;">Sett. ${formatWeekLabel(f.weekKey)}</small>
                     ${f.note ? `<br><small style="color:#a0a0a0;">${f.note}</small>` : ''}
                 </div>

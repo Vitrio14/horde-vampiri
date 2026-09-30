@@ -316,12 +316,20 @@
 
             <div class="frammenti-layout">
                 <div class="frammenti-events-box">
-                    <h2 class="frammenti-subtitle"><i class="fa-solid fa-calendar-days"></i> Eventi settimanali <span id="frammenti-events-filter-hint" style="font-size:0.75rem;color:var(--text-dim);font-weight:400;"></span></h2>
+                    <h2 class="frammenti-subtitle"><i class="fa-solid fa-calendar-days"></i> Eventi settimanali attivi <span id="frammenti-events-filter-hint" style="font-size:0.75rem;color:var(--text-dim);font-weight:400;"></span></h2>
                     <div id="frammenti-events-list" class="grid grid-events"></div>
                 </div>
+                <div class="frammenti-events-box">
+                    <h2 class="frammenti-subtitle"><i class="fa-solid fa-flag-checkered"></i> Eventi settimanali conclusi <span id="frammenti-events-conclusi-filter-hint" style="font-size:0.75rem;color:var(--text-dim);font-weight:400;"></span></h2>
+                    <div id="frammenti-events-conclusi-list" class="grid grid-events"></div>
+                </div>
                 <div class="frammenti-events-box frammenti-repeatable-box">
-                    <h2 class="frammenti-subtitle"><i class="fa-solid fa-rotate"></i> Eventi ripetibili <span style="font-size:0.75rem;color:var(--text-dim);font-weight:400;">(restano attivi ogni settimana)</span></h2>
+                    <h2 class="frammenti-subtitle"><i class="fa-solid fa-rotate"></i> Eventi ripetibili attivi <span id="frammenti-rep-active-hint" style="font-size:0.75rem;color:var(--text-dim);font-weight:400;">(restano attivi ogni settimana)</span></h2>
                     <div id="frammenti-events-repeatable-list" class="grid grid-events"></div>
+                </div>
+                <div class="frammenti-events-box frammenti-repeatable-box">
+                    <h2 class="frammenti-subtitle"><i class="fa-solid fa-flag-checkered"></i> Eventi ripetibili conclusi <span id="frammenti-rep-closed-hint" style="font-size:0.75rem;color:var(--text-dim);font-weight:400;"></span></h2>
+                    <div id="frammenti-events-repeatable-conclusi-list" class="grid grid-events"></div>
                 </div>
                 <!-- Assegnazioni nascoste in UI: si gestiscono dall'occhio sull'evento; i log restano sui player -->
                 <div id="frammenti-list" class="hidden" aria-hidden="true"></div>
