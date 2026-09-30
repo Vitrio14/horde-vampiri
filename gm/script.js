@@ -56,6 +56,7 @@ function login() {
             loadPlayers();
             loadFrammentiEvents();
             loadFrammenti();
+            updateWeekRangeHints();
         })
 
         .catch((error) => {
@@ -1411,29 +1412,82 @@ function openPlayerModal(playerId) {
 
 /* ========== FRAMMENTI ========== */
 
-/** Settimana = Lunedì 00:00 → Domenica 23:59:59 (locale) */
+/** ========== CONFIG SETTIMANA (inizio personalizzabile) ==========
+ * startDay: 0=Dom, 1=Lun, 2=Mar, 3=Mer, 4=Gio, 5=Ven, 6=Sab
+ * Default: 1 (Lunedì → Domenica). Es. 5 = Venerdì → Giovedì successivo.
+ */
+const WEEK_DAY_NAMES = ['Dom', 'Lun', 'Mar', 'Mer', 'Gio', 'Ven', 'Sab'];
+const WEEK_DAY_NAMES_FULL = ['Domenica', 'Lunedì', 'Martedì', 'Mercoledì', 'Giovedì', 'Venerdì', 'Sabato'];
+
+function loadWeekConfig() {
+    try {
+        const raw = localStorage.getItem('hordeWeekConfig');
+        if (raw) {
+            const parsed = JSON.parse(raw);
+            const sd = Number(parsed.startDay);
+            if (!isNaN(sd) && sd >= 0 && sd <= 6) return { startDay: sd };
+        }
+    } catch (e) {}
+    return { startDay: 1 }; // Lunedì di default
+}
+
+function saveWeekConfig(cfg) {
+    localStorage.setItem('hordeWeekConfig', JSON.stringify(cfg));
+}
+
+let weekConfig = loadWeekConfig();
+
+function getWeekStartDay() {
+    const sd = Number(weekConfig && weekConfig.startDay);
+    return (!isNaN(sd) && sd >= 0 && sd <= 6) ? sd : 1;
+}
+
+function getWeekRangeHintText() {
+    const start = getWeekStartDay();
+    const end = (start + 6) % 7;
+    return `(${WEEK_DAY_NAMES[start]}–${WEEK_DAY_NAMES[end]})`;
+}
+
+function updateWeekRangeHints() {
+    const hint = document.getElementById('week-range-hint');
+    if (hint) hint.textContent = getWeekRangeHintText();
+}
+
+/** Settimana = giorno di inizio 00:00 → giorno di inizio+6 23:59:59 (locale) */
 function getWeekBounds(dateInput) {
     const d = dateInput ? new Date(dateInput) : new Date();
     if (isNaN(d.getTime())) return getWeekBounds(new Date());
-    const day = d.getDay(); // 0=Dom, 1=Lun, ...
-    const diffToMon = day === 0 ? -6 : 1 - day;
-    const monday = new Date(d);
-    monday.setDate(d.getDate() + diffToMon);
-    monday.setHours(0, 0, 0, 0);
-    const sunday = new Date(monday);
-    sunday.setDate(monday.getDate() + 6);
-    sunday.setHours(23, 59, 59, 999);
-    const y = monday.getFullYear();
-    const m = String(monday.getMonth() + 1).padStart(2, '0');
-    const dd = String(monday.getDate()).padStart(2, '0');
-    const key = `${y}-${m}-${dd}`; // lunedì della settimana
-    return { start: monday, end: sunday, key };
+    const startDay = getWeekStartDay();
+    const day = d.getDay(); // 0=Dom … 6=Sab
+    // distanza all'indietro fino al giorno di inizio configurato
+    const diff = (day - startDay + 7) % 7;
+    const start = new Date(d);
+    start.setDate(d.getDate() - diff);
+    start.setHours(0, 0, 0, 0);
+    const end = new Date(start);
+    end.setDate(start.getDate() + 6);
+    end.setHours(23, 59, 59, 999);
+    const y = start.getFullYear();
+    const m = String(start.getMonth() + 1).padStart(2, '0');
+    const dd = String(start.getDate()).padStart(2, '0');
+    const key = `${y}-${m}-${dd}`; // data del giorno di inizio settimana
+    return { start, end, key };
 }
 
 function formatWeekLabel(boundsOrKey) {
     let b;
     if (typeof boundsOrKey === 'string') {
-        b = getWeekBounds(boundsOrKey + 'T12:00:00');
+        // Interpreta la chiave come giorno di inizio della settimana
+        const parts = boundsOrKey.split('-');
+        if (parts.length === 3) {
+            const start = new Date(Number(parts[0]), Number(parts[1]) - 1, Number(parts[2]), 0, 0, 0, 0);
+            const end = new Date(start);
+            end.setDate(start.getDate() + 6);
+            end.setHours(23, 59, 59, 999);
+            b = { start, end, key: boundsOrKey };
+        } else {
+            b = getWeekBounds(boundsOrKey + 'T12:00:00');
+        }
     } else {
         b = boundsOrKey;
     }
@@ -1442,6 +1496,63 @@ function formatWeekLabel(boundsOrKey) {
         return `${String(g.getDate()).padStart(2,'0')}/${String(g.getMonth()+1).padStart(2,'0')}/${g.getFullYear()}`;
     };
     return `${fmt(b.start)} → ${fmt(b.end)}`;
+}
+
+/** Modal: scegli da quale giorno inizia la settimana (es. Venerdì → Giovedì) */
+function configureWeekStart() {
+    const current = getWeekStartDay();
+    const options = WEEK_DAY_NAMES_FULL.map((name, i) => {
+        const endName = WEEK_DAY_NAMES_FULL[(i + 6) % 7];
+        const sel = i === current ? 'selected' : '';
+        return `<option value="${i}" ${sel}>${name} → ${endName}</option>`;
+    }).join('');
+    const preview = formatWeekLabel(getWeekBounds());
+
+    Swal.fire({
+        title: '⚙️ Configura settimana',
+        html: `
+            <p style="text-align:left;font-size:13px;color:#a0a0a0;margin:0 0 12px 4px;line-height:1.5;">
+                Scegli il <b style="color:#a78bfa;">giorno di inizio</b> della settimana RP.
+                La settimana dura sempre 7 giorni (fino al giorno precedente della settimana successiva).
+            </p>
+            <p style="text-align:left;font-size:12px;color:#9ca3af;margin:0 0 10px 4px;">
+                Anteprima settimana corrente: <b style="color:#c5a059;">${preview}</b>
+            </p>
+            <label style="display:block;text-align:left;margin:8px 0 4px 4px;color:#a0a0a0;font-size:13px;font-weight:600;">
+                Inizio settimana
+            </label>
+            <select id="week-start-day" class="swal2-select">${options}</select>
+            <p style="text-align:left;font-size:11px;color:#6b7280;margin:10px 4px 0;line-height:1.4;">
+                Esempio: Venerdì → Giovedì = settimana da ven. 25 a gio. 1 (poi di nuovo da ven. 2).
+                I filtri e le etichette usano questa impostazione. I dati già salvati restano con la loro weekKey originale.
+            </p>
+        `,
+        confirmButtonText: 'Salva',
+        showCancelButton: true,
+        cancelButtonText: 'Annulla',
+        background: '#131a25',
+        preConfirm: () => {
+            const v = parseInt(document.getElementById('week-start-day').value, 10);
+            if (isNaN(v) || v < 0 || v > 6) {
+                Swal.showValidationMessage('Seleziona un giorno valido');
+                return false;
+            }
+            return { startDay: v };
+        }
+    }).then((result) => {
+        if (!result.isConfirmed || !result.value) return;
+        weekConfig = { startDay: result.value.startDay };
+        saveWeekConfig(weekConfig);
+        updateWeekRangeHints();
+        refreshFrammentiWeekSelect();
+        renderFrammentiEventsList();
+        if (typeof renderFrammentiList === 'function' && _frammentiAllItems) {
+            renderFrammentiList(_frammentiAllItems);
+        }
+        updateFrammentiWeekLabel();
+        const w = getWeekBounds();
+        showToast('Settimana impostata: ' + WEEK_DAY_NAMES_FULL[weekConfig.startDay] + ' → ' + WEEK_DAY_NAMES_FULL[(weekConfig.startDay + 6) % 7] + ' (' + formatWeekLabel(w) + ')');
+    });
 }
 
 function weekKeyFromItem(f) {
@@ -1467,57 +1578,231 @@ function addFrammentoEvent() {
     const weekNow = getWeekBounds();
     const weekLabel = formatWeekLabel(weekNow);
 
+    db.collection('frammentiPresets').get().then(snap => {
+        const presets = [];
+        snap.forEach(doc => presets.push({ id: doc.id, ...doc.data() }));
+        presets.sort((a, b) => (a.name || '').localeCompare(b.name || '', 'it'));
+
+        let presetOptions = '<option value="__custom__">Quantità personalizzata</option>';
+        presets.forEach(p => {
+            const q = Number(p.quantity) || 0;
+            presetOptions += `<option value="${p.id}" data-qty="${q}" data-name="${(p.name || '').replace(/"/g, '&quot;')}">${(p.name || '—')} — ${formatNumber(q)} fr.</option>`;
+        });
+
+        Swal.fire({
+            title: 'Nuovo Evento Frammenti',
+            html: `
+                <p style="text-align:left;font-size:12px;color:#a0a0a0;margin:0 0 8px 4px;">
+                    Settimana evento: <b style="color:#a78bfa;">${weekLabel}</b>
+                </p>
+                <input id="event-name" class="swal2-input" placeholder="Nome Evento / Categoria">
+                <label style="display:block;text-align:left;margin:8px 0 4px 4px;color:#a0a0a0;font-size:13px;font-weight:600;">
+                    Preset frammenti
+                </label>
+                <select id="event-preset" class="swal2-select" onchange="onEventPresetChange()">
+                    ${presetOptions}
+                </select>
+                <input id="event-qty" class="swal2-input" type="number" min="1" value="1" placeholder="Quantità frammenti">
+                <p style="text-align:left;font-size:11px;color:#6b7280;margin:-6px 4px 8px;line-height:1.4;">
+                    Scegli un preset oppure “Quantità personalizzata” e inserisci il numero a mano.
+                    ${presets.length === 0 ? '<br><span style="color:#fbbf24;">Nessun preset: usa “Gestisci Preset” per crearne.</span>' : ''}
+                </p>
+                <label style="display:flex;align-items:center;gap:10px;text-align:left;margin:12px 4px 4px;color:#e0e0e0;font-size:13px;font-weight:600;cursor:pointer;">
+                    <input type="checkbox" id="event-repeatable" style="width:18px;height:18px;accent-color:#8b5cf6;cursor:pointer;">
+                    Evento ripetibile
+                </label>
+                <p style="text-align:left;font-size:11px;color:#9ca3af;margin:4px 4px 0;line-height:1.4;">
+                    Se attivo resta disponibile ogni settimana (non si archivia), si può assegnare più volte allo stesso player e i punti si sommano.
+                </p>
+            `,
+            confirmButtonText: 'Crea Evento',
+            background: '#131a25',
+            didOpen: () => {
+                // se c'è almeno un preset, lascia custom di default; qty editabile
+                onEventPresetChange();
+            },
+            preConfirm: () => {
+                const name = (document.getElementById('event-name').value || '').trim();
+                const quantity = parseInt(document.getElementById('event-qty').value, 10);
+                const repeatable = !!(document.getElementById('event-repeatable') && document.getElementById('event-repeatable').checked);
+                if (!name) {
+                    Swal.showValidationMessage('Inserisci un nome evento');
+                    return false;
+                }
+                if (!quantity || quantity < 1) {
+                    Swal.showValidationMessage('Inserisci una quantità valida (≥ 1)');
+                    return false;
+                }
+                return { name, quantity, repeatable };
+            }
+        }).then((result) => {
+            if (result.isConfirmed && result.value) {
+                const week = getWeekBounds();
+                db.collection('frammentiEvents').add({
+                    name: result.value.name,
+                    quantity: result.value.quantity,
+                    repeatable: !!result.value.repeatable,
+                    status: 'aperto',
+                    weekKey: week.key,
+                    weekStart: week.start.toISOString(),
+                    weekEnd: week.end.toISOString(),
+                    createdAt: new Date().toISOString()
+                }).then(() => {
+                    const label = result.value.repeatable
+                        ? 'Evento ripetibile creato'
+                        : 'Evento creato (sett. ' + formatWeekLabel(week.key) + ')';
+                    showToast(label);
+                });
+            }
+        });
+    }).catch(() => {
+        // fallback senza preset se Firestore fallisce
+        Swal.fire({
+            title: 'Nuovo Evento Frammenti',
+            html: `
+                <p style="text-align:left;font-size:12px;color:#a0a0a0;margin:0 0 8px 4px;">
+                    Settimana evento: <b style="color:#a78bfa;">${weekLabel}</b>
+                </p>
+                <input id="event-name" class="swal2-input" placeholder="Nome Evento / Categoria">
+                <input id="event-qty" class="swal2-input" type="number" min="1" value="1" placeholder="Quantità frammenti">
+                <label style="display:flex;align-items:center;gap:10px;text-align:left;margin:12px 4px 4px;color:#e0e0e0;font-size:13px;font-weight:600;cursor:pointer;">
+                    <input type="checkbox" id="event-repeatable" style="width:18px;height:18px;accent-color:#8b5cf6;cursor:pointer;">
+                    Evento ripetibile
+                </label>
+            `,
+            confirmButtonText: 'Crea Evento',
+            background: '#131a25',
+            preConfirm: () => {
+                const name = (document.getElementById('event-name').value || '').trim();
+                const quantity = parseInt(document.getElementById('event-qty').value, 10);
+                const repeatable = !!(document.getElementById('event-repeatable') && document.getElementById('event-repeatable').checked);
+                if (!name) { Swal.showValidationMessage('Inserisci un nome evento'); return false; }
+                if (!quantity || quantity < 1) { Swal.showValidationMessage('Inserisci una quantità valida (≥ 1)'); return false; }
+                return { name, quantity, repeatable };
+            }
+        }).then((result) => {
+            if (result.isConfirmed && result.value) {
+                const week = getWeekBounds();
+                db.collection('frammentiEvents').add({
+                    name: result.value.name,
+                    quantity: result.value.quantity,
+                    repeatable: !!result.value.repeatable,
+                    status: 'aperto',
+                    weekKey: week.key,
+                    weekStart: week.start.toISOString(),
+                    weekEnd: week.end.toISOString(),
+                    createdAt: new Date().toISOString()
+                }).then(() => showToast('Evento creato'));
+            }
+        });
+    });
+}
+
+function onEventPresetChange() {
+    const sel = document.getElementById('event-preset');
+    const qtyInput = document.getElementById('event-qty');
+    const nameInput = document.getElementById('event-name');
+    if (!sel || !qtyInput) return;
+    const opt = sel.options[sel.selectedIndex];
+    if (!opt || opt.value === '__custom__') {
+        qtyInput.removeAttribute('readonly');
+        qtyInput.style.opacity = '1';
+        return;
+    }
+    const q = parseInt(opt.getAttribute('data-qty'), 10);
+    if (q > 0) qtyInput.value = q;
+    // opzionale: precompila nome se vuoto
+    if (nameInput && !(nameInput.value || '').trim()) {
+        const n = opt.getAttribute('data-name');
+        if (n) nameInput.value = n;
+    }
+}
+
+/** Gestione preset frammenti (Nome + Quantità) — collection Firestore frammentiPresets */
+function manageFrammentiPresets() {
+    db.collection('frammentiPresets').get().then(snap => {
+        const presets = [];
+        snap.forEach(doc => presets.push({ id: doc.id, ...doc.data() }));
+        presets.sort((a, b) => (a.name || '').localeCompare(b.name || '', 'it'));
+
+        let listHtml = '';
+        if (presets.length === 0) {
+            listHtml = '<p style="color:#a0a0a0;padding:8px 4px;">Nessun preset. Aggiungine uno sotto.</p>';
+        } else {
+            listHtml = presets.map(p => {
+                const safeName = (p.name || '').replace(/'/g, "\\'");
+                return `<div class="frammenti-preset-item">
+                    <div><b>${p.name || '—'}</b><br><span style="color:#a0a0a0;font-size:0.85rem;">${formatNumber(p.quantity || 0)} frammenti</span></div>
+                    <button type="button" class="delete-btn" style="padding:6px 10px;font-size:0.7rem;"
+                        onclick="deleteFrammentiPreset('${p.id}')">Elimina</button>
+                </div>`;
+            }).join('');
+        }
+
+        Swal.fire({
+            title: '🎛 Gestisci Preset Frammenti',
+            width: 560,
+            background: '#131a25',
+            showConfirmButton: true,
+            confirmButtonText: 'Chiudi',
+            html: `
+                <div style="text-align:left;">
+                    <p style="font-size:12px;color:#a0a0a0;margin:0 0 10px;line-height:1.45;">
+                        Crea preset (nome + quantità). Quando aggiungi un <b>Nuovo Evento</b> puoi selezionarli
+                        oppure usare una quantità personalizzata.
+                    </p>
+                    <div class="frammenti-preset-list" id="preset-list-box">${listHtml}</div>
+                    <hr style="border:none;border-top:1px solid rgba(255,255,255,0.08);margin:16px 0;">
+                    <p style="color:#c5a059;font-size:13px;font-weight:600;margin-bottom:8px;">+ Nuovo preset</p>
+                    <input id="preset-name" class="swal2-input" placeholder="Nome (es. Evento standard, Boss, Mini)">
+                    <input id="preset-qty" class="swal2-input" type="number" min="1" value="10" placeholder="Quantità">
+                    <button type="button" onclick="saveNewFrammentiPreset()"
+                        style="width:100%;margin-top:6px;border-color:#f59e0b;color:#fbbf24;">
+                        <i class="fa-solid fa-plus"></i> Aggiungi preset
+                    </button>
+                </div>
+            `
+        });
+    });
+}
+
+function saveNewFrammentiPreset() {
+    const name = (document.getElementById('preset-name')?.value || '').trim();
+    const quantity = parseInt(document.getElementById('preset-qty')?.value, 10);
+    if (!name) {
+        showToast('Inserisci un nome per il preset');
+        return;
+    }
+    if (!quantity || quantity < 1) {
+        showToast('Inserisci una quantità valida (≥ 1)');
+        return;
+    }
+    db.collection('frammentiPresets').add({
+        name,
+        quantity,
+        createdAt: new Date().toISOString()
+    }).then(() => {
+        showToast('Preset salvato');
+        manageFrammentiPresets(); // riapri lista aggiornata
+    });
+}
+
+function deleteFrammentiPreset(id) {
     Swal.fire({
-        title: 'Nuovo Evento Frammenti',
-        html: `
-            <p style="text-align:left;font-size:12px;color:#a0a0a0;margin:0 0 8px 4px;">
-                Settimana evento: <b style="color:#a78bfa;">${weekLabel}</b>
-            </p>
-            <input id="event-name" class="swal2-input" placeholder="Nome Evento / Categoria">
-            <input id="event-qty" class="swal2-input" type="number" min="1" value="1" placeholder="Quantità frammenti">
-            <label style="display:flex;align-items:center;gap:10px;text-align:left;margin:12px 4px 4px;color:#e0e0e0;font-size:13px;font-weight:600;cursor:pointer;">
-                <input type="checkbox" id="event-repeatable" style="width:18px;height:18px;accent-color:#8b5cf6;cursor:pointer;">
-                Evento ripetibile
-            </label>
-            <p style="text-align:left;font-size:11px;color:#9ca3af;margin:4px 4px 0;line-height:1.4;">
-                Se attivo resta disponibile ogni settimana (non si archivia), si può assegnare più volte allo stesso player e i punti si sommano.
-            </p>
-        `,
-        confirmButtonText: 'Crea Evento',
-        background: '#131a25',
-        preConfirm: () => {
-            const name = (document.getElementById('event-name').value || '').trim();
-            const quantity = parseInt(document.getElementById('event-qty').value, 10);
-            const repeatable = !!(document.getElementById('event-repeatable') && document.getElementById('event-repeatable').checked);
-            if (!name) {
-                Swal.showValidationMessage('Inserisci un nome evento');
-                return false;
-            }
-            if (!quantity || quantity < 1) {
-                Swal.showValidationMessage('Inserisci una quantità valida (≥ 1)');
-                return false;
-            }
-            return { name, quantity, repeatable };
-        }
-    }).then((result) => {
-        if (result.isConfirmed && result.value) {
-            const week = getWeekBounds();
-            db.collection('frammentiEvents').add({
-                name: result.value.name,
-                quantity: result.value.quantity,
-                repeatable: !!result.value.repeatable,
-                status: 'aperto',
-                weekKey: week.key,
-                weekStart: week.start.toISOString(),
-                weekEnd: week.end.toISOString(),
-                createdAt: new Date().toISOString()
-            }).then(() => {
-                const label = result.value.repeatable
-                    ? 'Evento ripetibile creato'
-                    : 'Evento creato (sett. ' + formatWeekLabel(week.key) + ')';
-                showToast(label);
-            });
-        }
+        title: 'Eliminare preset?',
+        text: 'Non influisce sugli eventi già creati.',
+        icon: 'warning',
+        showCancelButton: true,
+        confirmButtonText: 'Elimina',
+        cancelButtonText: 'Annulla',
+        confirmButtonColor: '#ef4444',
+        background: '#131a25'
+    }).then(result => {
+        if (!result.isConfirmed) return;
+        db.collection('frammentiPresets').doc(id).delete().then(() => {
+            showToast('Preset eliminato');
+            manageFrammentiPresets();
+        });
     });
 }
 
@@ -2147,7 +2432,7 @@ function openFrammentiRecapCompleto() {
                     </div>
 
                     <div class="frammenti-recap-section">
-                        <h4>Per Settimana (Lun–Dom)</h4>
+                        <h4>Per Settimana</h4>
                         <table class="frammenti-recap-table">
                             <thead><tr><th>Settimana</th><th>Tot.</th><th>Consegnati</th><th>Non cons.</th></tr></thead>
                             <tbody id="recap-tbody-weeks">${weekRows}</tbody>
@@ -2408,7 +2693,7 @@ function openPlayerFrammentiModal(playerId, playerName, initialFilter) {
                         <tbody id="player-fr-tbody-events">${c.tableRows}</tbody>
                     </table>
 
-                    <p style="margin:16px 0 8px;color:#a0a0a0;font-size:13px;">Riepilogo per settimana (Lun–Dom)</p>
+                    <p style="margin:16px 0 8px;color:#a0a0a0;font-size:13px;">Riepilogo per settimana</p>
                     <table class="frammenti-recap-table">
                         <thead>
                             <tr>
@@ -2455,6 +2740,7 @@ auth.onAuthStateChanged(user => {
         loadPlayers();
         loadFrammentiEvents();
         loadFrammenti();
+        updateWeekRangeHints();
 
     } else {
 

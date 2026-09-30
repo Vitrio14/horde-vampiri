@@ -1078,3 +1078,34 @@ footer {
 .event-card.event-repeatable:hover {
     border-color: rgba(139, 92, 246, 0.55);
 }
+
+
+/* Week config button in frammenti bar */
+.btn-week-config {
+    padding: 8px 14px !important;
+    font-size: 0.75rem !important;
+    margin: 0 !important;
+    border-color: rgba(139, 92, 246, 0.45) !important;
+    color: #a78bfa !important;
+    white-space: nowrap;
+}
+.btn-week-config:hover {
+    border-color: #a78bfa !important;
+    color: #fff !important;
+}
+.frammenti-preset-list {
+    max-height: 220px;
+    overflow-y: auto;
+    margin: 10px 0;
+    text-align: left;
+}
+.frammenti-preset-item {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 10px;
+    padding: 10px 12px;
+    border-bottom: 1px dashed rgba(255,255,255,0.06);
+}
+.frammenti-preset-item:last-child { border-bottom: none; }
+.frammenti-preset-item b { color: var(--gold-accent); }

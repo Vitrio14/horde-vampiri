@@ -293,6 +293,9 @@
                 <div style="display: flex; gap: 10px; flex-wrap: wrap;">
                     <button onclick="addFrammentoEvent()">+ Nuovo Evento</button>
                     <button onclick="addFrammento()">+ Assegna Frammenti</button>
+                    <button onclick="manageFrammentiPresets()" style="border-color: #f59e0b; color: #fbbf24;">
+                        <i class="fa-solid fa-sliders"></i> Gestisci Preset
+                    </button>
                     <button onclick="openFrammentiRecapCompleto()" style="border-color: #8b5cf6; color: #a78bfa;">
                         <i class="fa-solid fa-chart-pie"></i> Recap Completo
                     </button>
@@ -300,12 +303,15 @@
             </div>
 
             <div class="frammenti-week-bar" id="frammenti-week-bar">
-                <label for="frammenti-week-select"><i class="fa-solid fa-calendar-week"></i> Settimana (Lun–Dom):</label>
+                <label for="frammenti-week-select"><i class="fa-solid fa-calendar-week"></i> Settimana <span id="week-range-hint">(Lun–Dom)</span>:</label>
                 <select id="frammenti-week-select" onchange="onFrammentiWeekChange()">
                     <option value="current">Settimana corrente</option>
                     <option value="all">Tutte le settimane (log completo)</option>
                 </select>
                 <span id="frammenti-week-label" class="frammenti-week-label"></span>
+                <button type="button" onclick="configureWeekStart()" class="btn-week-config" title="Configura inizio settimana">
+                    <i class="fa-solid fa-gear"></i> Configura settimana
+                </button>
             </div>
 
             <div class="frammenti-layout">
