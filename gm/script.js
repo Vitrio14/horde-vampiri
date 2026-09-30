@@ -2174,111 +2174,208 @@ function removePlayerFrammento(frammentoId, playerName, playerId) {
         if (!result.isConfirmed) return;
         db.collection('frammenti').doc(frammentoId).delete().then(() => {
             showToast('Assegnazione rimossa');
-            openPlayerFrammentiModal(playerId, playerName);
+            // Riapri mantenendo il filtro settimana scelto
+            const keepFilter = (window._playerFrammentiFilter != null)
+                ? window._playerFrammentiFilter
+                : 'current';
+            openPlayerFrammentiModal(playerId, playerName, keepFilter);
         });
     });
 }
 
-function openPlayerFrammentiModal(playerId, playerName) {
-    db.collection('frammenti').get().then(snapshot => {
-        const byEvent = {};
-        const byWeek = {};
-        let totalAll = 0;
-        let totalConsegnati = 0;
-        let totalNon = 0;
-        const rows = [];
+/** Filtra items player per settimana (current | all | weekKey) */
+function filterPlayerFrammentiByWeek(items, filterVal) {
+    if (filterVal === 'all') return items.slice();
+    if (filterVal === 'current') {
+        const ck = getWeekBounds().key;
+        return items.filter(f => weekKeyFromItem(f) === ck);
+    }
+    return items.filter(f => weekKeyFromItem(f) === filterVal);
+}
 
+/** Costruisce HTML tabelle + dettaglio per il modal player (dati già filtrati) */
+function buildPlayerFrammentiContent(items, playerId, playerName) {
+    const byEvent = {};
+    const byWeek = {};
+    let totalAll = 0;
+    let totalConsegnati = 0;
+    let totalNon = 0;
+    const rows = [];
+
+    items.forEach(f => {
+        const qty = Number(f.quantity) || 0;
+        const name = f.eventName || 'Sconosciuto';
+        const wk = weekKeyFromItem(f);
+
+        if (!byEvent[name]) byEvent[name] = { qty: 0, consegnati: 0, non: 0 };
+        byEvent[name].qty += qty;
+        if (f.status === 'consegnato') {
+            byEvent[name].consegnati += qty;
+            totalConsegnati += qty;
+        } else {
+            byEvent[name].non += qty;
+            totalNon += qty;
+        }
+        totalAll += qty;
+
+        if (!byWeek[wk]) byWeek[wk] = { qty: 0, consegnati: 0, non: 0 };
+        byWeek[wk].qty += qty;
+        if (f.status === 'consegnato') byWeek[wk].consegnati += qty;
+        else byWeek[wk].non += qty;
+
+        rows.push({ id: f.id, ...f, weekKey: wk });
+    });
+
+    let tableRows = '';
+    const eventNames = Object.keys(byEvent).sort((a, b) => byEvent[b].qty - byEvent[a].qty);
+    if (eventNames.length === 0) {
+        tableRows = '<tr><td colspan="4" style="color:#a0a0a0;">Nessun frammento in questo filtro</td></tr>';
+    } else {
+        eventNames.forEach(name => {
+            const e = byEvent[name];
+            tableRows += `
+                <tr>
+                    <td>${name}</td>
+                    <td>${formatNumber(e.qty)}</td>
+                    <td style="color:#2ecc71;">${formatNumber(e.consegnati)}</td>
+                    <td style="color:#e74c3c;">${formatNumber(e.non)}</td>
+                </tr>
+            `;
+        });
+    }
+
+    let weekTable = '';
+    const weekKeys = Object.keys(byWeek).sort().reverse();
+    if (weekKeys.length === 0) {
+        weekTable = '<tr><td colspan="4" style="color:#a0a0a0;">—</td></tr>';
+    } else {
+        weekKeys.forEach(wk => {
+            const w = byWeek[wk];
+            weekTable += `
+                <tr>
+                    <td>${formatWeekLabel(wk)}</td>
+                    <td>${formatNumber(w.qty)}</td>
+                    <td style="color:#2ecc71;">${formatNumber(w.consegnati)}</td>
+                    <td style="color:#e74c3c;">${formatNumber(w.non)}</td>
+                </tr>
+            `;
+        });
+    }
+
+    let detailList = '';
+    if (rows.length > 0) {
+        rows.sort((a, b) => (b.createdAt || '').localeCompare(a.createdAt || ''));
+        const safePlayer = (playerName || '').replace(/'/g, "\\'");
+        detailList = rows.map(f => {
+            const st = f.status === 'consegnato'
+                ? '<span class="status consegnato" style="margin:0;">Consegnato</span>'
+                : '<span class="status non_consegnato" style="margin:0;">Non consegnato</span>';
+            const repTag = f.repeatable
+                ? ' <span style="color:#a78bfa;font-size:0.7rem;">(ripetibile)</span>'
+                : '';
+            return `<li style="margin-bottom:8px;padding-bottom:6px;border-bottom:1px dashed rgba(255,255,255,0.06);display:flex;justify-content:space-between;align-items:flex-start;gap:10px;">
+                <div>
+                    <b>${f.eventName || '—'}</b>${repTag} — ${formatNumber(f.quantity)} fr. ${st}
+                    <br><small style="color:#a78bfa;">Sett. ${formatWeekLabel(f.weekKey)}</small>
+                    ${f.note ? `<br><small style="color:#a0a0a0;">${f.note}</small>` : ''}
+                </div>
+                <button type="button"
+                    onclick="removePlayerFrammento('${f.id}', '${safePlayer}', '${playerId}')"
+                    title="Rimuovi questa assegnazione"
+                    style="flex-shrink:0;padding:6px 10px;font-size:0.65rem;border:1px dashed #e74c3c;color:#e74c3c;background:transparent;cursor:pointer;text-transform:uppercase;">
+                    Rimuovi
+                </button>
+            </li>`;
+        }).join('');
+    } else {
+        detailList = '<li style="color:#a0a0a0;">Nessuna assegnazione in questo filtro</li>';
+    }
+
+    return {
+        tableRows,
+        weekTable,
+        detailList,
+        totalAll,
+        totalConsegnati,
+        totalNon
+    };
+}
+
+/** Aggiorna tabelle/dettaglio del modal player senza richiuderlo */
+function refreshPlayerFrammentiModal(filterVal) {
+    window._playerFrammentiFilter = filterVal;
+    const items = window._playerFrammentiItems || [];
+    const playerId = window._playerFrammentiPlayerId;
+    const playerName = window._playerFrammentiPlayerName || '';
+    const filtered = filterPlayerFrammentiByWeek(items, filterVal);
+    const c = buildPlayerFrammentiContent(filtered, playerId, playerName);
+
+    const elEvents = document.getElementById('player-fr-tbody-events');
+    const elWeeks = document.getElementById('player-fr-tbody-weeks');
+    const elDetail = document.getElementById('player-fr-detail-list');
+    const elTotal = document.getElementById('player-fr-total');
+    if (elEvents) elEvents.innerHTML = c.tableRows;
+    if (elWeeks) elWeeks.innerHTML = c.weekTable;
+    if (elDetail) elDetail.innerHTML = c.detailList;
+    if (elTotal) {
+        elTotal.innerHTML = `
+            Totale: ${formatNumber(c.totalAll)} frammenti
+            &nbsp;·&nbsp; <span style="color:#2ecc71;">${formatNumber(c.totalConsegnati)} consegnati</span>
+            &nbsp;·&nbsp; <span style="color:#e74c3c;">${formatNumber(c.totalNon)} non consegnati</span>
+        `;
+    }
+}
+
+/**
+ * Modal frammenti del singolo player.
+ * @param {string} playerId
+ * @param {string} playerName
+ * @param {string} [initialFilter='current'] - 'current' | 'all' | weekKey
+ */
+function openPlayerFrammentiModal(playerId, playerName, initialFilter) {
+    db.collection('frammenti').get().then(snapshot => {
+        const items = [];
         snapshot.forEach(doc => {
             const f = doc.data();
             if (f.playerName !== playerName) return;
-            const qty = Number(f.quantity) || 0;
-            const name = f.eventName || 'Sconosciuto';
-            const wk = weekKeyFromItem(f);
-
-            if (!byEvent[name]) byEvent[name] = { qty: 0, consegnati: 0, non: 0 };
-            byEvent[name].qty += qty;
-            if (f.status === 'consegnato') {
-                byEvent[name].consegnati += qty;
-                totalConsegnati += qty;
-            } else {
-                byEvent[name].non += qty;
-                totalNon += qty;
-            }
-            totalAll += qty;
-
-            if (!byWeek[wk]) byWeek[wk] = { qty: 0, consegnati: 0, non: 0, items: [] };
-            byWeek[wk].qty += qty;
-            if (f.status === 'consegnato') byWeek[wk].consegnati += qty;
-            else byWeek[wk].non += qty;
-            byWeek[wk].items.push(f);
-
-            rows.push({ id: doc.id, ...f, weekKey: wk });
+            items.push({ id: doc.id, ...f });
         });
 
-        let tableRows = '';
-        const eventNames = Object.keys(byEvent);
-        if (eventNames.length === 0) {
-            tableRows = '<tr><td colspan="4" style="color:#a0a0a0;">Nessun frammento registrato</td></tr>';
-        } else {
-            eventNames.forEach(name => {
-                const e = byEvent[name];
-                tableRows += `
-                    <tr>
-                        <td>${name}</td>
-                        <td>${formatNumber(e.qty)}</td>
-                        <td style="color:#2ecc71;">${formatNumber(e.consegnati)}</td>
-                        <td style="color:#e74c3c;">${formatNumber(e.non)}</td>
-                    </tr>
-                `;
+        if (items.length === 0) {
+            Swal.fire({
+                icon: 'info',
+                title: '🔮 Frammenti — ' + playerName,
+                text: 'Nessun frammento registrato per questo player.',
+                background: '#131a25'
             });
+            return;
         }
 
-        let weekTable = '';
-        const weekKeys = Object.keys(byWeek).sort().reverse();
-        if (weekKeys.length === 0) {
-            weekTable = '<tr><td colspan="4" style="color:#a0a0a0;">—</td></tr>';
-        } else {
-            weekKeys.forEach(wk => {
-                const w = byWeek[wk];
-                weekTable += `
-                    <tr>
-                        <td>${formatWeekLabel(wk)}</td>
-                        <td>${formatNumber(w.qty)}</td>
-                        <td style="color:#2ecc71;">${formatNumber(w.consegnati)}</td>
-                        <td style="color:#e74c3c;">${formatNumber(w.non)}</td>
-                    </tr>
-                `;
-            });
-        }
+        window._playerFrammentiItems = items;
+        window._playerFrammentiPlayerId = playerId;
+        window._playerFrammentiPlayerName = playerName;
 
-        let detailList = '';
-        if (rows.length > 0) {
-            rows.sort((a, b) => (b.createdAt || '').localeCompare(a.createdAt || ''));
-            const safePlayer = (playerName || '').replace(/'/g, "\\'");
-            detailList = rows.map(f => {
-                const st = f.status === 'consegnato'
-                    ? '<span class="status consegnato" style="margin:0;">Consegnato</span>'
-                    : '<span class="status non_consegnato" style="margin:0;">Non consegnato</span>';
-                const repTag = f.repeatable
-                    ? ' <span style="color:#a78bfa;font-size:0.7rem;">(ripetibile)</span>'
-                    : '';
-                return `<li style="margin-bottom:8px;padding-bottom:6px;border-bottom:1px dashed rgba(255,255,255,0.06);display:flex;justify-content:space-between;align-items:flex-start;gap:10px;">
-                    <div>
-                        <b>${f.eventName}</b>${repTag} — ${formatNumber(f.quantity)} fr. ${st}
-                        <br><small style="color:#a78bfa;">Sett. ${formatWeekLabel(f.weekKey)}</small>
-                        ${f.note ? `<br><small style="color:#a0a0a0;">${f.note}</small>` : ''}
-                    </div>
-                    <button type="button"
-                        onclick="removePlayerFrammento('${f.id}', '${safePlayer}', '${playerId}')"
-                        title="Rimuovi questa assegnazione"
-                        style="flex-shrink:0;padding:6px 10px;font-size:0.65rem;border:1px dashed #e74c3c;color:#e74c3c;background:transparent;cursor:pointer;text-transform:uppercase;">
-                        Rimuovi
-                    </button>
-                </li>`;
-            }).join('');
-        } else {
-            detailList = '<li style="color:#a0a0a0;">Nessuna assegnazione</li>';
+        const weeks = new Set();
+        items.forEach(f => weeks.add(weekKeyFromItem(f)));
+        const sortedWeeks = Array.from(weeks).sort().reverse();
+        const currentKey = getWeekBounds().key;
+
+        let preferred = initialFilter || 'current';
+        // Se il filtro preferito non ha senso (es. weekKey non presente), fallback a current
+        if (preferred !== 'all' && preferred !== 'current' && !weeks.has(preferred)) {
+            preferred = 'current';
         }
+        window._playerFrammentiFilter = preferred;
+
+        let weekOpts = `<option value="current"${preferred === 'current' ? ' selected' : ''}>Settimana corrente (${formatWeekLabel(currentKey)})</option>`;
+        weekOpts += `<option value="all"${preferred === 'all' ? ' selected' : ''}>Tutte le settimane (storico)</option>`;
+        sortedWeeks.forEach(k => {
+            if (k === currentKey) return;
+            weekOpts += `<option value="${k}"${preferred === k ? ' selected' : ''}>${formatWeekLabel(k)} — archivio</option>`;
+        });
+
+        const filtered = filterPlayerFrammentiByWeek(items, preferred);
+        const c = buildPlayerFrammentiContent(filtered, playerId, playerName);
 
         Swal.fire({
             title: '🔮 Frammenti — ' + playerName,
@@ -2288,6 +2385,16 @@ function openPlayerFrammentiModal(playerId, playerName) {
             confirmButtonText: 'Chiudi',
             html: `
                 <div style="text-align:left;">
+                    <div style="margin-bottom:16px;display:flex;flex-wrap:wrap;align-items:center;gap:10px;">
+                        <label style="color:#c5a059;font-size:13px;font-weight:600;">
+                            <i class="fa-solid fa-calendar-week"></i> Filtra settimana:
+                        </label>
+                        <select id="player-fr-week-filter" class="swal2-select" style="width:auto;min-width:240px;margin:0;"
+                            onchange="refreshPlayerFrammentiModal(this.value)">
+                            ${weekOpts}
+                        </select>
+                    </div>
+
                     <p style="margin-bottom:8px;color:#a0a0a0;font-size:13px;">Riepilogo per categoria / evento</p>
                     <table class="frammenti-recap-table">
                         <thead>
@@ -2298,7 +2405,7 @@ function openPlayerFrammentiModal(playerId, playerName) {
                                 <th>Non cons.</th>
                             </tr>
                         </thead>
-                        <tbody>${tableRows}</tbody>
+                        <tbody id="player-fr-tbody-events">${c.tableRows}</tbody>
                     </table>
 
                     <p style="margin:16px 0 8px;color:#a0a0a0;font-size:13px;">Riepilogo per settimana (Lun–Dom)</p>
@@ -2311,21 +2418,22 @@ function openPlayerFrammentiModal(playerId, playerName) {
                                 <th>Non cons.</th>
                             </tr>
                         </thead>
-                        <tbody>${weekTable}</tbody>
+                        <tbody id="player-fr-tbody-weeks">${c.weekTable}</tbody>
                     </table>
 
-                    <div class="frammenti-recap-total">
-                        Totale: ${formatNumber(totalAll)} frammenti
-                        &nbsp;·&nbsp; <span style="color:#2ecc71;">${formatNumber(totalConsegnati)} consegnati</span>
-                        &nbsp;·&nbsp; <span style="color:#e74c3c;">${formatNumber(totalNon)} non consegnati</span>
+                    <div class="frammenti-recap-total" id="player-fr-total">
+                        Totale: ${formatNumber(c.totalAll)} frammenti
+                        &nbsp;·&nbsp; <span style="color:#2ecc71;">${formatNumber(c.totalConsegnati)} consegnati</span>
+                        &nbsp;·&nbsp; <span style="color:#e74c3c;">${formatNumber(c.totalNon)} non consegnati</span>
                     </div>
                     <p style="margin:18px 0 8px;color:#a0a0a0;font-size:13px;">Dettaglio assegnazioni (log)</p>
-                    <ul class="frammenti-recap-scroll" style="list-style:none;padding:0;">${detailList}</ul>
+                    <ul id="player-fr-detail-list" class="frammenti-recap-scroll" style="list-style:none;padding:0;">${c.detailList}</ul>
                 </div>
             `
         });
     });
 }
+
 
 
 auth.onAuthStateChanged(user => {
