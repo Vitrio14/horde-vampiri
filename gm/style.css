@@ -944,3 +944,137 @@ footer {
     .panel { max-width: 100%; overflow-x: auto; }
     input, select, button, textarea { font-size: 16px !important; }
 }
+
+/* ========== FRAMMENTI WEEK BAR + RECAP ========== */
+.frammenti-week-bar {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    gap: 12px 18px;
+    margin-bottom: 22px;
+    padding: 14px 18px;
+    background: rgba(18, 18, 18, 0.7);
+    border: 1px solid var(--glass-border);
+    border-left: 4px solid #8b5cf6;
+    border-radius: 0 12px 0 12px;
+}
+.frammenti-week-bar label {
+    color: var(--gold-accent);
+    font-weight: 600;
+    font-size: 0.85rem;
+    display: flex;
+    align-items: center;
+    gap: 8px;
+}
+.frammenti-week-bar select {
+    width: auto;
+    min-width: 220px;
+    margin-bottom: 0;
+    padding: 10px 36px 10px 14px;
+    font-size: 0.85rem;
+}
+.frammenti-week-label {
+    color: var(--text-dim);
+    font-size: 0.8rem;
+    font-style: italic;
+}
+.week-badge {
+    display: inline-block;
+    font-size: 0.65rem;
+    padding: 3px 8px;
+    background: rgba(139, 92, 246, 0.15);
+    border: 1px solid rgba(139, 92, 246, 0.35);
+    color: #a78bfa;
+    border-radius: 4px;
+    margin-top: 4px;
+    font-family: 'Cinzel', serif;
+    letter-spacing: 0.5px;
+}
+.frammenti-recap-section {
+    margin-bottom: 22px;
+}
+.frammenti-recap-section h4 {
+    color: var(--gold-accent);
+    font-family: 'Cinzel', serif;
+    font-size: 0.9rem;
+    margin: 16px 0 8px;
+    border-bottom: 1px dashed rgba(139, 0, 0, 0.35);
+    padding-bottom: 4px;
+}
+@media (max-width: 600px) {
+    .frammenti-week-bar {
+        flex-direction: column;
+        align-items: flex-start;
+    }
+    .frammenti-week-bar select {
+        width: 100%;
+        min-width: 0;
+    }
+}
+
+/* ========== EVENT CARDS PIÙ LARGHE ========== */
+.grid-events {
+    display: grid;
+    grid-template-columns: repeat(auto-fill, minmax(320px, 1fr));
+    gap: 20px;
+}
+.grid-events .card.event-card {
+    padding: 20px 22px;
+    min-width: 0;
+}
+.grid-events .event-card h3 {
+    font-size: 1.05rem;
+    margin-bottom: 10px;
+}
+.grid-events .event-badges {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 6px;
+    margin: 8px 0 14px;
+}
+.grid-events .event-actions {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 10px;
+    margin-top: auto;
+    padding-top: 14px;
+}
+.grid-events .event-actions button {
+    flex: 1 1 auto;
+    min-width: 110px;
+    padding: 10px 12px !important;
+    font-size: 0.72rem !important;
+    white-space: nowrap;
+}
+.event-card.event-concluso {
+    opacity: 0.85;
+    border-color: rgba(46, 204, 113, 0.25);
+}
+.event-card.event-concluso h3 {
+    color: #9ca3af;
+}
+@media (max-width: 600px) {
+    .grid-events {
+        grid-template-columns: 1fr;
+    }
+    .grid-events .event-actions button {
+        min-width: 0;
+        flex: 1 1 100%;
+    }
+}
+
+/* Eventi ripetibili */
+.frammenti-repeatable-box {
+    margin-top: 8px;
+    padding-top: 8px;
+    border-top: 1px dashed rgba(139, 92, 246, 0.25);
+}
+.frammenti-repeatable-box .frammenti-subtitle {
+    color: #a78bfa;
+}
+.event-card.event-repeatable {
+    border-color: rgba(139, 92, 246, 0.35);
+}
+.event-card.event-repeatable:hover {
+    border-color: rgba(139, 92, 246, 0.55);
+}

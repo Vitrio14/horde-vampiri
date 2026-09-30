@@ -293,18 +293,32 @@
                 <div style="display: flex; gap: 10px; flex-wrap: wrap;">
                     <button onclick="addFrammentoEvent()">+ Nuovo Evento</button>
                     <button onclick="addFrammento()">+ Assegna Frammenti</button>
+                    <button onclick="openFrammentiRecapCompleto()" style="border-color: #8b5cf6; color: #a78bfa;">
+                        <i class="fa-solid fa-chart-pie"></i> Recap Completo
+                    </button>
                 </div>
+            </div>
+
+            <div class="frammenti-week-bar" id="frammenti-week-bar">
+                <label for="frammenti-week-select"><i class="fa-solid fa-calendar-week"></i> Settimana (Lun–Dom):</label>
+                <select id="frammenti-week-select" onchange="onFrammentiWeekChange()">
+                    <option value="current">Settimana corrente</option>
+                    <option value="all">Tutte le settimane (log completo)</option>
+                </select>
+                <span id="frammenti-week-label" class="frammenti-week-label"></span>
             </div>
 
             <div class="frammenti-layout">
                 <div class="frammenti-events-box">
-                    <h2 class="frammenti-subtitle"><i class="fa-solid fa-calendar-days"></i> Eventi disponibili</h2>
-                    <div id="frammenti-events-list" class="grid grid-compact"></div>
+                    <h2 class="frammenti-subtitle"><i class="fa-solid fa-calendar-days"></i> Eventi settimanali <span id="frammenti-events-filter-hint" style="font-size:0.75rem;color:var(--text-dim);font-weight:400;"></span></h2>
+                    <div id="frammenti-events-list" class="grid grid-events"></div>
                 </div>
-                <div class="frammenti-assignments-box">
-                    <h2 class="frammenti-subtitle"><i class="fa-solid fa-gem"></i> Assegnazioni Frammenti</h2>
-                    <div id="frammenti-list" class="grid grid-compact"></div>
+                <div class="frammenti-events-box frammenti-repeatable-box">
+                    <h2 class="frammenti-subtitle"><i class="fa-solid fa-rotate"></i> Eventi ripetibili <span style="font-size:0.75rem;color:var(--text-dim);font-weight:400;">(restano attivi ogni settimana)</span></h2>
+                    <div id="frammenti-events-repeatable-list" class="grid grid-events"></div>
                 </div>
+                <!-- Assegnazioni nascoste in UI: si gestiscono dall'occhio sull'evento; i log restano sui player -->
+                <div id="frammenti-list" class="hidden" aria-hidden="true"></div>
             </div>
 
         </section>
