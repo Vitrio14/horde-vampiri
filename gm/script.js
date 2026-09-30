@@ -14,6 +14,15 @@ function formatNumber(n) {
     return num.toLocaleString('it-IT');
 }
 
+/** Ordina array di oggetti per un campo testo in ordine alfabetico italiano (case-insensitive) */
+function sortAlpha(arr, key = 'name') {
+    return arr.slice().sort((a, b) => {
+        const va = (a[key] != null ? String(a[key]) : '').trim();
+        const vb = (b[key] != null ? String(b[key]) : '').trim();
+        return va.localeCompare(vb, 'it', { sensitivity: 'base' });
+    });
+}
+
 function login() {
 
     const email = document.getElementById('email').value;
@@ -125,8 +134,11 @@ function openQuestModal(editId = null, existing = null) {
 
     db.collection('players').get().then(snapshot => {
         let playerOptions = '<option value="">Nessun Player</option>';
+        const playersList = [];
         snapshot.forEach(doc => {
-            const p = doc.data();
+            playersList.push(doc.data());
+        });
+        sortAlpha(playersList, 'name').forEach(p => {
             const sel = (existing && existing.player === p.name) ? 'selected' : '';
             playerOptions += `<option value="${p.name}" ${sel}>${p.name}</option>`;
         });
@@ -257,9 +269,14 @@ function loadQuests() {
                     </div>
                 `;
 
+                const questItems = [];
                 questsSnapshot.forEach(doc => {
                     const q = doc.data();
                     if (q.folderId === currentQuestsFolder.id) {
+                        questItems.push({ id: doc.id, ...q });
+                    }
+                });
+                sortAlpha(questItems, 'title').forEach(q => {
                         // Converte i dettagli separati da invio in comodi step strutturati
                         let stepsHTML = '';
                         if (q.details) {
@@ -269,7 +286,7 @@ function loadQuests() {
                             stepsHTML = '<li>Nessun dettaglio inserito</li>';
                         }
 
-                        const cardId = `quest-card-${doc.id}`;
+                        const cardId = `quest-card-${q.id}`;
                         let docButtonHTML = '';
                         if (q.documentLink) {
                             docButtonHTML = `
@@ -306,13 +323,13 @@ function loadQuests() {
                                 <div class="action-buttons">
                                     <button
                                         class="edit-btn"
-                                        onclick="editQuest('${doc.id}')"
+                                        onclick="editQuest('${q.id}')"
                                     >
                                         Modifica
                                     </button>
                                     <button
                                         class="delete-btn"
-                                        onclick="confirmDelete('quests', '${doc.id}', loadQuests)"
+                                        onclick="confirmDelete('quests', '${q.id}', loadQuests)"
                                     >
                                         Elimina
                                     </button>
@@ -326,7 +343,6 @@ function loadQuests() {
                                 if (el) el.setAttribute('data-content-src', q.documentLink);
                             }, 0);
                         }
-                    }
                 });
 
                 // Listener per aprire documenti quest
@@ -343,14 +359,17 @@ function loadQuests() {
                 });
             } else {
                 // Vista principale: mostra l'elenco delle cartelle disponibili
+                const folderItems = [];
                 foldersSnapshot.forEach(fDoc => {
-                    const f = fDoc.data();
+                    folderItems.push({ id: fDoc.id, ...fDoc.data() });
+                });
+                sortAlpha(folderItems, 'name').forEach(f => {
                     container.innerHTML += `
-                        <div class="card folder-card" style="border-color: #f59e0b; cursor: pointer;" onclick="currentQuestsFolder = {id: '${fDoc.id}', name: '${f.name}'}; loadQuests();">
+                        <div class="card folder-card" style="border-color: #f59e0b; cursor: pointer;" onclick="currentQuestsFolder = {id: '${f.id}', name: '${f.name}'}; loadQuests();">
                             <h3><i class="fa-solid fa-folder" style="color: #f59e0b; margin-right: 8px;"></i> ${f.name}</h3>
                             <p>Apri per visualizzare le quest</p>
                             <div class="action-buttons" onclick="event.stopPropagation();" style="margin-top: 15px;">
-                                <button class="delete-btn" style="padding: 6px; font-size: 13px;" onclick="confirmDelete('folders', '${fDoc.id}', loadQuests)">
+                                <button class="delete-btn" style="padding: 6px; font-size: 13px;" onclick="confirmDelete('folders', '${f.id}', loadQuests)">
                                     Elimina Cartella
                                 </button>
                             </div>
@@ -450,10 +469,15 @@ function loadDocs() {
                     </div>
                 `;
 
+                const docItems = [];
                 docsSnapshot.forEach(doc => {
                     const d = doc.data();
                     if (d.folderId === currentDocsFolder.id) {
-                        const cardId = `doc-card-${doc.id}`;
+                        docItems.push({ id: doc.id, ...d });
+                    }
+                });
+                sortAlpha(docItems, 'title').forEach(d => {
+                        const cardId = `doc-card-${d.id}`;
                         container.innerHTML += `
                             <div class="card" id="${cardId}">
                                 <h3>${d.title}</h3>
@@ -466,7 +490,7 @@ function loadDocs() {
                                 </button>
                                 <button 
                                     class="delete-btn"
-                                    onclick="deleteDoc('${doc.id}')"
+                                    onclick="deleteDoc('${d.id}')"
                                 >
                                     <i class="fa-solid fa-trash"></i> Elimina
                                 </button>
@@ -476,7 +500,6 @@ function loadDocs() {
                             const el = document.getElementById(cardId);
                             if (el && d.link) el.setAttribute('data-content-src', d.link);
                         }, 0);
-                    }
                 });
 
                 container.querySelectorAll('[data-open-src]').forEach(btn => {
@@ -491,14 +514,17 @@ function loadDocs() {
                     };
                 });
             } else {
+                const folderItems = [];
                 foldersSnapshot.forEach(fDoc => {
-                    const f = fDoc.data();
+                    folderItems.push({ id: fDoc.id, ...fDoc.data() });
+                });
+                sortAlpha(folderItems, 'name').forEach(f => {
                     container.innerHTML += `
-                        <div class="card folder-card" style="border-color: #f59e0b; cursor: pointer;" onclick="currentDocsFolder = {id: '${fDoc.id}', name: '${f.name}'}; loadDocs();">
+                        <div class="card folder-card" style="border-color: #f59e0b; cursor: pointer;" onclick="currentDocsFolder = {id: '${f.id}', name: '${f.name}'}; loadDocs();">
                             <h3><i class="fa-solid fa-folder" style="color: #f59e0b; margin-right: 8px;"></i> ${f.name}</h3>
                             <p>Apri per visualizzare i documenti</p>
                             <div class="action-buttons" onclick="event.stopPropagation();" style="margin-top: 15px;">
-                                <button class="delete-btn" style="padding: 6px; font-size: 13px;" onclick="confirmDelete('folders', '${fDoc.id}', loadDocs)">
+                                <button class="delete-btn" style="padding: 6px; font-size: 13px;" onclick="confirmDelete('folders', '${f.id}', loadDocs)">
                                     Elimina Cartella
                                 </button>
                             </div>
@@ -586,33 +612,40 @@ function loadNotes() {
                     </div>
                 `;
 
+                const noteItems = [];
                 notesSnapshot.forEach(doc => {
                     const n = doc.data();
                     if (n.folderId === currentNotesFolder.id) {
+                        noteItems.push({ id: doc.id, ...n });
+                    }
+                });
+                sortAlpha(noteItems, 'note').forEach(n => {
                         container.innerHTML += `
                             <div class="card">
                                 <p>${n.note}</p>
                                 <div class="action-buttons">
                                     <button
                                         class="delete-btn"
-                                        onclick="confirmDelete('notes', '${doc.id}', loadNotes)"
+                                        onclick="confirmDelete('notes', '${n.id}', loadNotes)"
                                     >
                                         Elimina
                                     </button>
                                 </div>
                             </div>
                         `;
-                    }
                 });
             } else {
+                const folderItems = [];
                 foldersSnapshot.forEach(fDoc => {
-                    const f = fDoc.data();
+                    folderItems.push({ id: fDoc.id, ...fDoc.data() });
+                });
+                sortAlpha(folderItems, 'name').forEach(f => {
                     container.innerHTML += `
-                        <div class="card folder-card" style="border-color: #f59e0b; cursor: pointer;" onclick="currentNotesFolder = {id: '${fDoc.id}', name: '${f.name}'}; loadNotes();">
+                        <div class="card folder-card" style="border-color: #f59e0b; cursor: pointer;" onclick="currentNotesFolder = {id: '${f.id}', name: '${f.name}'}; loadNotes();">
                             <h3><i class="fa-solid fa-folder" style="color: #f59e0b; margin-right: 8px;"></i> ${f.name}</h3>
                             <p>Apri per visualizzare le note</p>
                             <div class="action-buttons" onclick="event.stopPropagation();" style="margin-top: 15px;">
-                                <button class="delete-btn" style="padding: 6px; font-size: 13px;" onclick="confirmDelete('folders', '${fDoc.id}', loadNotes)">
+                                <button class="delete-btn" style="padding: 6px; font-size: 13px;" onclick="confirmDelete('folders', '${f.id}', loadNotes)">
                                     Elimina Cartella
                                 </button>
                             </div>
@@ -709,9 +742,14 @@ function loadMedia() {
                     </div>
                 `;
 
+                const mediaItems = [];
                 mediaSnapshot.forEach(doc => {
                     const m = doc.data();
                     if (m.folderId === currentMediaFolder.id) {
+                        mediaItems.push({ id: doc.id, ...m });
+                    }
+                });
+                sortAlpha(mediaItems, 'title').forEach(m => {
                         let mediaHTML = '';
                         const content = m.content || '';
                         const isDataImage = content.startsWith('data:image/');
@@ -720,7 +758,7 @@ function loadMedia() {
                                            (content.includes('https://') && !content.includes('.pdf') && !content.startsWith('data:'));
                         const isPdfLike = /\.pdf(\?|$)/i.test(content) || content.includes('docs.google.com') || content.includes('drive.google.com') || isDataPdf;
 
-                        const cardId = `media-card-${doc.id}`;
+                        const cardId = `media-card-${m.id}`;
 
                         if (isDataImage || isUrlImage) {
                             mediaHTML = `<img src="${content}" class="media-image" style="cursor:pointer;" data-open-src="${cardId}">`;
@@ -742,7 +780,7 @@ function loadMedia() {
                                 ${mediaHTML}
                                 ${openBtn}
                                 <div class="action-buttons">
-                                    <button class="delete-btn" onclick="confirmDelete('media', '${doc.id}', loadMedia)">
+                                    <button class="delete-btn" onclick="confirmDelete('media', '${m.id}', loadMedia)">
                                         Elimina
                                     </button>
                                 </div>
@@ -753,7 +791,6 @@ function loadMedia() {
                             const el = document.getElementById(cardId);
                             if (el) el.setAttribute('data-content-src', content);
                         }, 0);
-                    }
                 });
 
                 container.querySelectorAll('[data-open-src]').forEach(btn => {
@@ -768,14 +805,17 @@ function loadMedia() {
                     };
                 });
             } else {
+                const folderItems = [];
                 foldersSnapshot.forEach(fDoc => {
-                    const f = fDoc.data();
+                    folderItems.push({ id: fDoc.id, ...fDoc.data() });
+                });
+                sortAlpha(folderItems, 'name').forEach(f => {
                     container.innerHTML += `
-                        <div class="card folder-card" style="border-color: #f59e0b; cursor: pointer;" onclick="currentMediaFolder = {id: '${fDoc.id}', name: '${f.name}'}; loadMedia();">
+                        <div class="card folder-card" style="border-color: #f59e0b; cursor: pointer;" onclick="currentMediaFolder = {id: '${f.id}', name: '${f.name}'}; loadMedia();">
                             <h3><i class="fa-solid fa-folder" style="color: #f59e0b; margin-right: 8px;"></i> ${f.name}</h3>
                             <p>Apri per visualizzare l'archivio</p>
                             <div class="action-buttons" onclick="event.stopPropagation();" style="margin-top: 15px;">
-                                <button class="delete-btn" style="padding: 6px; font-size: 13px;" onclick="confirmDelete('folders', '${fDoc.id}', loadMedia)">
+                                <button class="delete-btn" style="padding: 6px; font-size: 13px;" onclick="confirmDelete('folders', '${f.id}', loadMedia)">
                                     Elimina Cartella
                                 </button>
                             </div>
@@ -865,9 +905,14 @@ function loadCommands() {
                     </div>
                 `;
 
+                const cmdItems = [];
                 commandsSnapshot.forEach(doc => {
                     const c = doc.data();
                     if (c.folderId === currentCommandsFolder.id) {
+                        cmdItems.push({ id: doc.id, ...c });
+                    }
+                });
+                sortAlpha(cmdItems, 'command').forEach(c => {
                         container.innerHTML += `
                             <div class="card">
                                 <h3>${c.command}</h3>
@@ -875,24 +920,26 @@ function loadCommands() {
                                 <div class="action-buttons">
                                     <button
                                         class="delete-btn"
-                                        onclick="confirmDelete('commands', '${doc.id}', loadCommands)"
+                                        onclick="confirmDelete('commands', '${c.id}', loadCommands)"
                                     >
                                         Elimina
                                     </button>
                                 </div>
                             </div>
                         `;
-                    }
                 });
             } else {
+                const folderItems = [];
                 foldersSnapshot.forEach(fDoc => {
-                    const f = fDoc.data();
+                    folderItems.push({ id: fDoc.id, ...fDoc.data() });
+                });
+                sortAlpha(folderItems, 'name').forEach(f => {
                     container.innerHTML += `
-                        <div class="card folder-card" style="border-color: #f59e0b; cursor: pointer;" onclick="currentCommandsFolder = {id: '${fDoc.id}', name: '${f.name}'}; loadCommands();">
+                        <div class="card folder-card" style="border-color: #f59e0b; cursor: pointer;" onclick="currentCommandsFolder = {id: '${f.id}', name: '${f.name}'}; loadCommands();">
                             <h3><i class="fa-solid fa-folder" style="color: #f59e0b; margin-right: 8px;"></i> ${f.name}</h3>
                             <p>Apri per visualizzare i comandi</p>
                             <div class="action-buttons" onclick="event.stopPropagation();" style="margin-top: 15px;">
-                                <button class="delete-btn" style="padding: 6px; font-size: 13px;" onclick="confirmDelete('folders', '${fDoc.id}', loadCommands)">
+                                <button class="delete-btn" style="padding: 6px; font-size: 13px;" onclick="confirmDelete('folders', '${f.id}', loadCommands)">
                                     Elimina Cartella
                                 </button>
                             </div>
@@ -967,9 +1014,14 @@ function loadGlobalLinks() {
                     </div>
                 `;
 
+                const linkItems = [];
                 linksSnapshot.forEach(doc => {
                     const l = doc.data();
                     if (l.folderId === currentAdminFolder.id) {
+                        linkItems.push({ id: doc.id, ...l });
+                    }
+                });
+                sortAlpha(linkItems, 'title').forEach(l => {
                         container.innerHTML += `
                             <div class="card">
                                 <h3>${l.title}</h3>
@@ -983,24 +1035,26 @@ function loadGlobalLinks() {
                                 <div class="action-buttons">
                                     <button
                                         class="delete-btn"
-                                        onclick="confirmDelete('globalLinks', '${doc.id}', loadGlobalLinks)"
+                                        onclick="confirmDelete('globalLinks', '${l.id}', loadGlobalLinks)"
                                     >
                                         Elimina
                                     </button>
                                 </div>
                             </div>
                         `;
-                    }
                 });
             } else {
+                const folderItems = [];
                 foldersSnapshot.forEach(fDoc => {
-                    const f = fDoc.data();
+                    folderItems.push({ id: fDoc.id, ...fDoc.data() });
+                });
+                sortAlpha(folderItems, 'name').forEach(f => {
                     container.innerHTML += `
-                        <div class="card folder-card" style="border-color: #f59e0b; cursor: pointer;" onclick="currentAdminFolder = {id: '${fDoc.id}', name: '${f.name}'}; loadGlobalLinks();">
+                        <div class="card folder-card" style="border-color: #f59e0b; cursor: pointer;" onclick="currentAdminFolder = {id: '${f.id}', name: '${f.name}'}; loadGlobalLinks();">
                             <h3><i class="fa-solid fa-folder" style="color: #f59e0b; margin-right: 8px;"></i> ${f.name}</h3>
                             <p>Apri per visualizzare i link</p>
                             <div class="action-buttons" onclick="event.stopPropagation();" style="margin-top: 15px;">
-                                <button class="delete-btn" style="padding: 6px; font-size: 13px;" onclick="confirmDelete('folders', '${fDoc.id}', loadGlobalLinks)">
+                                <button class="delete-btn" style="padding: 6px; font-size: 13px;" onclick="confirmDelete('folders', '${f.id}', loadGlobalLinks)">
                                     Elimina Cartella
                                 </button>
                             </div>
@@ -1232,12 +1286,18 @@ function loadPlayers() {
                     </div>
                 `;
 
+                const playerItems = [];
                 playersSnapshot.forEach(doc => {
                     const p = doc.data();
                     if (p.folderId === currentPlayersFolder.id) {
+                        playerItems.push({ id: doc.id, ...p });
+                    }
+                });
+                sortAlpha(playerItems, 'name').forEach(p => {
                         let activeQuestsHTML = '';
                         if (p.quests && p.quests.length > 0) {
-                            activeQuestsHTML = p.quests.map(q => `<span class="status progress" style="margin: 2px;">${q}</span>`).join(' ');
+                            const sortedQuests = p.quests.slice().sort((a, b) => String(a).localeCompare(String(b), 'it', { sensitivity: 'base' }));
+                            activeQuestsHTML = sortedQuests.map(q => `<span class="status progress" style="margin: 2px;">${q}</span>`).join(' ');
                         } else {
                             activeQuestsHTML = '<span style="color: var(--muted); font-size:13px;">Nessuna quest attiva</span>';
                         }
@@ -1252,37 +1312,39 @@ function loadPlayers() {
                                 <div class="action-buttons">
                                     <button
                                         class="edit-btn"
-                                        onclick="openPlayerModal('${doc.id}')"
+                                        onclick="openPlayerModal('${p.id}')"
                                     >
                                         Apri
                                     </button>
                                     <button
                                         class="btn-frammenti"
-                                        onclick="openPlayerFrammentiModal('${doc.id}', '${(p.name || '').replace(/'/g, "\\'")}')"
+                                        onclick="openPlayerFrammentiModal('${p.id}', '${(p.name || '').replace(/'/g, "\\'")}')"
                                         title="Resoconto Frammenti"
                                     >
                                         🔮
                                     </button>
                                     <button
                                         class="delete-btn"
-                                        onclick="confirmDelete('players', '${doc.id}', loadPlayers)"
+                                        onclick="confirmDelete('players', '${p.id}', loadPlayers)"
                                     >
                                         Elimina
                                     </button>
                                 </div>
                             </div>
                         `;
-                    }
                 });
             } else {
+                const folderItems = [];
                 foldersSnapshot.forEach(fDoc => {
-                    const f = fDoc.data();
+                    folderItems.push({ id: fDoc.id, ...fDoc.data() });
+                });
+                sortAlpha(folderItems, 'name').forEach(f => {
                     container.innerHTML += `
-                        <div class="card folder-card" style="border-color: #f59e0b; cursor: pointer;" onclick="currentPlayersFolder = {id: '${fDoc.id}', name: '${f.name}'}; loadPlayers();">
+                        <div class="card folder-card" style="border-color: #f59e0b; cursor: pointer;" onclick="currentPlayersFolder = {id: '${f.id}', name: '${f.name}'}; loadPlayers();">
                             <h3><i class="fa-solid fa-folder" style="color: #f59e0b; margin-right: 8px;"></i> ${f.name}</h3>
                             <p>Apri per visualizzare i player</p>
                             <div class="action-buttons" onclick="event.stopPropagation();" style="margin-top: 15px;">
-                                <button class="delete-btn" style="padding: 6px; font-size: 13px;" onclick="confirmDelete('folders', '${fDoc.id}', loadPlayers)">
+                                <button class="delete-btn" style="padding: 6px; font-size: 13px;" onclick="confirmDelete('folders', '${f.id}', loadPlayers)">
                                     Elimina Cartella
                                 </button>
                             </div>
@@ -1307,11 +1369,11 @@ function openPlayerModal(playerId) {
             db.collection('quests').get().then(snapshot => {
 
                 let questOptions = '';
-
+                const questList = [];
                 snapshot.forEach(qDoc => {
-
-                    const q = qDoc.data();
-
+                    questList.push(qDoc.data());
+                });
+                sortAlpha(questList, 'title').forEach(q => {
                     const selected =
                         player.quests &&
                         player.quests.includes(q.title)
@@ -1934,12 +1996,12 @@ function renderFrammentiEventsList() {
     };
 
     let filteredNormal = applyWeekFilter(normal);
-    filteredNormal.sort((a, b) => (b.createdAt || '').localeCompare(a.createdAt || ''));
+    filteredNormal = sortAlpha(filteredNormal, 'name');
 
     const activeNormal = filteredNormal.filter(e => e.status !== 'concluso');
     const closedNormal = filteredNormal.filter(e => e.status === 'concluso');
 
-    const sortedRep = repeatable.slice().sort((a, b) => (b.createdAt || '').localeCompare(a.createdAt || ''));
+    const sortedRep = sortAlpha(repeatable, 'name');
     const activeRep = sortedRep.filter(e => e.status !== 'concluso');
     const closedRep = sortedRep.filter(e => e.status === 'concluso');
 
@@ -2169,20 +2231,26 @@ function addFrammento() {
         db.collection('frammentiEvents').get()
     ]).then(([playersSnap, eventsSnap]) => {
         let playerOptions = '';
+        const playersList = [];
         playersSnap.forEach(doc => {
             const p = doc.data();
-            if (p.name) {
-                playerOptions += `<option value="${p.name.replace(/"/g, '&quot;')}">${p.name}</option>`;
-            }
+            if (p.name) playersList.push(p);
+        });
+        sortAlpha(playersList, 'name').forEach(p => {
+            playerOptions += `<option value="${p.name.replace(/"/g, '&quot;')}">${p.name}</option>`;
         });
 
         let eventOptions = '<option value="">Seleziona evento</option>';
         const eventsMap = {};
+        const eventsList = [];
         eventsSnap.forEach(doc => {
             const e = doc.data();
             eventsMap[doc.id] = e;
+            eventsList.push({ id: doc.id, ...e });
+        });
+        sortAlpha(eventsList, 'name').forEach(e => {
             const repTag = e.repeatable ? ' · ripetibile' : '';
-            eventOptions += `<option value="${doc.id}">${e.name} (${formatNumber(e.quantity)} fr.${repTag})</option>`;
+            eventOptions += `<option value="${e.id}">${e.name} (${formatNumber(e.quantity)} fr.${repTag})</option>`;
         });
 
         if (playersSnap.empty) {
@@ -2340,7 +2408,7 @@ function renderFrammentiList(items) {
         filtered = items.filter(f => weekKeyFromItem(f) === frammentiWeekFilter);
     }
 
-    filtered.sort((a, b) => (b.createdAt || '').localeCompare(a.createdAt || ''));
+    filtered = sortAlpha(filtered, 'playerName');
 
     container.innerHTML = '';
     if (filtered.length === 0) {
@@ -2432,7 +2500,7 @@ function buildRecapTablesFromItems(items) {
     });
 
     let playerRows = '';
-    Object.keys(byPlayer).sort((a, b) => byPlayer[b].qty - byPlayer[a].qty).forEach(name => {
+    Object.keys(byPlayer).sort((a, b) => a.localeCompare(b, 'it', { sensitivity: 'base' })).forEach(name => {
         const p = byPlayer[name];
         playerRows += `<tr>
             <td>${name}</td>
@@ -2444,7 +2512,7 @@ function buildRecapTablesFromItems(items) {
     if (!playerRows) playerRows = '<tr><td colspan="4" style="color:#a0a0a0;">Nessun dato</td></tr>';
 
     let eventRows = '';
-    Object.keys(byEvent).sort((a, b) => byEvent[b].qty - byEvent[a].qty).forEach(name => {
+    Object.keys(byEvent).sort((a, b) => a.localeCompare(b, 'it', { sensitivity: 'base' })).forEach(name => {
         const e = byEvent[name];
         const evStatus = resolveEventStatusLabel(e.eventId || null, name);
         const statusCell = evStatus === 'Concluso'
@@ -2633,7 +2701,7 @@ function buildPlayerFrammentiContent(items, playerId, playerName) {
     });
 
     let tableRows = '';
-    const eventNames = Object.keys(byEvent).sort((a, b) => byEvent[b].qty - byEvent[a].qty);
+    const eventNames = Object.keys(byEvent).sort((a, b) => a.localeCompare(b, 'it', { sensitivity: 'base' }));
     if (eventNames.length === 0) {
         tableRows = '<tr><td colspan="4" style="color:#a0a0a0;">Nessun frammento in questo filtro</td></tr>';
     } else {
