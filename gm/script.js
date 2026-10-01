@@ -2087,6 +2087,67 @@ function renderFrammentiEventsList() {
 }
 
 /** Occhio sull'evento: settimana + giocatori che hanno ricevuto frammenti per questo evento */
+/** Costruisce riga tabella partecipanti evento (consegna singola) */
+function buildEventParticipantRow(p, eventId, eventName) {
+    const isCons = p.status === 'consegnato';
+    const st = isCons
+        ? '<span style="color:#2ecc71;font-weight:600;">Consegnato</span>'
+        : '<span style="color:#e74c3c;font-weight:600;">Da consegnare</span>';
+    const nextStatus = isCons ? 'non_consegnato' : 'consegnato';
+    const btnLabel = isCons ? 'Annulla consegna' : 'Consegna';
+    const btnColor = isCons ? '#e74c3c' : '#2ecc71';
+    const safeEvent = (eventName || '').replace(/'/g, "\\'");
+    return `<tr>
+        <td><b>${p.playerName}</b>${p.note ? `<br><small style="color:#a0a0a0;">${p.note}</small>` : ''}</td>
+        <td>${formatNumber(p.quantity)}</td>
+        <td>${st}</td>
+        <td>
+            <button type="button"
+                onclick="toggleSingleFrammentoStatus('${p.id}', '${nextStatus}', '${eventId}', '${safeEvent}')"
+                style="padding:6px 10px;font-size:0.7rem;border:1px solid ${btnColor};color:${btnColor};background:transparent;cursor:pointer;border-radius:0;text-transform:uppercase;">
+                ${btnLabel}
+            </button>
+        </td>
+    </tr>`;
+}
+
+/** Aggiorna le tabelle partecipanti nel modal evento in base al flag “mostra consegnati” */
+function refreshEventFrammentiViewRows() {
+    const showCons = !!(document.getElementById('event-fr-show-consegnati') || {}).checked;
+    window._eventFrammentiShowConsegnati = showCons;
+    const data = window._eventFrammentiData;
+    if (!data) return;
+
+    const { pending, delivered, eventId, eventName } = data;
+    const tbodyPending = document.getElementById('event-fr-tbody-pending');
+    const tbodyCons = document.getElementById('event-fr-tbody-consegnati');
+    const sectionCons = document.getElementById('event-fr-section-consegnati');
+    const hintPending = document.getElementById('event-fr-hint-pending');
+
+    if (tbodyPending) {
+        if (pending.length === 0) {
+            tbodyPending.innerHTML = '<tr><td colspan="4" style="color:#a0a0a0;">Nessun frammento da consegnare.</td></tr>';
+        } else {
+            tbodyPending.innerHTML = pending.map(p => buildEventParticipantRow(p, eventId, eventName)).join('');
+        }
+    }
+    if (hintPending) {
+        hintPending.textContent = pending.length
+            ? `(${pending.length} da consegnare)`
+            : '(nessuno in sospeso)';
+    }
+    if (sectionCons) {
+        sectionCons.style.display = showCons ? 'block' : 'none';
+    }
+    if (tbodyCons && showCons) {
+        if (delivered.length === 0) {
+            tbodyCons.innerHTML = '<tr><td colspan="4" style="color:#a0a0a0;">Nessuna consegna registrata.</td></tr>';
+        } else {
+            tbodyCons.innerHTML = delivered.map(p => buildEventParticipantRow(p, eventId, eventName)).join('');
+        }
+    }
+}
+
 function openEventFrammentiView(eventId, eventName) {
     Promise.all([
         db.collection('frammentiEvents').doc(eventId).get(),
@@ -2122,36 +2183,29 @@ function openEventFrammentiView(eventId, eventName) {
 
         participants.sort((a, b) => (a.playerName || '').localeCompare(b.playerName || ''));
 
-        let rows = '';
-        if (participants.length === 0) {
-            rows = '<tr><td colspan="4" style="color:#a0a0a0;">Nessun giocatore assegnato. Usa “+ Assegna Frammenti”.</td></tr>';
+        const pending = participants.filter(p => p.status !== 'consegnato');
+        const delivered = participants.filter(p => p.status === 'consegnato');
+
+        window._eventFrammentiData = { pending, delivered, eventId, eventName, participants };
+        const showCons = !!window._eventFrammentiShowConsegnati;
+
+        let rowsPending = '';
+        if (pending.length === 0) {
+            rowsPending = participants.length === 0
+                ? '<tr><td colspan="4" style="color:#a0a0a0;">Nessun giocatore assegnato. Usa “+ Assegna Frammenti”.</td></tr>'
+                : '<tr><td colspan="4" style="color:#a0a0a0;">Nessun frammento da consegnare — tutto consegnato.</td></tr>';
         } else {
-            participants.forEach(p => {
-                const isCons = p.status === 'consegnato';
-                const st = isCons
-                    ? '<span style="color:#2ecc71;font-weight:600;">Consegnato</span>'
-                    : '<span style="color:#e74c3c;font-weight:600;">Non consegnato</span>';
-                const nextStatus = isCons ? 'non_consegnato' : 'consegnato';
-                const btnLabel = isCons ? 'Annulla consegna' : 'Consegna';
-                const btnColor = isCons ? '#e74c3c' : '#2ecc71';
-                const safePlayer = (p.playerName || '').replace(/'/g, "\\'");
-                rows += `<tr>
-                    <td><b>${p.playerName}</b>${p.note ? `<br><small style="color:#a0a0a0;">${p.note}</small>` : ''}</td>
-                    <td>${formatNumber(p.quantity)}</td>
-                    <td>${st}</td>
-                    <td>
-                        <button type="button"
-                            onclick="toggleSingleFrammentoStatus('${p.id}', '${nextStatus}', '${eventId}', '${(eventName || '').replace(/'/g, "\\'")}')"
-                            style="padding:6px 10px;font-size:0.7rem;border:1px solid ${btnColor};color:${btnColor};background:transparent;cursor:pointer;border-radius:0;text-transform:uppercase;">
-                            ${btnLabel}
-                        </button>
-                    </td>
-                </tr>`;
-            });
+            rowsPending = pending.map(p => buildEventParticipantRow(p, eventId, eventName)).join('');
+        }
+
+        let rowsCons = '';
+        if (delivered.length === 0) {
+            rowsCons = '<tr><td colspan="4" style="color:#a0a0a0;">Nessuna consegna registrata.</td></tr>';
+        } else {
+            rowsCons = delivered.map(p => buildEventParticipantRow(p, eventId, eventName)).join('');
         }
 
         const isRep = !!ev.repeatable;
-        // Totali per player (utile se ripetibile e assegnato più volte)
         const byPlayerSum = {};
         participants.forEach(p => {
             if (!byPlayerSum[p.playerName]) byPlayerSum[p.playerName] = 0;
@@ -2183,7 +2237,7 @@ function openEventFrammentiView(eventId, eventName) {
                         Assegnazioni: <b>${participants.length}</b>
                         &nbsp;·&nbsp; Tot. ${formatNumber(totalQty)} fr.
                         &nbsp;·&nbsp; <span style="color:#2ecc71;">${formatNumber(totalCons)} cons.</span>
-                        &nbsp;·&nbsp; <span style="color:#e74c3c;">${formatNumber(totalNon)} non</span>
+                        &nbsp;·&nbsp; <span style="color:#e74c3c;">${formatNumber(totalNon)} da consegnare</span>
                     </div>
                     ${isRep && sumRows ? `
                     <p style="margin-bottom:6px;color:#a0a0a0;font-size:13px;">Totale sommabile per player</p>
@@ -2192,7 +2246,20 @@ function openEventFrammentiView(eventId, eventName) {
                         <tbody>${sumRows}</tbody>
                     </table>
                     ` : ''}
-                    <p style="margin-bottom:8px;color:#a0a0a0;font-size:13px;">Dettaglio assegnazioni — consegna singola</p>
+
+                    <div style="margin:12px 0 14px;display:flex;align-items:center;gap:10px;flex-wrap:wrap;">
+                        <label style="display:inline-flex;align-items:center;gap:8px;cursor:pointer;color:#c5a059;font-size:13px;font-weight:600;user-select:none;">
+                            <input type="checkbox" id="event-fr-show-consegnati" ${showCons ? 'checked' : ''}
+                                onchange="refreshEventFrammentiViewRows()"
+                                style="width:auto;margin:0;accent-color:#2ecc71;cursor:pointer;">
+                            Mostra già consegnati
+                            <span style="color:#9ca3af;font-weight:400;">(${delivered.length})</span>
+                        </label>
+                    </div>
+
+                    <p style="margin-bottom:8px;color:#e74c3c;font-size:13px;font-weight:600;">
+                        Da consegnare <span id="event-fr-hint-pending" style="font-weight:400;color:#a0a0a0;">(${pending.length} da consegnare)</span>
+                    </p>
                     <table class="frammenti-recap-table">
                         <thead>
                             <tr>
@@ -2202,8 +2269,25 @@ function openEventFrammentiView(eventId, eventName) {
                                 <th>Azione</th>
                             </tr>
                         </thead>
-                        <tbody>${rows}</tbody>
+                        <tbody id="event-fr-tbody-pending">${rowsPending}</tbody>
                     </table>
+
+                    <div id="event-fr-section-consegnati" style="display:${showCons ? 'block' : 'none'};margin-top:18px;">
+                        <p style="margin-bottom:8px;color:#2ecc71;font-size:13px;font-weight:600;">
+                            Già consegnati <span style="font-weight:400;color:#a0a0a0;">(${delivered.length})</span>
+                        </p>
+                        <table class="frammenti-recap-table">
+                            <thead>
+                                <tr>
+                                    <th>Player</th>
+                                    <th>Qty</th>
+                                    <th>Stato</th>
+                                    <th>Azione</th>
+                                </tr>
+                            </thead>
+                            <tbody id="event-fr-tbody-consegnati">${rowsCons}</tbody>
+                        </table>
+                    </div>
                 </div>
             `
         });
@@ -2408,16 +2492,21 @@ function renderFrammentiList(items) {
         filtered = items.filter(f => weekKeyFromItem(f) === frammentiWeekFilter);
     }
 
+    // Di default solo da consegnare (lista nascosta in UI; coerente con le altre viste)
+    if (!window._frammentiListShowConsegnati) {
+        filtered = filtered.filter(f => f.status !== 'consegnato');
+    }
+
     filtered = sortAlpha(filtered, 'playerName');
 
     container.innerHTML = '';
     if (filtered.length === 0) {
-        container.innerHTML = '<p style="color:var(--text-dim);padding:10px;">Nessuna assegnazione in questa settimana. Usa “+ Assegna Frammenti” oppure cambia filtro settimana.</p>';
+        container.innerHTML = '<p style="color:var(--text-dim);padding:10px;">Nessuna assegnazione da consegnare in questa settimana. Usa “+ Assegna Frammenti” oppure cambia filtro settimana.</p>';
         return;
     }
 
     filtered.forEach(f => {
-        const statusLabel = f.status === 'consegnato' ? 'Consegnato' : 'Non consegnato';
+        const statusLabel = f.status === 'consegnato' ? 'Consegnato' : 'Da consegnare';
         const statusClass = f.status === 'consegnato' ? 'consegnato' : 'non_consegnato';
         const toggleLabel = f.status === 'consegnato' ? 'Segna non consegnato' : 'Segna consegnato';
         const nextStatus = f.status === 'consegnato' ? 'non_consegnato' : 'consegnato';
@@ -2667,14 +2756,16 @@ function filterPlayerFrammentiByWeek(items, filterVal) {
     return items.filter(f => weekKeyFromItem(f) === filterVal);
 }
 
-/** Costruisce HTML tabelle + dettaglio per il modal player (dati già filtrati) */
-function buildPlayerFrammentiContent(items, playerId, playerName) {
+/** Costruisce HTML tabelle + dettaglio per il modal player (dati già filtrati per settimana).
+ *  showConsegnati: se false (default) il dettaglio mostra solo “da consegnare”. */
+function buildPlayerFrammentiContent(items, playerId, playerName, showConsegnati) {
     const byEvent = {};
     const byWeek = {};
     let totalAll = 0;
     let totalConsegnati = 0;
     let totalNon = 0;
     const rows = [];
+    const showCons = !!showConsegnati;
 
     items.forEach(f => {
         const qty = Number(f.quantity) || 0;
@@ -2741,37 +2832,61 @@ function buildPlayerFrammentiContent(items, playerId, playerName) {
         });
     }
 
+    // Dettaglio: di default solo da consegnare; se flag attivo, sezione separata per i consegnati
+    const pendingRows = rows.filter(f => f.status !== 'consegnato');
+    const deliveredRows = rows.filter(f => f.status === 'consegnato');
+    pendingRows.sort((a, b) => (b.createdAt || '').localeCompare(a.createdAt || ''));
+    deliveredRows.sort((a, b) => (b.createdAt || '').localeCompare(a.createdAt || ''));
+    const safePlayer = (playerName || '').replace(/'/g, "\\'");
+
+    function rowHtml(f) {
+        const st = f.status === 'consegnato'
+            ? '<span class="status consegnato" style="margin:0;">Consegnato</span>'
+            : '<span class="status non_consegnato" style="margin:0;">Da consegnare</span>';
+        const repTag = f.repeatable
+            ? ' <span style="color:#a78bfa;font-size:0.7rem;">(ripetibile)</span>'
+            : '';
+        const evStatus = resolveEventStatusLabel(f.eventId, f.eventName);
+        const evStatusHtml = evStatus === 'Concluso'
+            ? ' <span style="color:#2ecc71;font-size:0.7rem;font-weight:600;">· Concluso</span>'
+            : ' <span style="color:#c5a059;font-size:0.7rem;font-weight:600;">· Aperto</span>';
+        return `<li style="margin-bottom:8px;padding-bottom:6px;border-bottom:1px dashed rgba(255,255,255,0.06);display:flex;justify-content:space-between;align-items:flex-start;gap:10px;">
+            <div>
+                <b>${f.eventName || '—'}</b>${repTag}${evStatusHtml} — ${formatNumber(f.quantity)} fr. ${st}
+                <br><small style="color:#a78bfa;">Sett. ${formatWeekLabel(f.weekKey)}</small>
+                ${f.note ? `<br><small style="color:#a0a0a0;">${f.note}</small>` : ''}
+            </div>
+            <button type="button"
+                onclick="removePlayerFrammento('${f.id}', '${safePlayer}', '${playerId}')"
+                title="Rimuovi questa assegnazione"
+                style="flex-shrink:0;padding:6px 10px;font-size:0.65rem;border:1px dashed #e74c3c;color:#e74c3c;background:transparent;cursor:pointer;text-transform:uppercase;">
+                Rimuovi
+            </button>
+        </li>`;
+    }
+
     let detailList = '';
-    if (rows.length > 0) {
-        rows.sort((a, b) => (b.createdAt || '').localeCompare(a.createdAt || ''));
-        const safePlayer = (playerName || '').replace(/'/g, "\\'");
-        detailList = rows.map(f => {
-            const st = f.status === 'consegnato'
-                ? '<span class="status consegnato" style="margin:0;">Consegnato</span>'
-                : '<span class="status non_consegnato" style="margin:0;">Non consegnato</span>';
-            const repTag = f.repeatable
-                ? ' <span style="color:#a78bfa;font-size:0.7rem;">(ripetibile)</span>'
-                : '';
-            const evStatus = resolveEventStatusLabel(f.eventId, f.eventName);
-            const evStatusHtml = evStatus === 'Concluso'
-                ? ' <span style="color:#2ecc71;font-size:0.7rem;font-weight:600;">· Concluso</span>'
-                : ' <span style="color:#c5a059;font-size:0.7rem;font-weight:600;">· Aperto</span>';
-            return `<li style="margin-bottom:8px;padding-bottom:6px;border-bottom:1px dashed rgba(255,255,255,0.06);display:flex;justify-content:space-between;align-items:flex-start;gap:10px;">
-                <div>
-                    <b>${f.eventName || '—'}</b>${repTag}${evStatusHtml} — ${formatNumber(f.quantity)} fr. ${st}
-                    <br><small style="color:#a78bfa;">Sett. ${formatWeekLabel(f.weekKey)}</small>
-                    ${f.note ? `<br><small style="color:#a0a0a0;">${f.note}</small>` : ''}
-                </div>
-                <button type="button"
-                    onclick="removePlayerFrammento('${f.id}', '${safePlayer}', '${playerId}')"
-                    title="Rimuovi questa assegnazione"
-                    style="flex-shrink:0;padding:6px 10px;font-size:0.65rem;border:1px dashed #e74c3c;color:#e74c3c;background:transparent;cursor:pointer;text-transform:uppercase;">
-                    Rimuovi
-                </button>
-            </li>`;
-        }).join('');
-    } else {
+    if (pendingRows.length === 0 && deliveredRows.length === 0) {
         detailList = '<li style="color:#a0a0a0;">Nessuna assegnazione in questo filtro</li>';
+    } else {
+        detailList += `<li style="list-style:none;margin-bottom:10px;padding:0;border:none;">
+            <p style="margin:0 0 6px;color:#e74c3c;font-size:13px;font-weight:600;">Da consegnare (${pendingRows.length})</p>
+        </li>`;
+        if (pendingRows.length === 0) {
+            detailList += '<li style="color:#a0a0a0;">Nessun frammento da consegnare</li>';
+        } else {
+            detailList += pendingRows.map(rowHtml).join('');
+        }
+        if (showCons) {
+            detailList += `<li style="list-style:none;margin:14px 0 6px;padding:0;border:none;">
+                <p style="margin:0;color:#2ecc71;font-size:13px;font-weight:600;">Già consegnati (${deliveredRows.length})</p>
+            </li>`;
+            if (deliveredRows.length === 0) {
+                detailList += '<li style="color:#a0a0a0;">Nessuna consegna registrata</li>';
+            } else {
+                detailList += deliveredRows.map(rowHtml).join('');
+            }
+        }
     }
 
     return {
@@ -2780,31 +2895,40 @@ function buildPlayerFrammentiContent(items, playerId, playerName) {
         detailList,
         totalAll,
         totalConsegnati,
-        totalNon
+        totalNon,
+        pendingCount: pendingRows.length,
+        deliveredCount: deliveredRows.length
     };
 }
 
 /** Aggiorna tabelle/dettaglio del modal player senza richiuderlo */
 function refreshPlayerFrammentiModal(filterVal) {
-    window._playerFrammentiFilter = filterVal;
+    if (filterVal != null) window._playerFrammentiFilter = filterVal;
     const items = window._playerFrammentiItems || [];
     const playerId = window._playerFrammentiPlayerId;
     const playerName = window._playerFrammentiPlayerName || '';
-    const filtered = filterPlayerFrammentiByWeek(items, filterVal);
-    const c = buildPlayerFrammentiContent(filtered, playerId, playerName);
+    const weekFilter = window._playerFrammentiFilter || 'current';
+    const showConsEl = document.getElementById('player-fr-show-consegnati');
+    const showCons = showConsEl ? !!showConsEl.checked : !!window._playerFrammentiShowConsegnati;
+    window._playerFrammentiShowConsegnati = showCons;
+
+    const filtered = filterPlayerFrammentiByWeek(items, weekFilter);
+    const c = buildPlayerFrammentiContent(filtered, playerId, playerName, showCons);
 
     const elEvents = document.getElementById('player-fr-tbody-events');
     const elWeeks = document.getElementById('player-fr-tbody-weeks');
     const elDetail = document.getElementById('player-fr-detail-list');
     const elTotal = document.getElementById('player-fr-total');
+    const elConsCount = document.getElementById('player-fr-cons-count');
     if (elEvents) elEvents.innerHTML = c.tableRows;
     if (elWeeks) elWeeks.innerHTML = c.weekTable;
     if (elDetail) elDetail.innerHTML = c.detailList;
+    if (elConsCount) elConsCount.textContent = '(' + c.deliveredCount + ')';
     if (elTotal) {
         elTotal.innerHTML = `
             Totale: ${formatNumber(c.totalAll)} frammenti
             &nbsp;·&nbsp; <span style="color:#2ecc71;">${formatNumber(c.totalConsegnati)} consegnati</span>
-            &nbsp;·&nbsp; <span style="color:#e74c3c;">${formatNumber(c.totalNon)} non consegnati</span>
+            &nbsp;·&nbsp; <span style="color:#e74c3c;">${formatNumber(c.totalNon)} da consegnare</span>
         `;
     }
 }
@@ -2857,8 +2981,9 @@ function openPlayerFrammentiModal(playerId, playerName, initialFilter) {
             weekOpts += `<option value="${k}"${preferred === k ? ' selected' : ''}>${formatWeekLabel(k)} — archivio</option>`;
         });
 
+        const showCons = !!window._playerFrammentiShowConsegnati;
         const filtered = filterPlayerFrammentiByWeek(items, preferred);
-        const c = buildPlayerFrammentiContent(filtered, playerId, playerName);
+        const c = buildPlayerFrammentiContent(filtered, playerId, playerName, showCons);
 
         Swal.fire({
             title: '🔮 Frammenti — ' + playerName,
@@ -2885,7 +3010,7 @@ function openPlayerFrammentiModal(playerId, playerName, initialFilter) {
                                 <th>Evento</th>
                                 <th>Tot.</th>
                                 <th>Consegnati</th>
-                                <th>Non cons.</th>
+                                <th>Da cons.</th>
                             </tr>
                         </thead>
                         <tbody id="player-fr-tbody-events">${c.tableRows}</tbody>
@@ -2898,7 +3023,7 @@ function openPlayerFrammentiModal(playerId, playerName, initialFilter) {
                                 <th>Settimana</th>
                                 <th>Tot.</th>
                                 <th>Consegnati</th>
-                                <th>Non cons.</th>
+                                <th>Da cons.</th>
                             </tr>
                         </thead>
                         <tbody id="player-fr-tbody-weeks">${c.weekTable}</tbody>
@@ -2907,9 +3032,20 @@ function openPlayerFrammentiModal(playerId, playerName, initialFilter) {
                     <div class="frammenti-recap-total" id="player-fr-total">
                         Totale: ${formatNumber(c.totalAll)} frammenti
                         &nbsp;·&nbsp; <span style="color:#2ecc71;">${formatNumber(c.totalConsegnati)} consegnati</span>
-                        &nbsp;·&nbsp; <span style="color:#e74c3c;">${formatNumber(c.totalNon)} non consegnati</span>
+                        &nbsp;·&nbsp; <span style="color:#e74c3c;">${formatNumber(c.totalNon)} da consegnare</span>
                     </div>
-                    <p style="margin:18px 0 8px;color:#a0a0a0;font-size:13px;">Dettaglio assegnazioni (log)</p>
+
+                    <div style="margin:16px 0 10px;display:flex;align-items:center;gap:10px;flex-wrap:wrap;">
+                        <label style="display:inline-flex;align-items:center;gap:8px;cursor:pointer;color:#c5a059;font-size:13px;font-weight:600;user-select:none;">
+                            <input type="checkbox" id="player-fr-show-consegnati" ${showCons ? 'checked' : ''}
+                                onchange="refreshPlayerFrammentiModal()"
+                                style="width:auto;margin:0;accent-color:#2ecc71;cursor:pointer;">
+                            Mostra già consegnati
+                            <span id="player-fr-cons-count" style="color:#9ca3af;font-weight:400;">(${c.deliveredCount})</span>
+                        </label>
+                    </div>
+
+                    <p style="margin:8px 0 8px;color:#a0a0a0;font-size:13px;">Dettaglio assegnazioni (log)</p>
                     <ul id="player-fr-detail-list" class="frammenti-recap-scroll" style="list-style:none;padding:0;">${c.detailList}</ul>
                 </div>
             `
