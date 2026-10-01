@@ -2150,7 +2150,7 @@ function renderFrammentiEventsList() {
 }
 
 /** Occhio sull'evento: settimana + giocatori che hanno ricevuto frammenti per questo evento */
-/** Costruisce riga tabella partecipanti evento (consegna singola) */
+/** Costruisce riga tabella partecipanti evento (consegna singola + checkbox multi) */
 function buildEventParticipantRow(p, eventId, eventName) {
     const isCons = p.status === 'consegnato';
     const st = isCons
@@ -2160,7 +2160,15 @@ function buildEventParticipantRow(p, eventId, eventName) {
     const btnLabel = isCons ? 'Annulla consegna' : 'Consegna';
     const btnColor = isCons ? '#e74c3c' : '#2ecc71';
     const safeEvent = (eventName || '').replace(/'/g, "\\'");
+    // Checkbox solo per i da consegnare (selezione multipla)
+    const checkCell = isCons
+        ? '<td></td>'
+        : `<td style="width:36px;text-align:center;">
+            <input type="checkbox" class="event-fr-check" value="${p.id}"
+                style="width:auto;margin:0;accent-color:#2ecc71;cursor:pointer;transform:scale(1.15);">
+           </td>`;
     return `<tr>
+        ${checkCell}
         <td><b>${p.playerName}</b>${p.note ? `<br><small style="color:#a0a0a0;">${p.note}</small>` : ''}</td>
         <td>${formatNumber(p.quantity)}</td>
         <td>${st}</td>
@@ -2186,10 +2194,12 @@ function refreshEventFrammentiViewRows() {
     const tbodyCons = document.getElementById('event-fr-tbody-consegnati');
     const sectionCons = document.getElementById('event-fr-section-consegnati');
     const hintPending = document.getElementById('event-fr-hint-pending');
+    const batchBar = document.getElementById('event-fr-batch-bar');
+    const selectAll = document.getElementById('event-fr-select-all');
 
     if (tbodyPending) {
         if (pending.length === 0) {
-            tbodyPending.innerHTML = '<tr><td colspan="4" style="color:#a0a0a0;">Nessun frammento da consegnare.</td></tr>';
+            tbodyPending.innerHTML = '<tr><td colspan="5" style="color:#a0a0a0;">Nessun frammento da consegnare.</td></tr>';
         } else {
             tbodyPending.innerHTML = pending.map(p => buildEventParticipantRow(p, eventId, eventName)).join('');
         }
@@ -2199,12 +2209,18 @@ function refreshEventFrammentiViewRows() {
             ? `(${pending.length} da consegnare)`
             : '(nessuno in sospeso)';
     }
+    if (batchBar) {
+        batchBar.style.display = pending.length > 0 ? 'flex' : 'none';
+    }
+    if (selectAll) {
+        selectAll.checked = false;
+    }
     if (sectionCons) {
         sectionCons.style.display = showCons ? 'block' : 'none';
     }
     if (tbodyCons && showCons) {
         if (delivered.length === 0) {
-            tbodyCons.innerHTML = '<tr><td colspan="4" style="color:#a0a0a0;">Nessuna consegna registrata.</td></tr>';
+            tbodyCons.innerHTML = '<tr><td colspan="5" style="color:#a0a0a0;">Nessuna consegna registrata.</td></tr>';
         } else {
             tbodyCons.innerHTML = delivered.map(p => buildEventParticipantRow(p, eventId, eventName)).join('');
         }
@@ -2255,18 +2271,21 @@ function openEventFrammentiView(eventId, eventName) {
         let rowsPending = '';
         if (pending.length === 0) {
             rowsPending = participants.length === 0
-                ? '<tr><td colspan="4" style="color:#a0a0a0;">Nessun giocatore assegnato. Usa “+ Assegna Frammenti”.</td></tr>'
-                : '<tr><td colspan="4" style="color:#a0a0a0;">Nessun frammento da consegnare — tutto consegnato.</td></tr>';
+                ? '<tr><td colspan="5" style="color:#a0a0a0;">Nessun giocatore assegnato. Usa “+ Assegna Frammenti”.</td></tr>'
+                : '<tr><td colspan="5" style="color:#a0a0a0;">Nessun frammento da consegnare — tutto consegnato.</td></tr>';
         } else {
             rowsPending = pending.map(p => buildEventParticipantRow(p, eventId, eventName)).join('');
         }
 
         let rowsCons = '';
         if (delivered.length === 0) {
-            rowsCons = '<tr><td colspan="4" style="color:#a0a0a0;">Nessuna consegna registrata.</td></tr>';
+            rowsCons = '<tr><td colspan="5" style="color:#a0a0a0;">Nessuna consegna registrata.</td></tr>';
         } else {
             rowsCons = delivered.map(p => buildEventParticipantRow(p, eventId, eventName)).join('');
         }
+
+        const safeEventName = (eventName || '').replace(/'/g, "\\'");
+        const batchBarDisplay = pending.length > 0 ? 'flex' : 'none';
 
         const isRep = !!ev.repeatable;
         const byPlayerAgg = {};
@@ -2329,9 +2348,30 @@ function openEventFrammentiView(eventId, eventName) {
                     <p style="margin-bottom:8px;color:#e74c3c;font-size:13px;font-weight:600;">
                         Da consegnare <span id="event-fr-hint-pending" style="font-weight:400;color:#a0a0a0;">(${pending.length} da consegnare)</span>
                     </p>
+
+                    <div id="event-fr-batch-bar" style="display:${batchBarDisplay};flex-wrap:wrap;align-items:center;gap:10px;margin-bottom:12px;">
+                        <button type="button" onclick="toggleEventFrSelectAll()"
+                            style="padding:8px 12px;font-size:0.72rem;border:1px solid #c5a059;color:#c5a059;background:transparent;cursor:pointer;text-transform:uppercase;">
+                            <i class="fa-solid fa-check-double"></i> Seleziona / deseleziona tutti
+                        </button>
+                        <button type="button" onclick="deliverSelectedFrammenti('${eventId}', '${safeEventName}')"
+                            style="padding:8px 12px;font-size:0.72rem;border:1px solid #2ecc71;color:#2ecc71;background:transparent;cursor:pointer;text-transform:uppercase;">
+                            <i class="fa-solid fa-check"></i> Consegna selezionati
+                        </button>
+                        <button type="button" onclick="deliverAllPendingFrammenti('${eventId}', '${safeEventName}')"
+                            style="padding:8px 12px;font-size:0.72rem;border:1px solid #8b5cf6;color:#a78bfa;background:transparent;cursor:pointer;text-transform:uppercase;">
+                            <i class="fa-solid fa-bolt"></i> Consegna tutti
+                        </button>
+                    </div>
+
                     <table class="frammenti-recap-table">
                         <thead>
                             <tr>
+                                <th style="width:36px;text-align:center;">
+                                    <input type="checkbox" id="event-fr-select-all" title="Seleziona tutti"
+                                        onclick="toggleEventFrSelectAll(this.checked)"
+                                        style="width:auto;margin:0;accent-color:#2ecc71;cursor:pointer;transform:scale(1.15);">
+                                </th>
                                 <th>Player</th>
                                 <th>Qty</th>
                                 <th>Stato</th>
@@ -2348,6 +2388,7 @@ function openEventFrammentiView(eventId, eventName) {
                         <table class="frammenti-recap-table">
                             <thead>
                                 <tr>
+                                    <th style="width:36px;"></th>
                                     <th>Player</th>
                                     <th>Qty</th>
                                     <th>Stato</th>
@@ -2359,6 +2400,100 @@ function openEventFrammentiView(eventId, eventName) {
                     </div>
                 </div>
             `
+        });
+    });
+}
+
+/** Seleziona / deseleziona tutte le checkbox “da consegnare” nel modal evento */
+function toggleEventFrSelectAll(forceChecked) {
+    const boxes = document.querySelectorAll('.event-fr-check');
+    if (!boxes.length) return;
+    let checked;
+    if (typeof forceChecked === 'boolean') {
+        checked = forceChecked;
+    } else {
+        const anyUnchecked = Array.from(boxes).some(b => !b.checked);
+        checked = anyUnchecked;
+    }
+    boxes.forEach(b => { b.checked = checked; });
+    const selectAll = document.getElementById('event-fr-select-all');
+    if (selectAll) selectAll.checked = checked;
+}
+
+/** Consegna in batch gli ID selezionati (checkbox) */
+function deliverSelectedFrammenti(eventId, eventName) {
+    const boxes = document.querySelectorAll('.event-fr-check:checked');
+    const ids = Array.from(boxes).map(b => b.value).filter(Boolean);
+    if (ids.length === 0) {
+        Swal.fire({
+            icon: 'info',
+            title: 'Nessuna selezione',
+            text: 'Seleziona almeno un player da consegnare (checkbox a sinistra).',
+            background: '#131a25'
+        });
+        return;
+    }
+    Swal.fire({
+        title: 'Consegnare selezionati?',
+        text: `Stai per segnare ${ids.length} assegnazion${ids.length === 1 ? 'e' : 'i'} come consegnat${ids.length === 1 ? 'a' : 'e'}.`,
+        icon: 'question',
+        showCancelButton: true,
+        confirmButtonText: 'Consegna',
+        cancelButtonText: 'Annulla',
+        confirmButtonColor: '#2ecc71',
+        background: '#131a25'
+    }).then(result => {
+        if (!result.isConfirmed) return;
+        const updates = ids.map(id =>
+            db.collection('frammenti').doc(id).update({ status: 'consegnato' })
+        );
+        Promise.all(updates).then(() => {
+            showToast(ids.length === 1
+                ? '1 assegnazione consegnata'
+                : ids.length + ' assegnazioni consegnate');
+            openEventFrammentiView(eventId, eventName);
+        }).catch(err => {
+            showToast('Errore durante la consegna');
+            console.error(err);
+        });
+    });
+}
+
+/** Consegna tutte le assegnazioni ancora in sospeso per questo evento */
+function deliverAllPendingFrammenti(eventId, eventName) {
+    const data = window._eventFrammentiData;
+    if (!data || !data.pending || data.pending.length === 0) {
+        Swal.fire({
+            icon: 'info',
+            title: 'Niente da consegnare',
+            text: 'Non ci sono assegnazioni in sospeso per questo evento.',
+            background: '#131a25'
+        });
+        return;
+    }
+    const ids = data.pending.map(p => p.id);
+    Swal.fire({
+        title: 'Consegnare tutti?',
+        text: `Stai per segnare tutte le ${ids.length} assegnazioni in sospeso come consegnate.`,
+        icon: 'warning',
+        showCancelButton: true,
+        confirmButtonText: 'Consegna tutti',
+        cancelButtonText: 'Annulla',
+        confirmButtonColor: '#8b5cf6',
+        background: '#131a25'
+    }).then(result => {
+        if (!result.isConfirmed) return;
+        const updates = ids.map(id =>
+            db.collection('frammenti').doc(id).update({ status: 'consegnato' })
+        );
+        Promise.all(updates).then(() => {
+            showToast(ids.length === 1
+                ? '1 assegnazione consegnata'
+                : 'Tutte le ' + ids.length + ' assegnazioni consegnate');
+            openEventFrammentiView(eventId, eventName);
+        }).catch(err => {
+            showToast('Errore durante la consegna');
+            console.error(err);
         });
     });
 }
