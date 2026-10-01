@@ -1890,14 +1890,69 @@ function loadFrammentiEvents() {
 function getEventDeliveryStats(eventId, eventName) {
     let total = 0;
     let cons = 0;
+    const players = new Set();
     (_frammentiAllItems || []).forEach(f => {
         const match = (f.eventId && f.eventId === eventId) ||
                       (!f.eventId && f.eventName === eventName);
         if (!match) return;
         total += 1;
         if (f.status === 'consegnato') cons += 1;
+        if (f.playerName) players.add(f.playerName);
     });
-    return { total, cons };
+    return { total, cons, uniquePlayers: players.size };
+}
+
+/**
+ * Per evento ripetibile: quante volte ogni player ha partecipato + qty totale.
+ * Ritorna array ordinato [{ playerName, times, qty, cons, non }]
+ */
+function getRepeatablePlayerCounts(eventId, eventName) {
+    const map = {};
+    (_frammentiAllItems || []).forEach(f => {
+        const match = (f.eventId && f.eventId === eventId) ||
+                      (!f.eventId && f.eventName === eventName);
+        if (!match) return;
+        const name = f.playerName || '—';
+        if (!map[name]) map[name] = { playerName: name, times: 0, qty: 0, cons: 0, non: 0 };
+        const qty = Number(f.quantity) || 0;
+        map[name].times += 1;
+        map[name].qty += qty;
+        if (f.status === 'consegnato') map[name].cons += qty;
+        else map[name].non += qty;
+    });
+    return Object.values(map).sort((a, b) => a.playerName.localeCompare(b.playerName, 'it', { sensitivity: 'base' }));
+}
+
+/**
+ * Per un player: contatori eventi ripetibili { eventName, times, qty, cons, non, eventId }
+ */
+function getPlayerRepeatableEventCounts(playerName, items) {
+    const source = items || _frammentiAllItems || [];
+    const map = {};
+    source.forEach(f => {
+        if (f.playerName !== playerName) return;
+        // Conta come ripetibile se flag sull'assegnazione O sull'evento
+        let isRep = !!f.repeatable;
+        if (!isRep && f.eventId && _frammentiAllEvents) {
+            const ev = (_frammentiAllEvents || []).find(e => e.id === f.eventId);
+            if (ev && ev.repeatable) isRep = true;
+        }
+        if (!isRep && f.eventName && _frammentiAllEvents) {
+            const target = String(f.eventName).trim().toLowerCase();
+            const ev = (_frammentiAllEvents || []).find(e => String(e.name || '').trim().toLowerCase() === target);
+            if (ev && ev.repeatable) isRep = true;
+        }
+        if (!isRep) return;
+        const name = f.eventName || 'Sconosciuto';
+        if (!map[name]) map[name] = { eventName: name, eventId: f.eventId || null, times: 0, qty: 0, cons: 0, non: 0 };
+        const qty = Number(f.quantity) || 0;
+        map[name].times += 1;
+        map[name].qty += qty;
+        if (f.status === 'consegnato') map[name].cons += qty;
+        else map[name].non += qty;
+        if (!map[name].eventId && f.eventId) map[name].eventId = f.eventId;
+    });
+    return Object.values(map).sort((a, b) => a.eventName.localeCompare(b.eventName, 'it', { sensitivity: 'base' }));
 }
 
 /**
@@ -1952,12 +2007,20 @@ function buildEventCardHTML(e) {
         deliveryBadge = `<span class="week-badge event-delivery-badge" style="background:rgba(107,114,128,0.15);border-color:rgba(107,114,128,0.35);color:#9ca3af;" title="Nessuna assegnazione">0/0</span>`;
     }
 
+    // Contatore volte (utile soprattutto per eventi ripetibili)
+    let timesBadge = '';
+    if (isRepeatable) {
+        const nPlayers = stats.uniquePlayers || 0;
+        const nTimes = stats.total || 0;
+        timesBadge = `<span class="week-badge" style="background:rgba(139,92,246,0.2);border-color:rgba(139,92,246,0.5);color:#c4b5fd;font-weight:700;" title="Partecipazioni totali all'evento ripetibile">${nTimes} volte · ${nPlayers} player</span>`;
+    }
+
     return `
         <div class="card event-card ${isConcluso ? 'event-concluso' : ''} ${isRepeatable ? 'event-repeatable' : ''}">
             <h3>${e.name}</h3>
             <p><b>Frammenti per assegnazione:</b> ${formatNumber(e.quantity)}</p>
             ${isRepeatable ? '<p style="font-size:0.8rem;color:#a78bfa;margin-bottom:6px;">Si può assegnare più volte · i punti si sommano</p>' : ''}
-            <div class="event-badges">${deliveryBadge} ${repeatBadge} ${weekBadge} ${statusBadge} ${archiveTag}</div>
+            <div class="event-badges">${deliveryBadge} ${timesBadge} ${repeatBadge} ${weekBadge} ${statusBadge} ${archiveTag}</div>
             <div class="action-buttons event-actions">
                 <button class="edit-btn" onclick="openEventFrammentiView('${e.id}', '${safeName}')" title="Partecipanti e consegne">
                     <i class="fa-solid fa-eye"></i> Partecipanti
@@ -2206,14 +2269,20 @@ function openEventFrammentiView(eventId, eventName) {
         }
 
         const isRep = !!ev.repeatable;
-        const byPlayerSum = {};
+        const byPlayerAgg = {};
         participants.forEach(p => {
-            if (!byPlayerSum[p.playerName]) byPlayerSum[p.playerName] = 0;
-            byPlayerSum[p.playerName] += p.quantity;
+            if (!byPlayerAgg[p.playerName]) byPlayerAgg[p.playerName] = { qty: 0, times: 0 };
+            byPlayerAgg[p.playerName].qty += p.quantity;
+            byPlayerAgg[p.playerName].times += 1;
         });
         let sumRows = '';
-        Object.keys(byPlayerSum).sort().forEach(name => {
-            sumRows += `<tr><td>${name}</td><td>${formatNumber(byPlayerSum[name])}</td></tr>`;
+        Object.keys(byPlayerAgg).sort().forEach(name => {
+            const a = byPlayerAgg[name];
+            sumRows += `<tr>
+                <td>${name}</td>
+                <td style="color:#a78bfa;font-weight:700;">${a.times}×</td>
+                <td>${formatNumber(a.qty)}</td>
+            </tr>`;
         });
 
         Swal.fire({
@@ -2240,9 +2309,9 @@ function openEventFrammentiView(eventId, eventName) {
                         &nbsp;·&nbsp; <span style="color:#e74c3c;">${formatNumber(totalNon)} da consegnare</span>
                     </div>
                     ${isRep && sumRows ? `
-                    <p style="margin-bottom:6px;color:#a0a0a0;font-size:13px;">Totale sommabile per player</p>
+                    <p style="margin-bottom:6px;color:#a78bfa;font-size:13px;font-weight:600;">Contatore ripetizioni per player</p>
                     <table class="frammenti-recap-table" style="margin-bottom:14px;">
-                        <thead><tr><th>Player</th><th>Tot. frammenti</th></tr></thead>
+                        <thead><tr><th>Player</th><th>Volte</th><th>Tot. frammenti</th></tr></thead>
                         <tbody>${sumRows}</tbody>
                     </table>
                     ` : ''}
@@ -2772,8 +2841,10 @@ function buildPlayerFrammentiContent(items, playerId, playerName, showConsegnati
         const name = f.eventName || 'Sconosciuto';
         const wk = weekKeyFromItem(f);
 
-        if (!byEvent[name]) byEvent[name] = { qty: 0, consegnati: 0, non: 0 };
+        if (!byEvent[name]) byEvent[name] = { qty: 0, consegnati: 0, non: 0, times: 0, repeatable: !!f.repeatable };
         byEvent[name].qty += qty;
+        byEvent[name].times += 1;
+        if (f.repeatable) byEvent[name].repeatable = true;
         if (f.status === 'consegnato') {
             byEvent[name].consegnati += qty;
             totalConsegnati += qty;
@@ -2803,9 +2874,22 @@ function buildPlayerFrammentiContent(items, playerId, playerName, showConsegnati
             const statusCell = evStatus === 'Concluso'
                 ? '<span style="color:#2ecc71;font-weight:600;">Concluso</span>'
                 : '<span style="color:#c5a059;font-weight:600;">Aperto</span>';
+            let isRepEv = !!e.repeatable;
+            if (!isRepEv && sample && sample.repeatable) isRepEv = true;
+            if (!isRepEv) {
+                const evs = _frammentiAllEvents || [];
+                const found = evs.find(ev =>
+                    (sample && sample.eventId && ev.id === sample.eventId) ||
+                    String(ev.name || '').trim().toLowerCase() === String(name).trim().toLowerCase()
+                );
+                if (found && found.repeatable) isRepEv = true;
+            }
+            const timesCell = isRepEv
+                ? `<br><small style="color:#a78bfa;font-weight:700;">${e.times}× volte</small>`
+                : (e.times > 1 ? `<br><small style="color:#a78bfa;">${e.times}×</small>` : '');
             tableRows += `
                 <tr>
-                    <td>${name}<br><small>${statusCell}</small></td>
+                    <td>${name}${timesCell}<br><small>${statusCell}</small></td>
                     <td>${formatNumber(e.qty)}</td>
                     <td style="color:#2ecc71;">${formatNumber(e.consegnati)}</td>
                     <td style="color:#e74c3c;">${formatNumber(e.non)}</td>
@@ -2889,6 +2973,40 @@ function buildPlayerFrammentiContent(items, playerId, playerName, showConsegnati
         }
     }
 
+    // Contatore eventi ripetibili per questo player (su items filtrati)
+    const repCounts = getPlayerRepeatableEventCounts(playerName, items);
+    let repCountsHtml = '';
+    if (repCounts.length > 0) {
+        const repRows = repCounts.map(r => {
+            const volteLabel = r.times === 1 ? '1 volta' : (r.times + ' volte');
+            return `<tr>
+                <td>${r.eventName}</td>
+                <td style="color:#a78bfa;font-weight:700;">${volteLabel}</td>
+                <td>${formatNumber(r.qty)}</td>
+                <td style="color:#2ecc71;">${formatNumber(r.cons)}</td>
+                <td style="color:#e74c3c;">${formatNumber(r.non)}</td>
+            </tr>`;
+        }).join('');
+        repCountsHtml = `
+            <div class="frammenti-recap-section" style="margin-top:8px;">
+                <p style="margin:12px 0 8px;color:#a78bfa;font-size:13px;font-weight:600;">
+                    <i class="fa-solid fa-rotate"></i> Eventi ripetibili — contatore volte
+                </p>
+                <table class="frammenti-recap-table">
+                    <thead>
+                        <tr>
+                            <th>Evento</th>
+                            <th>Volte</th>
+                            <th>Tot. fr.</th>
+                            <th>Cons.</th>
+                            <th>Da cons.</th>
+                        </tr>
+                    </thead>
+                    <tbody>${repRows}</tbody>
+                </table>
+            </div>`;
+    }
+
     return {
         tableRows,
         weekTable,
@@ -2897,7 +3015,8 @@ function buildPlayerFrammentiContent(items, playerId, playerName, showConsegnati
         totalConsegnati,
         totalNon,
         pendingCount: pendingRows.length,
-        deliveredCount: deliveredRows.length
+        deliveredCount: deliveredRows.length,
+        repCountsHtml
     };
 }
 
@@ -2920,10 +3039,12 @@ function refreshPlayerFrammentiModal(filterVal) {
     const elDetail = document.getElementById('player-fr-detail-list');
     const elTotal = document.getElementById('player-fr-total');
     const elConsCount = document.getElementById('player-fr-cons-count');
+    const elRep = document.getElementById('player-fr-rep-counts');
     if (elEvents) elEvents.innerHTML = c.tableRows;
     if (elWeeks) elWeeks.innerHTML = c.weekTable;
     if (elDetail) elDetail.innerHTML = c.detailList;
     if (elConsCount) elConsCount.textContent = '(' + c.deliveredCount + ')';
+    if (elRep) elRep.innerHTML = c.repCountsHtml || '';
     if (elTotal) {
         elTotal.innerHTML = `
             Totale: ${formatNumber(c.totalAll)} frammenti
@@ -3044,6 +3165,8 @@ function openPlayerFrammentiModal(playerId, playerName, initialFilter) {
                             <span id="player-fr-cons-count" style="color:#9ca3af;font-weight:400;">(${c.deliveredCount})</span>
                         </label>
                     </div>
+
+                    <div id="player-fr-rep-counts">${c.repCountsHtml || ''}</div>
 
                     <p style="margin:8px 0 8px;color:#a0a0a0;font-size:13px;">Dettaglio assegnazioni (log)</p>
                     <ul id="player-fr-detail-list" class="frammenti-recap-scroll" style="list-style:none;padding:0;">${c.detailList}</ul>
