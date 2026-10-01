@@ -2060,3 +2060,67 @@ footer:hover strong { color: var(--blood-red); }
     max-height: 260px;
     overflow-y: auto;
 }
+
+/* ===== Contatori ranghi membri (Generale + Admin) ===== */
+.membri-ranghi-counter {
+    width: 100%;
+}
+.rango-count-wrap {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 8px;
+    justify-content: center;
+    align-items: stretch;
+}
+.rango-count-wrap.is-compact {
+    gap: 6px;
+}
+.rango-count-chip {
+    display: inline-flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    min-width: 72px;
+    padding: 8px 10px;
+    background: rgba(0, 0, 0, 0.4);
+    border: 1px solid rgba(197, 160, 89, 0.28);
+    border-left: 3px solid var(--gold-accent);
+    border-radius: 6px;
+    line-height: 1.2;
+}
+.rango-count-wrap.is-compact .rango-count-chip {
+    min-width: 58px;
+    padding: 6px 8px;
+}
+.rango-count-label {
+    font-size: 0.58rem;
+    font-weight: 800;
+    letter-spacing: 0.8px;
+    text-transform: uppercase;
+    color: var(--gold-dim);
+    margin-bottom: 3px;
+}
+.rango-count-num {
+    font-size: 1.05rem;
+    font-weight: 800;
+    color: var(--gold-accent);
+    font-variant-numeric: tabular-nums;
+}
+.rango-count-wrap.is-compact .rango-count-num {
+    font-size: 0.95rem;
+}
+.rango-count-chip.rango-count-tot {
+    border-left-color: var(--blood-red);
+    background: rgba(139, 0, 0, 0.12);
+}
+.rango-count-chip.rango-count-tot .rango-count-num {
+    color: #fff;
+}
+@media (max-width: 480px) {
+    .rango-count-chip {
+        min-width: 52px;
+        padding: 6px 6px;
+    }
+    .rango-count-label { font-size: 0.52rem; }
+    .rango-count-num { font-size: 0.9rem; }
+}

@@ -490,6 +490,39 @@ window.caricaMembroPerEdit = (nome) => {
     vampireToast("Dati caricati. Modifica e premi Aggiungi/Aggiorna.", "info");
 };
 
+function contaGradiMembri() {
+    // Contatori: Originario, Originaria, Mentore, Adulta, Adulto, Neonata, Neonato
+    // Match case-insensitive sul campo Grado
+    const keys = [
+        { label: 'Originario', match: ['originario'] },
+        { label: 'Originaria', match: ['originaria'] },
+        { label: 'Mentore', match: ['mentore'] },
+        { label: 'Adulta', match: ['adulta'] },
+        { label: 'Adulto', match: ['adulto', 'adulti'] },
+        { label: 'Neonata', match: ['neonata'] },
+        { label: 'Neonato', match: ['neonato'] }
+    ];
+    const counts = {};
+    keys.forEach(k => { counts[k.label] = 0; });
+    listaVampiri.forEach(v => {
+        const g = (v.grado || '').toLowerCase().trim();
+        keys.forEach(k => {
+            if (k.match.includes(g)) counts[k.label]++;
+        });
+    });
+    return keys.map(k => ({ label: k.label, count: counts[k.label] }));
+}
+
+function htmlContatoriRanghi(compact) {
+    const rows = contaGradiMembri();
+    const total = listaVampiri.length;
+    const chips = rows.map(r =>
+        `<span class="rango-count-chip"><span class="rango-count-label">${r.label}</span><strong class="rango-count-num">${r.count}</strong></span>`
+    ).join('');
+    const tot = `<span class="rango-count-chip rango-count-tot"><span class="rango-count-label">Totale</span><strong class="rango-count-num">${total}</strong></span>`;
+    return `<div class="rango-count-wrap${compact ? ' is-compact' : ''}">${chips}${tot}</div>`;
+}
+
 function renderVampiriLists() {
     // Ordine gradi: Originario → Originaria → Mentore → Adulto → Adulta → Neonato → Neonata
     const ordineGradi = {
@@ -509,6 +542,12 @@ function renderVampiriLists() {
         if (ga !== gb) return ga - gb;
         return (a.nome || "").localeCompare(b.nome || "", 'it');
     });
+
+    // Contatori ranghi (Generale + Admin Membri)
+    const counterGen = document.getElementById('membri-ranghi-counter');
+    if (counterGen) counterGen.innerHTML = htmlContatoriRanghi(true);
+    const counterAdm = document.getElementById('admin-membri-ranghi-counter');
+    if (counterAdm) counterAdm.innerHTML = htmlContatoriRanghi(false);
 
     const listaDinamica = document.getElementById('lista-membri-dinamica');
     if (listaDinamica) listaDinamica.innerHTML = listaVampiri.map(v => `<p style="font-size: 0.8rem; color: var(--text-light); margin-bottom: 5px;"><strong>${v.nome}:</strong> ${v.grado}</p>`).join('');
