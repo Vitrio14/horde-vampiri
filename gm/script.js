@@ -1636,6 +1636,78 @@ function weekKeyFromEvent(e) {
     return getWeekBounds().key;
 }
 
+/**
+ * Rollover automatico: eventi NON ripetibili ancora APERTI (status !== 'concluso')
+ * che appartengono a una settimana passata vengono spostati nella settimana corrente.
+ * Anche le assegnazioni ancora da consegnare (non_consegnato) legate a quegli eventi
+ * aggiornano weekKey / weekStart / weekEnd, così restano visibili nei filtri "settimana corrente"
+ * sia nella lista eventi sia nei log player.
+ * Gli eventi conclusi e le consegne già fatte restano archiviati nella settimana originale.
+ */
+let _rolloverInProgress = false;
+function rolloverOpenEventsToCurrentWeek() {
+    if (_rolloverInProgress) return;
+    const week = getWeekBounds();
+    const currentKey = week.key;
+    const events = _frammentiAllEvents || [];
+    const items = _frammentiAllItems || [];
+
+    const eventsToMove = events.filter(e => {
+        if (e.repeatable) return false;
+        if (e.status === 'concluso') return false;
+        return weekKeyFromEvent(e) !== currentKey;
+    });
+
+    // Eventi aperti (anche ripetibili) le cui assegnazioni pending sono su weekKey vecchia
+    const openEventIds = new Set();
+    const openEventNames = new Set();
+    events.forEach(e => {
+        if (e.status === 'concluso') return;
+        openEventIds.add(e.id);
+        if (e.name) openEventNames.add(String(e.name).trim().toLowerCase());
+    });
+
+    const itemsToMove = items.filter(f => {
+        if (f.status === 'consegnato') return false;
+        if (weekKeyFromItem(f) === currentKey) return false;
+        const byId = f.eventId && openEventIds.has(f.eventId);
+        const byName = f.eventName && openEventNames.has(String(f.eventName).trim().toLowerCase());
+        return byId || byName;
+    });
+
+    if (eventsToMove.length === 0 && itemsToMove.length === 0) return;
+
+    _rolloverInProgress = true;
+    const payload = {
+        weekKey: currentKey,
+        weekStart: week.start.toISOString(),
+        weekEnd: week.end.toISOString()
+    };
+
+    const ops = [];
+    eventsToMove.forEach(e => {
+        ops.push(db.collection('frammentiEvents').doc(e.id).update(payload));
+    });
+    itemsToMove.forEach(f => {
+        ops.push(db.collection('frammenti').doc(f.id).update(payload));
+    });
+
+    Promise.all(ops).then(() => {
+        const nEv = eventsToMove.length;
+        const nAs = itemsToMove.length;
+        if (nEv > 0 || nAs > 0) {
+            const parts = [];
+            if (nEv > 0) parts.push(nEv + (nEv === 1 ? ' evento aperto' : ' eventi aperti'));
+            if (nAs > 0) parts.push(nAs + (nAs === 1 ? ' assegnazione da consegnare' : ' assegnazioni da consegnare'));
+            showToast('Rollover settimana: ' + parts.join(' + ') + ' → ' + formatWeekLabel(week));
+        }
+    }).catch(err => {
+        console.error('Errore rollover settimana:', err);
+    }).finally(() => {
+        _rolloverInProgress = false;
+    });
+}
+
 function addFrammentoEvent() {
     const weekNow = getWeekBounds();
     const weekLabel = formatWeekLabel(weekNow);
@@ -1881,6 +1953,8 @@ function loadFrammentiEvents() {
         const items = [];
         snapshot.forEach(doc => items.push({ id: doc.id, ...doc.data() }));
         _frammentiAllEvents = items;
+        // Sposta eventi aperti (non ripetibili) e assegnazioni pending alla settimana corrente
+        rolloverOpenEventsToCurrentWeek();
         refreshFrammentiWeekSelect();
         renderFrammentiEventsList();
     });
@@ -2047,10 +2121,16 @@ function renderFrammentiEventsList() {
     const normal = items.filter(e => !e.repeatable);
     const repeatable = items.filter(e => !!e.repeatable);
 
-    const applyWeekFilter = (list) => {
+    const applyWeekFilter = (list, { includeOpenCarry = false } = {}) => {
         if (frammentiWeekFilter === 'current') {
             const ck = getWeekBounds().key;
-            return list.filter(e => weekKeyFromEvent(e) === ck);
+            return list.filter(e => {
+                if (weekKeyFromEvent(e) === ck) return true;
+                // Carry-over UI: eventi ancora aperti restano visibili nella settimana corrente
+                // anche se la weekKey non è ancora aggiornata dal rollover
+                if (includeOpenCarry && e.status !== 'concluso') return true;
+                return false;
+            });
         }
         if (frammentiWeekFilter !== 'all') {
             return list.filter(e => weekKeyFromEvent(e) === frammentiWeekFilter);
@@ -2058,11 +2138,15 @@ function renderFrammentiEventsList() {
         return list.slice();
     };
 
-    let filteredNormal = applyWeekFilter(normal);
+    let filteredNormal = applyWeekFilter(normal, { includeOpenCarry: true });
     filteredNormal = sortAlpha(filteredNormal, 'name');
 
     const activeNormal = filteredNormal.filter(e => e.status !== 'concluso');
-    const closedNormal = filteredNormal.filter(e => e.status === 'concluso');
+    // I conclusi restano solo nella loro settimana (niente carry)
+    const closedNormalSorted = sortAlpha(
+        applyWeekFilter(normal.filter(e => e.status === 'concluso')),
+        'name'
+    );
 
     const sortedRep = sortAlpha(repeatable, 'name');
     const activeRep = sortedRep.filter(e => e.status !== 'concluso');
@@ -2094,7 +2178,7 @@ function renderFrammentiEventsList() {
     };
 
     fill(container, activeNormal, 'active-week');
-    fill(conclusiContainer, closedNormal, 'closed-week');
+    fill(conclusiContainer, closedNormalSorted, 'closed-week');
     fill(repContainer, activeRep, 'active-rep');
     fill(repConclusiContainer, closedRep, 'closed-rep');
 
@@ -2128,12 +2212,12 @@ function renderFrammentiEventsList() {
     };
 
     const dActive = sectionDelivery(activeNormal);
-    const dClosed = sectionDelivery(closedNormal);
+    const dClosed = sectionDelivery(closedNormalSorted);
     const dRepA = sectionDelivery(activeRep);
     const dRepC = sectionDelivery(closedRep);
 
     setHint('#frammenti-events-filter-hint', activeNormal.length, dActive, weekHintBase);
-    setHint('#frammenti-events-conclusi-filter-hint', closedNormal.length, dClosed, weekHintBase);
+    setHint('#frammenti-events-conclusi-filter-hint', closedNormalSorted.length, dClosed, weekHintBase);
 
     const repActiveHint = document.getElementById('frammenti-rep-active-hint');
     if (repActiveHint) {
@@ -2688,10 +2772,26 @@ function renderFrammentiList(items) {
     const container = document.getElementById('frammenti-list');
     if (!container) return;
 
+    // Eventi ancora aperti (per carry delle assegnazioni pending)
+    const openEventIds = new Set();
+    const openEventNames = new Set();
+    (_frammentiAllEvents || []).forEach(e => {
+        if (e.status === 'concluso') return;
+        openEventIds.add(e.id);
+        if (e.name) openEventNames.add(String(e.name).trim().toLowerCase());
+    });
+
     let filtered = items.slice();
     if (frammentiWeekFilter === 'current') {
         const ck = getWeekBounds().key;
-        filtered = items.filter(f => weekKeyFromItem(f) === ck);
+        filtered = items.filter(f => {
+            if (weekKeyFromItem(f) === ck) return true;
+            // Carry: assegnazioni non consegnate di eventi ancora aperti restano in vista "corrente"
+            if (f.status === 'consegnato') return false;
+            const byId = f.eventId && openEventIds.has(f.eventId);
+            const byName = f.eventName && openEventNames.has(String(f.eventName).trim().toLowerCase());
+            return byId || byName;
+        });
     } else if (frammentiWeekFilter !== 'all') {
         filtered = items.filter(f => weekKeyFromItem(f) === frammentiWeekFilter);
     }
@@ -2751,6 +2851,8 @@ function loadFrammenti() {
         const items = [];
         snapshot.forEach(doc => items.push({ id: doc.id, ...doc.data() }));
         _frammentiAllItems = items;
+        // Dopo aver i dati assegnazioni, completa il rollover (eventi + pending)
+        rolloverOpenEventsToCurrentWeek();
         refreshFrammentiWeekSelect();
         renderFrammentiList(items);
         if (typeof renderFrammentiEventsList === 'function') {
@@ -2839,7 +2941,20 @@ function filterRecapItemsByWeek(items, filterVal) {
     if (filterVal === 'all') return items.slice();
     if (filterVal === 'current') {
         const ck = getWeekBounds().key;
-        return items.filter(f => weekKeyFromItem(f) === ck);
+        const openEventIds = new Set();
+        const openEventNames = new Set();
+        (_frammentiAllEvents || []).forEach(e => {
+            if (e.status === 'concluso') return;
+            openEventIds.add(e.id);
+            if (e.name) openEventNames.add(String(e.name).trim().toLowerCase());
+        });
+        return items.filter(f => {
+            if (weekKeyFromItem(f) === ck) return true;
+            if (f.status === 'consegnato') return false;
+            const byId = f.eventId && openEventIds.has(f.eventId);
+            const byName = f.eventName && openEventNames.has(String(f.eventName).trim().toLowerCase());
+            return byId || byName;
+        });
     }
     return items.filter(f => weekKeyFromItem(f) === filterVal);
 }
@@ -2950,12 +3065,27 @@ function removePlayerFrammento(frammentoId, playerName, playerId) {
     });
 }
 
-/** Filtra items player per settimana (current | all | weekKey) */
+/** Filtra items player per settimana (current | all | weekKey).
+ *  In "current" include anche assegnazioni non consegnate legate a eventi ancora aperti
+ *  (anche se la weekKey non è ancora aggiornata dal rollover). */
 function filterPlayerFrammentiByWeek(items, filterVal) {
     if (filterVal === 'all') return items.slice();
     if (filterVal === 'current') {
         const ck = getWeekBounds().key;
-        return items.filter(f => weekKeyFromItem(f) === ck);
+        const openEventIds = new Set();
+        const openEventNames = new Set();
+        (_frammentiAllEvents || []).forEach(e => {
+            if (e.status === 'concluso') return;
+            openEventIds.add(e.id);
+            if (e.name) openEventNames.add(String(e.name).trim().toLowerCase());
+        });
+        return items.filter(f => {
+            if (weekKeyFromItem(f) === ck) return true;
+            if (f.status === 'consegnato') return false;
+            const byId = f.eventId && openEventIds.has(f.eventId);
+            const byName = f.eventName && openEventNames.has(String(f.eventName).trim().toLowerCase());
+            return byId || byName;
+        });
     }
     return items.filter(f => weekKeyFromItem(f) === filterVal);
 }
