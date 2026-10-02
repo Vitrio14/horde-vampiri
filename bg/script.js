@@ -512,7 +512,10 @@ window.openGmDetail = function(docId) {
 
     gmDetailContent.innerHTML =
         bannerHTML +
-        '<h3 style="margin-bottom: 20px;">' + (data.name || 'Senza nome') + ' — Ombra: ' + (data.shadowName || '-') + '</h3>' +
+        '<div style="display:flex; justify-content:space-between; align-items:center; flex-wrap:wrap; gap:12px; margin-bottom:20px;">' +
+            '<h3 style="margin-bottom:0;">' + (data.name || 'Senza nome') + ' — Ombra: ' + (data.shadowName || '-') + '</h3>' +
+            '<button class="btn btn-pdf" onclick="generateBackgroundPdf(\'' + docId + '\')" style="width:auto; padding:10px 20px; font-size:0.75rem;">Genera PDF</button>' +
+        '</div>' +
         '<div class="voice-box"><strong>Nome Utente Discord</strong><p>' + userDiscord + '</p></div>' +
         '<div class="voice-box"><strong>Nome Personaggio</strong><p>' + (data.name || '-') + '</p></div>' +
         '<div class="voice-box"><strong>Nome Ombra</strong><p>' + (data.shadowName || '-') + '</p></div>' +
@@ -532,6 +535,7 @@ window.openGmDetail = function(docId) {
             '<div class="gm-buttons-group">' +
                 '<button class="btn btn-approve" onclick="reviewBackground(\'' + docId + '\', \'approvato\')">Approva Background</button>' +
                 '<button class="btn btn-reject" onclick="reviewBackground(\'' + docId + '\', \'da_modificare\')">Richiedi Modifiche</button>' +
+                '<button class="btn btn-pdf" onclick="generateBackgroundPdf(\'' + docId + '\')">Genera PDF</button>' +
             '</div>' +
         '</div>';
 
@@ -610,4 +614,214 @@ window.reviewBackground = function(docId, nextStatus) {
         .catch(error => {
             triggerChronicaAlert('Errore Di Registro', 'Impossibile aggiornare lo stato: ' + error.message);
         });
+};
+
+
+// ==========================================
+// GENERAZIONE PDF BACKGROUND (PORTALE GM)
+// ==========================================
+window.generateBackgroundPdf = function(docId) {
+    const data = allBackgroundsCache.find(b => b.id === docId);
+    if (!data) {
+        triggerChronicaAlert('Errore', 'Background non trovato.');
+        return;
+    }
+
+    if (typeof window.jspdf === 'undefined' || !window.jspdf.jsPDF) {
+        triggerChronicaAlert('Libreria mancante', 'jsPDF non è caricato. Ricarica la pagina e riprova.');
+        return;
+    }
+
+    const { jsPDF } = window.jspdf;
+    const doc = new jsPDF({ orientation: 'portrait', unit: 'mm', format: 'a4' });
+
+    const pageWidth = doc.internal.pageSize.getWidth();
+    const pageHeight = doc.internal.pageSize.getHeight();
+    const marginLeft = 18;
+    const marginRight = 18;
+    const contentWidth = pageWidth - marginLeft - marginRight;
+    const marginTop = 18;
+    const marginBottom = 22;
+
+    const gold = [197, 160, 89];
+    const blood = [139, 0, 0];
+    const darkText = [40, 40, 40];
+    const muted = [90, 90, 90];
+
+    let y = marginTop;
+
+    function ensureSpace(needed) {
+        if (y + needed > pageHeight - marginBottom) {
+            doc.addPage();
+            y = marginTop;
+            return true;
+        }
+        return false;
+    }
+
+    function drawFooter() {
+        const footerY = pageHeight - 12;
+        doc.setDrawColor(...blood);
+        doc.setLineWidth(0.3);
+        doc.line(marginLeft, footerY - 6, pageWidth - marginRight, footerY - 6);
+        doc.setFont('helvetica', 'normal');
+        doc.setFontSize(7);
+        doc.setTextColor(...muted);
+        // Solo il nome del personaggio (campo "name"), senza Discord né altri nomi
+        const charName = (data.name && String(data.name).trim()) ? String(data.name).trim() : 'Senza nome';
+        const footerText = 'BG Vampiri di ' + charName + ' - solo a scopo ludico - Horde V5 - Sviluppato da Vitrio';
+        doc.text(footerText, pageWidth / 2, footerY, { align: 'center' });
+    }
+
+    const logoUrl = '../assets/logo.png';
+    const logoW = 28;
+    const logoH = 28;
+
+    function renderContent(logoImgData) {
+        if (logoImgData) {
+            try {
+                const logoX = (pageWidth - logoW) / 2;
+                doc.addImage(logoImgData, 'PNG', logoX, y, logoW, logoH);
+                y += logoH + 6;
+            } catch (e) {
+                console.warn('Logo non aggiunto al PDF:', e);
+            }
+        }
+
+        doc.setFont('helvetica', 'bold');
+        doc.setFontSize(16);
+        doc.setTextColor(...gold);
+        doc.text('BACKGROUND PERSONAGGIO', pageWidth / 2, y, { align: 'center' });
+        y += 7;
+
+        doc.setFont('helvetica', 'normal');
+        doc.setFontSize(10);
+        doc.setTextColor(...muted);
+        doc.text('Horde RP V5 — Gestionale BG Vampiri', pageWidth / 2, y, { align: 'center' });
+        y += 5;
+
+        doc.setDrawColor(...blood);
+        doc.setLineWidth(0.6);
+        doc.line(marginLeft + 20, y, pageWidth - marginRight - 20, y);
+        y += 8;
+
+        const dataInvio = data.submittedAt ? data.submittedAt.toDate().toLocaleString('it-IT') : 'Data non registrata';
+        const dataGenerazione = new Date().toLocaleString('it-IT');
+        const statusLabel = {
+            'da_revisionare': 'In revisione',
+            'approvato': 'Approvato',
+            'da_modificare': 'Da modificare'
+        }[data.status] || data.status;
+
+        doc.setFontSize(8);
+        doc.setTextColor(...muted);
+        doc.text('Discord: ' + (data.discordUser || 'N/A') + '  |  Inviato: ' + dataInvio + '  |  Stato: ' + statusLabel, pageWidth / 2, y, { align: 'center' });
+        y += 5;
+        doc.text('PDF generato il: ' + dataGenerazione, pageWidth / 2, y, { align: 'center' });
+        y += 10;
+
+        const sections = [
+            { title: 'Nome Personaggio', value: data.name },
+            { title: 'Nome Ombra', value: data.shadowName },
+            { title: 'Nome Utente Discord', value: data.discordUser },
+            { title: 'Storia del Personaggio (Il Passato)', value: data.history },
+            { title: 'Eventi Significativi', value: data.events },
+            { title: 'Arrivo sull\'Isola', value: data.arrival },
+            { title: 'Legami', value: data.bonds },
+            { title: 'Carattere', value: data.character },
+            { title: 'Obiettivi', value: data.objectives },
+            { title: 'Paure', value: data.fears }
+        ];
+
+        if (data.feedback) {
+            sections.push({ title: 'Nota del Game Master' + (data.reviewedBy ? ' (' + data.reviewedBy + ')' : ''), value: data.feedback });
+        }
+
+        sections.forEach(function(sec) {
+            const value = (sec.value && String(sec.value).trim()) ? String(sec.value).trim() : '—';
+            const titleLines = doc.splitTextToSize(sec.title, contentWidth);
+            const valueLines = doc.splitTextToSize(value, contentWidth);
+
+            const blockHeight = 5 + (titleLines.length * 4.5) + 2 + (valueLines.length * 4.2) + 6;
+            ensureSpace(Math.min(blockHeight, 40));
+
+            doc.setFont('helvetica', 'bold');
+            doc.setFontSize(10);
+            doc.setTextColor(...blood);
+            doc.text(titleLines, marginLeft, y);
+            y += titleLines.length * 4.5 + 1.5;
+
+            doc.setDrawColor(...gold);
+            doc.setLineWidth(0.25);
+            doc.line(marginLeft, y, marginLeft + 40, y);
+            y += 3.5;
+
+            doc.setFont('helvetica', 'normal');
+            doc.setFontSize(9);
+            doc.setTextColor(...darkText);
+
+            valueLines.forEach(function(line) {
+                ensureSpace(5);
+                doc.text(line, marginLeft, y);
+                y += 4.2;
+            });
+
+            y += 5;
+        });
+
+        const totalPages = doc.internal.getNumberOfPages();
+        for (let i = 1; i <= totalPages; i++) {
+            doc.setPage(i);
+            drawFooter();
+            doc.setFontSize(7);
+            doc.setTextColor(...muted);
+            doc.text('Pagina ' + i + ' / ' + totalPages, pageWidth - marginRight, pageHeight - 6, { align: 'right' });
+        }
+
+        const safeName = (data.name || 'background').replace(/[^a-zA-Z0-9àèéìòù_\- ]/gi, '').trim().replace(/\s+/g, '_').substring(0, 40);
+        const fileName = 'BG_Vampiri_' + safeName + '_HordeV5.pdf';
+        doc.save(fileName);
+
+        triggerChronicaAlert('PDF generato', 'Il PDF del background è stato scaricato correttamente.');
+    }
+
+    const img = new Image();
+    img.crossOrigin = 'anonymous';
+    let pdfAlreadyGenerated = false;
+
+    function safeRender(logoData) {
+        if (pdfAlreadyGenerated) return;
+        pdfAlreadyGenerated = true;
+        renderContent(logoData);
+    }
+
+    img.onload = function() {
+        try {
+            const canvas = document.createElement('canvas');
+            canvas.width = img.naturalWidth || img.width;
+            canvas.height = img.naturalHeight || img.height;
+            const ctx = canvas.getContext('2d');
+            ctx.drawImage(img, 0, 0);
+            const dataUrl = canvas.toDataURL('image/png');
+            safeRender(dataUrl);
+        } catch (err) {
+            console.warn('Conversione logo fallita:', err);
+            safeRender(null);
+        }
+    };
+
+    img.onerror = function() {
+        console.warn('Logo non raggiungibile, PDF senza logo.');
+        safeRender(null);
+    };
+
+    setTimeout(function() {
+        if (!pdfAlreadyGenerated) {
+            img.onload = null;
+            img.onerror = null;
+            safeRender(null);
+        }
+    }, 2500);
+
+    img.src = logoUrl;
 };

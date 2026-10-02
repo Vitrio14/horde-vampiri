@@ -252,6 +252,10 @@ textarea {
 .btn-reject::before { background: linear-gradient(90deg, #c0392b, var(--withdraw-red)); }
 .btn-reject:hover { box-shadow: 0 5px 20px rgba(231, 76, 60, 0.4); border-color: var(--withdraw-red); }
 
+.btn-pdf { border-color: var(--gold-accent); color: var(--gold-accent); }
+.btn-pdf::before { background: linear-gradient(90deg, var(--gold-dim), var(--gold-accent)); }
+.btn-pdf:hover { box-shadow: 0 5px 20px rgba(197, 160, 89, 0.45); border-color: var(--gold-accent); color: #fff; }
+
 .nav-link-btn {
     background: transparent;
     border: none;
