@@ -111,6 +111,42 @@ function sendDiscordWebhook(url, contentText, embedTitle, embedDescription, embe
     }).catch(err => console.error("Errore Invio Webhook Discord:", err));
 }
 
+// Webhook per invio file scaricabili (PDF / TXT / DOCX) generati dal GM
+// Usa lo stesso canale delle notifiche nuovo background; cambia l'URL se serve un canale dedicato
+const WEBHOOK_DOWNLOAD = "https://discord.com/api/webhooks/1556447932125810698/aZwlTl_Q0m6h0xFrldpbhjj78MvMzGzudlbLb7WW91a7RJraGLa7_laXG1F4EYdchtOY";
+
+// Invia un file (Blob) via webhook Discord
+function sendFileToDiscordWebhook(fileBlob, fileName, contentText, embedTitle, embedDescription, embedColor, embedFields) {
+    const formData = new FormData();
+    const payload = {
+        content: contentText,
+        embeds: [{
+            author: {
+                name: "Arpie",
+                icon_url: "https://i.postimg.cc/VLKZxsKd/Logo-vampiri-Modificata.png"
+            },
+            title: embedTitle,
+            description: embedDescription,
+            color: embedColor,
+            fields: embedFields || [],
+            footer: {
+                text: "Le arpie • Download Background",
+                icon_url: "https://i.postimg.cc/VLKZxsKd/Logo-vampiri-Modificata.png"
+            },
+            timestamp: new Date().toISOString()
+        }]
+    };
+    formData.append('payload_json', JSON.stringify(payload));
+    formData.append('files[0]', fileBlob, fileName);
+    return fetch(WEBHOOK_DOWNLOAD, {
+        method: 'POST',
+        body: formData
+    }).catch(err => {
+        console.error("Errore Invio File Webhook Discord:", err);
+        throw err;
+    });
+}
+
 // FUNZIONE PER EMETTERE NOTIFICHE / POP-UP CUSTOM
 function triggerChronicaAlert(title, message, callback = null) {
     popupTitle.innerText = title;
@@ -514,7 +550,12 @@ window.openGmDetail = function(docId) {
         bannerHTML +
         '<div style="display:flex; justify-content:space-between; align-items:center; flex-wrap:wrap; gap:12px; margin-bottom:20px;">' +
             '<h3 style="margin-bottom:0;">' + (data.name || 'Senza nome') + ' — Ombra: ' + (data.shadowName || '-') + '</h3>' +
-            '<button class="btn btn-pdf" onclick="generateBackgroundPdf(\'' + docId + '\')" style="width:auto; padding:10px 20px; font-size:0.75rem;">Genera PDF</button>' +
+            '<div style="display:flex; gap:8px; flex-wrap:wrap;">' +
+                '<button class="btn btn-pdf" onclick="generateBackgroundPdf(\'' + docId + '\')" style="width:auto; padding:10px 14px; font-size:0.7rem;">Scarica PDF</button>' +
+                '<button class="btn btn-txt" onclick="generateBackgroundTxt(\'' + docId + '\')" style="width:auto; padding:10px 14px; font-size:0.7rem;">Scarica TXT</button>' +
+                '<button class="btn btn-word" onclick="generateBackgroundDocx(\'' + docId + '\')" style="width:auto; padding:10px 14px; font-size:0.7rem;">Scarica Word</button>' +
+                '<button class="btn btn-discord" onclick="openSendToDiscordChooser(\'' + docId + '\')" style="width:auto; padding:10px 14px; font-size:0.7rem;">Invia a Discord</button>' +
+            '</div>' +
         '</div>' +
         '<div class="voice-box"><strong>Nome Utente Discord</strong><p>' + userDiscord + '</p></div>' +
         '<div class="voice-box"><strong>Nome Personaggio</strong><p>' + (data.name || '-') + '</p></div>' +
@@ -535,7 +576,12 @@ window.openGmDetail = function(docId) {
             '<div class="gm-buttons-group">' +
                 '<button class="btn btn-approve" onclick="reviewBackground(\'' + docId + '\', \'approvato\')">Approva Background</button>' +
                 '<button class="btn btn-reject" onclick="reviewBackground(\'' + docId + '\', \'da_modificare\')">Richiedi Modifiche</button>' +
-                '<button class="btn btn-pdf" onclick="generateBackgroundPdf(\'' + docId + '\')">Genera PDF</button>' +
+            '</div>' +
+            '<div class="gm-buttons-group" style="margin-top:12px;">' +
+                '<button class="btn btn-pdf" onclick="generateBackgroundPdf(\'' + docId + '\')">Scarica PDF</button>' +
+                '<button class="btn btn-txt" onclick="generateBackgroundTxt(\'' + docId + '\')">Scarica TXT</button>' +
+                '<button class="btn btn-word" onclick="generateBackgroundDocx(\'' + docId + '\')">Scarica Word</button>' +
+                '<button class="btn btn-discord" onclick="openSendToDiscordChooser(\'' + docId + '\')">Invia a Discord</button>' +
             '</div>' +
         '</div>';
 
@@ -618,210 +664,458 @@ window.reviewBackground = function(docId, nextStatus) {
 
 
 // ==========================================
-// GENERAZIONE PDF BACKGROUND (PORTALE GM)
+// GENERAZIONE FILE BACKGROUND (PDF / TXT / DOCX) — PORTALE GM
 // ==========================================
-window.generateBackgroundPdf = function(docId) {
+
+function buildBackgroundPlainText(data) {
+    const dataInvio = data.submittedAt ? data.submittedAt.toDate().toLocaleString('it-IT') : 'Data non registrata';
+    const statusLabel = {
+        'da_revisionare': 'In revisione',
+        'approvato': 'Approvato',
+        'da_modificare': 'Da modificare'
+    }[data.status] || data.status;
+
+    const lines = [
+        '═══════════════════════════════════════════════════════════════',
+        '  BACKGROUND PERSONAGGIO — HORDE RP V5',
+        '  Gestionale BG Vampiri',
+        '═══════════════════════════════════════════════════════════════',
+        '',
+        'Discord: ' + (data.discordUser || 'N/A'),
+        'Inviato: ' + dataInvio,
+        'Stato: ' + statusLabel,
+        'Generato il: ' + new Date().toLocaleString('it-IT'),
+        '',
+        '───────────────────────────────────────────────────────────────',
+        'NOME PERSONAGGIO',
+        '───────────────────────────────────────────────────────────────',
+        (data.name || '—'),
+        '',
+        '───────────────────────────────────────────────────────────────',
+        'NOME OMBRA',
+        '───────────────────────────────────────────────────────────────',
+        (data.shadowName || '—'),
+        '',
+        '───────────────────────────────────────────────────────────────',
+        'NOME UTENTE DISCORD',
+        '───────────────────────────────────────────────────────────────',
+        (data.discordUser || '—'),
+        '',
+        '───────────────────────────────────────────────────────────────',
+        'STORIA DEL PERSONAGGIO (IL PASSATO)',
+        '───────────────────────────────────────────────────────────────',
+        (data.history || '—'),
+        '',
+        '───────────────────────────────────────────────────────────────',
+        'EVENTI SIGNIFICATIVI',
+        '───────────────────────────────────────────────────────────────',
+        (data.events || '—'),
+        '',
+        '───────────────────────────────────────────────────────────────',
+        "ARRIVO SULL'ISOLA",
+        '───────────────────────────────────────────────────────────────',
+        (data.arrival || '—'),
+        '',
+        '───────────────────────────────────────────────────────────────',
+        'LEGAMI',
+        '───────────────────────────────────────────────────────────────',
+        (data.bonds || '—'),
+        '',
+        '───────────────────────────────────────────────────────────────',
+        'CARATTERE',
+        '───────────────────────────────────────────────────────────────',
+        (data.character || '—'),
+        '',
+        '───────────────────────────────────────────────────────────────',
+        'OBIETTIVI',
+        '───────────────────────────────────────────────────────────────',
+        (data.objectives || '—'),
+        '',
+        '───────────────────────────────────────────────────────────────',
+        'PAURE',
+        '───────────────────────────────────────────────────────────────',
+        (data.fears || '—'),
+        ''
+    ];
+
+    if (data.feedback) {
+        lines.push(
+            '───────────────────────────────────────────────────────────────',
+            'NOTA DEL GAME MASTER' + (data.reviewedBy ? ' (' + data.reviewedBy + ')' : ''),
+            '───────────────────────────────────────────────────────────────',
+            data.feedback,
+            ''
+        );
+    }
+
+    lines.push(
+        '═══════════════════════════════════════════════════════════════',
+        'BG Vampiri di ' + ((data.name && String(data.name).trim()) ? String(data.name).trim() : 'Senza nome') + ' — solo a scopo ludico — Horde V5 — Sviluppato da Vitrio',
+        '═══════════════════════════════════════════════════════════════'
+    );
+
+    return lines.join('\n');
+}
+
+function getSafeFileName(data, extension) {
+    const safeName = (data.name || 'background').replace(/[^a-zA-Z0-9àèéìòù_\- ]/gi, '').trim().replace(/\s+/g, '_').substring(0, 40);
+    return 'BG_Vampiri_' + safeName + '_HordeV5.' + extension;
+}
+
+function downloadBlob(blob, fileName) {
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = fileName;
+    document.body.appendChild(a);
+    a.click();
+    setTimeout(function() {
+        document.body.removeChild(a);
+        URL.revokeObjectURL(url);
+    }, 150);
+}
+
+// Costruisce il Blob del formato richiesto (senza scaricare/inviare)
+function buildBackgroundBlob(docId, format) {
+    return new Promise(function(resolve, reject) {
+        const data = allBackgroundsCache.find(b => b.id === docId);
+        if (!data) {
+            reject(new Error('Background non trovato.'));
+            return;
+        }
+
+        if (format === 'txt') {
+            const text = buildBackgroundPlainText(data);
+            const blob = new Blob([text], { type: 'text/plain;charset=utf-8' });
+            resolve({ blob: blob, fileName: getSafeFileName(data, 'txt'), data: data, label: 'TXT' });
+            return;
+        }
+
+        if (format === 'docx') {
+            if (typeof docxLite === 'undefined' || !docxLite.build) {
+                reject(new Error('docx-lite non è caricato. Ricarica la pagina e riprova.'));
+                return;
+            }
+            const text = buildBackgroundPlainText(data);
+            const title = 'Background — ' + (data.name || 'Personaggio') + ' | Horde RP V5';
+            const blob = docxLite.build(title, text);
+            resolve({ blob: blob, fileName: getSafeFileName(data, 'docx'), data: data, label: 'Word (DOCX)' });
+            return;
+        }
+
+        if (format === 'pdf') {
+            if (typeof window.jspdf === 'undefined' || !window.jspdf.jsPDF) {
+                reject(new Error('jsPDF non è caricato. Ricarica la pagina e riprova.'));
+                return;
+            }
+            // PDF is async because of logo; we reuse the existing logic via a helper
+            buildPdfBlob(data).then(function(blob) {
+                resolve({ blob: blob, fileName: getSafeFileName(data, 'pdf'), data: data, label: 'PDF' });
+            }).catch(reject);
+            return;
+        }
+
+        reject(new Error('Formato non supportato: ' + format));
+    });
+}
+
+// --- Scarica solo sul PC ---
+window.generateBackgroundTxt = function(docId) {
+    buildBackgroundBlob(docId, 'txt').then(function(res) {
+        downloadBlob(res.blob, res.fileName);
+        triggerChronicaAlert('TXT scaricato', 'Il file TXT è stato scaricato correttamente.');
+    }).catch(function(err) {
+        triggerChronicaAlert('Errore', err.message || String(err));
+    });
+};
+
+window.generateBackgroundDocx = function(docId) {
+    buildBackgroundBlob(docId, 'docx').then(function(res) {
+        downloadBlob(res.blob, res.fileName);
+        triggerChronicaAlert('Word scaricato', 'Il file Word (DOCX) è stato scaricato correttamente.');
+    }).catch(function(err) {
+        triggerChronicaAlert('Errore', err.message || String(err));
+    });
+};
+
+// Chooser per invio a Discord
+window.openSendToDiscordChooser = function(docId) {
     const data = allBackgroundsCache.find(b => b.id === docId);
     if (!data) {
         triggerChronicaAlert('Errore', 'Background non trovato.');
         return;
     }
 
-    if (typeof window.jspdf === 'undefined' || !window.jspdf.jsPDF) {
-        triggerChronicaAlert('Libreria mancante', 'jsPDF non è caricato. Ricarica la pagina e riprova.');
-        return;
+    // Usiamo il popup custom per chiedere il formato
+    popupTitle.innerText = 'Invia file a Discord';
+    popupMessage.innerHTML = 'Scegli il formato del background da inviare sul canale Discord:<br><br>' +
+        '<div style="display:flex; flex-direction:column; gap:10px; margin-top:12px;">' +
+            '<button class="btn btn-pdf" id="choosePdf" style="width:100%;">PDF</button>' +
+            '<button class="btn btn-txt" id="chooseTxt" style="width:100%;">TXT</button>' +
+            '<button class="btn btn-word" id="chooseDocx" style="width:100%;">Word (DOCX)</button>' +
+        '</div>';
+    currentPopupCallback = null;
+    customPopup.classList.add('active');
+
+    // Sostituiamo temporaneamente i listener del bottone Chiudi e dei formati
+    const btnClose = document.getElementById('btnPopupClose');
+    const oldCloseHandler = btnClose.onclick;
+
+    function cleanup() {
+        customPopup.classList.remove('active');
+        btnClose.onclick = oldCloseHandler;
+        ['choosePdf','chooseTxt','chooseDocx'].forEach(function(id) {
+            const el = document.getElementById(id);
+            if (el) el.onclick = null;
+        });
     }
 
-    const { jsPDF } = window.jspdf;
-    const doc = new jsPDF({ orientation: 'portrait', unit: 'mm', format: 'a4' });
+    btnClose.onclick = function() { cleanup(); };
 
-    const pageWidth = doc.internal.pageSize.getWidth();
-    const pageHeight = doc.internal.pageSize.getHeight();
-    const marginLeft = 18;
-    const marginRight = 18;
-    const contentWidth = pageWidth - marginLeft - marginRight;
-    const marginTop = 18;
-    const marginBottom = 22;
+    document.getElementById('choosePdf').onclick = function() {
+        cleanup();
+        sendBackgroundToDiscord(docId, 'pdf');
+    };
+    document.getElementById('chooseTxt').onclick = function() {
+        cleanup();
+        sendBackgroundToDiscord(docId, 'txt');
+    };
+    document.getElementById('chooseDocx').onclick = function() {
+        cleanup();
+        sendBackgroundToDiscord(docId, 'docx');
+    };
+};
 
-    const gold = [197, 160, 89];
-    const blood = [139, 0, 0];
-    const darkText = [40, 40, 40];
-    const muted = [90, 90, 90];
+function sendBackgroundToDiscord(docId, format) {
+    triggerChronicaAlert('Invio in corso', 'Sto generando il file e lo sto inviando a Discord...');
+    buildBackgroundBlob(docId, format).then(function(res) {
+        const charName = res.data.name || 'Senza nome';
+        const userDiscord = res.data.discordUser || 'N/A';
+        return sendFileToDiscordWebhook(
+            res.blob,
+            res.fileName,
+            '📥 **Background richiesto in download** — Formato: **' + res.label + '**',
+            'Horde V5 | Download Background (' + res.label + ')',
+            'È stato generato e allegato il background in formato **' + res.label + '**.\n\nPuoi scaricare il file direttamente da questo messaggio.',
+            0xc5a059,
+            [
+                { name: '👤 Discord User', value: userDiscord, inline: true },
+                { name: '🦇 Nome Personaggio', value: charName, inline: true },
+                { name: '📄 Formato', value: res.label, inline: true },
+                { name: '📁 Nome File', value: res.fileName, inline: false }
+            ]
+        ).then(function() {
+            triggerChronicaAlert('Inviato a Discord', 'Il file ' + res.label + ' è stato inviato correttamente sul canale.');
+        });
+    }).catch(function(err) {
+        triggerChronicaAlert('Errore', err.message || String(err));
+    });
+}
 
-    let y = marginTop;
+// Helper PDF -> Blob (estratto dalla logica originale)
+function buildPdfBlob(data) {
+    return new Promise(function(resolve, reject) {
+        const { jsPDF } = window.jspdf;
+        const doc = new jsPDF({ orientation: 'portrait', unit: 'mm', format: 'a4' });
 
-    function ensureSpace(needed) {
-        if (y + needed > pageHeight - marginBottom) {
-            doc.addPage();
-            y = marginTop;
-            return true;
+        const pageWidth = doc.internal.pageSize.getWidth();
+        const pageHeight = doc.internal.pageSize.getHeight();
+        const marginLeft = 18;
+        const marginRight = 18;
+        const contentWidth = pageWidth - marginLeft - marginRight;
+        const marginTop = 18;
+        const marginBottom = 22;
+
+        const gold = [197, 160, 89];
+        const blood = [139, 0, 0];
+        const darkText = [40, 40, 40];
+        const muted = [90, 90, 90];
+
+        let y = marginTop;
+
+        function ensureSpace(needed) {
+            if (y + needed > pageHeight - marginBottom) {
+                doc.addPage();
+                y = marginTop;
+                return true;
+            }
+            return false;
         }
-        return false;
-    }
 
-    function drawFooter() {
-        const footerY = pageHeight - 12;
-        doc.setDrawColor(...blood);
-        doc.setLineWidth(0.3);
-        doc.line(marginLeft, footerY - 6, pageWidth - marginRight, footerY - 6);
-        doc.setFont('helvetica', 'normal');
-        doc.setFontSize(7);
-        doc.setTextColor(...muted);
-        // Solo il nome del personaggio (campo "name"), senza Discord né altri nomi
-        const charName = (data.name && String(data.name).trim()) ? String(data.name).trim() : 'Senza nome';
-        const footerText = 'BG Vampiri di ' + charName + ' - solo a scopo ludico - Horde V5 - Sviluppato da Vitrio';
-        doc.text(footerText, pageWidth / 2, footerY, { align: 'center' });
-    }
+        function drawFooter() {
+            const footerY = pageHeight - 12;
+            doc.setDrawColor(...blood);
+            doc.setLineWidth(0.3);
+            doc.line(marginLeft, footerY - 6, pageWidth - marginRight, footerY - 6);
+            doc.setFont('helvetica', 'normal');
+            doc.setFontSize(7);
+            doc.setTextColor(...muted);
+            const charName = (data.name && String(data.name).trim()) ? String(data.name).trim() : 'Senza nome';
+            const footerText = 'BG Vampiri di ' + charName + ' - solo a scopo ludico - Horde V5 - Sviluppato da Vitrio';
+            doc.text(footerText, pageWidth / 2, footerY, { align: 'center' });
+        }
 
-    const logoUrl = '../assets/logo.png';
-    const logoW = 28;
-    const logoH = 28;
+        const logoUrl = '../assets/logo.png';
+        const logoW = 28;
+        const logoH = 28;
 
-    function renderContent(logoImgData) {
-        if (logoImgData) {
+        function renderContent(logoImgData) {
+            if (logoImgData) {
+                try {
+                    const logoX = (pageWidth - logoW) / 2;
+                    doc.addImage(logoImgData, 'PNG', logoX, y, logoW, logoH);
+                    y += logoH + 6;
+                } catch (e) {
+                    console.warn('Logo non aggiunto al PDF:', e);
+                }
+            }
+
+            doc.setFont('helvetica', 'bold');
+            doc.setFontSize(16);
+            doc.setTextColor(...gold);
+            doc.text('BACKGROUND PERSONAGGIO', pageWidth / 2, y, { align: 'center' });
+            y += 7;
+
+            doc.setFont('helvetica', 'normal');
+            doc.setFontSize(10);
+            doc.setTextColor(...muted);
+            doc.text('Horde RP V5 — Gestionale BG Vampiri', pageWidth / 2, y, { align: 'center' });
+            y += 5;
+
+            doc.setDrawColor(...blood);
+            doc.setLineWidth(0.6);
+            doc.line(marginLeft + 20, y, pageWidth - marginRight - 20, y);
+            y += 8;
+
+            const dataInvio = data.submittedAt ? data.submittedAt.toDate().toLocaleString('it-IT') : 'Data non registrata';
+            const dataGenerazione = new Date().toLocaleString('it-IT');
+            const statusLabel = {
+                'da_revisionare': 'In revisione',
+                'approvato': 'Approvato',
+                'da_modificare': 'Da modificare'
+            }[data.status] || data.status;
+
+            doc.setFontSize(8);
+            doc.setTextColor(...muted);
+            doc.text('Discord: ' + (data.discordUser || 'N/A') + '  |  Inviato: ' + dataInvio + '  |  Stato: ' + statusLabel, pageWidth / 2, y, { align: 'center' });
+            y += 5;
+            doc.text('PDF generato il: ' + dataGenerazione, pageWidth / 2, y, { align: 'center' });
+            y += 10;
+
+            const sections = [
+                { title: 'Nome Personaggio', value: data.name },
+                { title: 'Nome Ombra', value: data.shadowName },
+                { title: 'Nome Utente Discord', value: data.discordUser },
+                { title: 'Storia del Personaggio (Il Passato)', value: data.history },
+                { title: 'Eventi Significativi', value: data.events },
+                { title: "Arrivo sull'Isola", value: data.arrival },
+                { title: 'Legami', value: data.bonds },
+                { title: 'Carattere', value: data.character },
+                { title: 'Obiettivi', value: data.objectives },
+                { title: 'Paure', value: data.fears }
+            ];
+
+            if (data.feedback) {
+                sections.push({ title: 'Nota del Game Master' + (data.reviewedBy ? ' (' + data.reviewedBy + ')' : ''), value: data.feedback });
+            }
+
+            sections.forEach(function(sec) {
+                const value = (sec.value && String(sec.value).trim()) ? String(sec.value).trim() : '—';
+                const titleLines = doc.splitTextToSize(sec.title, contentWidth);
+                const valueLines = doc.splitTextToSize(value, contentWidth);
+
+                const blockHeight = 5 + (titleLines.length * 4.5) + 2 + (valueLines.length * 4.2) + 6;
+                ensureSpace(Math.min(blockHeight, 40));
+
+                doc.setFont('helvetica', 'bold');
+                doc.setFontSize(10);
+                doc.setTextColor(...blood);
+                doc.text(titleLines, marginLeft, y);
+                y += titleLines.length * 4.5 + 1.5;
+
+                doc.setDrawColor(...gold);
+                doc.setLineWidth(0.25);
+                doc.line(marginLeft, y, marginLeft + 40, y);
+                y += 3.5;
+
+                doc.setFont('helvetica', 'normal');
+                doc.setFontSize(9);
+                doc.setTextColor(...darkText);
+
+                valueLines.forEach(function(line) {
+                    ensureSpace(5);
+                    doc.text(line, marginLeft, y);
+                    y += 4.2;
+                });
+
+                y += 5;
+            });
+
+            const totalPages = doc.internal.getNumberOfPages();
+            for (let i = 1; i <= totalPages; i++) {
+                doc.setPage(i);
+                drawFooter();
+                doc.setFontSize(7);
+                doc.setTextColor(...muted);
+                doc.text('Pagina ' + i + ' / ' + totalPages, pageWidth - marginRight, pageHeight - 6, { align: 'right' });
+            }
+
+            resolve(doc.output('blob'));
+        }
+
+        const img = new Image();
+        img.crossOrigin = 'anonymous';
+        let done = false;
+
+        function safeRender(logoData) {
+            if (done) return;
+            done = true;
             try {
-                const logoX = (pageWidth - logoW) / 2;
-                doc.addImage(logoImgData, 'PNG', logoX, y, logoW, logoH);
-                y += logoH + 6;
+                renderContent(logoData);
             } catch (e) {
-                console.warn('Logo non aggiunto al PDF:', e);
+                reject(e);
             }
         }
 
-        doc.setFont('helvetica', 'bold');
-        doc.setFontSize(16);
-        doc.setTextColor(...gold);
-        doc.text('BACKGROUND PERSONAGGIO', pageWidth / 2, y, { align: 'center' });
-        y += 7;
+        img.onload = function() {
+            try {
+                const canvas = document.createElement('canvas');
+                canvas.width = img.naturalWidth || img.width;
+                canvas.height = img.naturalHeight || img.height;
+                const ctx = canvas.getContext('2d');
+                ctx.drawImage(img, 0, 0);
+                const dataUrl = canvas.toDataURL('image/png');
+                safeRender(dataUrl);
+            } catch (err) {
+                console.warn('Conversione logo fallita:', err);
+                safeRender(null);
+            }
+        };
 
-        doc.setFont('helvetica', 'normal');
-        doc.setFontSize(10);
-        doc.setTextColor(...muted);
-        doc.text('Horde RP V5 — Gestionale BG Vampiri', pageWidth / 2, y, { align: 'center' });
-        y += 5;
-
-        doc.setDrawColor(...blood);
-        doc.setLineWidth(0.6);
-        doc.line(marginLeft + 20, y, pageWidth - marginRight - 20, y);
-        y += 8;
-
-        const dataInvio = data.submittedAt ? data.submittedAt.toDate().toLocaleString('it-IT') : 'Data non registrata';
-        const dataGenerazione = new Date().toLocaleString('it-IT');
-        const statusLabel = {
-            'da_revisionare': 'In revisione',
-            'approvato': 'Approvato',
-            'da_modificare': 'Da modificare'
-        }[data.status] || data.status;
-
-        doc.setFontSize(8);
-        doc.setTextColor(...muted);
-        doc.text('Discord: ' + (data.discordUser || 'N/A') + '  |  Inviato: ' + dataInvio + '  |  Stato: ' + statusLabel, pageWidth / 2, y, { align: 'center' });
-        y += 5;
-        doc.text('PDF generato il: ' + dataGenerazione, pageWidth / 2, y, { align: 'center' });
-        y += 10;
-
-        const sections = [
-            { title: 'Nome Personaggio', value: data.name },
-            { title: 'Nome Ombra', value: data.shadowName },
-            { title: 'Nome Utente Discord', value: data.discordUser },
-            { title: 'Storia del Personaggio (Il Passato)', value: data.history },
-            { title: 'Eventi Significativi', value: data.events },
-            { title: 'Arrivo sull\'Isola', value: data.arrival },
-            { title: 'Legami', value: data.bonds },
-            { title: 'Carattere', value: data.character },
-            { title: 'Obiettivi', value: data.objectives },
-            { title: 'Paure', value: data.fears }
-        ];
-
-        if (data.feedback) {
-            sections.push({ title: 'Nota del Game Master' + (data.reviewedBy ? ' (' + data.reviewedBy + ')' : ''), value: data.feedback });
-        }
-
-        sections.forEach(function(sec) {
-            const value = (sec.value && String(sec.value).trim()) ? String(sec.value).trim() : '—';
-            const titleLines = doc.splitTextToSize(sec.title, contentWidth);
-            const valueLines = doc.splitTextToSize(value, contentWidth);
-
-            const blockHeight = 5 + (titleLines.length * 4.5) + 2 + (valueLines.length * 4.2) + 6;
-            ensureSpace(Math.min(blockHeight, 40));
-
-            doc.setFont('helvetica', 'bold');
-            doc.setFontSize(10);
-            doc.setTextColor(...blood);
-            doc.text(titleLines, marginLeft, y);
-            y += titleLines.length * 4.5 + 1.5;
-
-            doc.setDrawColor(...gold);
-            doc.setLineWidth(0.25);
-            doc.line(marginLeft, y, marginLeft + 40, y);
-            y += 3.5;
-
-            doc.setFont('helvetica', 'normal');
-            doc.setFontSize(9);
-            doc.setTextColor(...darkText);
-
-            valueLines.forEach(function(line) {
-                ensureSpace(5);
-                doc.text(line, marginLeft, y);
-                y += 4.2;
-            });
-
-            y += 5;
-        });
-
-        const totalPages = doc.internal.getNumberOfPages();
-        for (let i = 1; i <= totalPages; i++) {
-            doc.setPage(i);
-            drawFooter();
-            doc.setFontSize(7);
-            doc.setTextColor(...muted);
-            doc.text('Pagina ' + i + ' / ' + totalPages, pageWidth - marginRight, pageHeight - 6, { align: 'right' });
-        }
-
-        const safeName = (data.name || 'background').replace(/[^a-zA-Z0-9àèéìòù_\- ]/gi, '').trim().replace(/\s+/g, '_').substring(0, 40);
-        const fileName = 'BG_Vampiri_' + safeName + '_HordeV5.pdf';
-        doc.save(fileName);
-
-        triggerChronicaAlert('PDF generato', 'Il PDF del background è stato scaricato correttamente.');
-    }
-
-    const img = new Image();
-    img.crossOrigin = 'anonymous';
-    let pdfAlreadyGenerated = false;
-
-    function safeRender(logoData) {
-        if (pdfAlreadyGenerated) return;
-        pdfAlreadyGenerated = true;
-        renderContent(logoData);
-    }
-
-    img.onload = function() {
-        try {
-            const canvas = document.createElement('canvas');
-            canvas.width = img.naturalWidth || img.width;
-            canvas.height = img.naturalHeight || img.height;
-            const ctx = canvas.getContext('2d');
-            ctx.drawImage(img, 0, 0);
-            const dataUrl = canvas.toDataURL('image/png');
-            safeRender(dataUrl);
-        } catch (err) {
-            console.warn('Conversione logo fallita:', err);
+        img.onerror = function() {
+            console.warn('Logo non raggiungibile, PDF senza logo.');
             safeRender(null);
-        }
-    };
+        };
 
-    img.onerror = function() {
-        console.warn('Logo non raggiungibile, PDF senza logo.');
-        safeRender(null);
-    };
+        setTimeout(function() {
+            if (!done) {
+                img.onload = null;
+                img.onerror = null;
+                safeRender(null);
+            }
+        }, 2500);
 
-    setTimeout(function() {
-        if (!pdfAlreadyGenerated) {
-            img.onload = null;
-            img.onerror = null;
-            safeRender(null);
-        }
-    }, 2500);
+        img.src = logoUrl;
+    });
+}
 
-    img.src = logoUrl;
+// --- PDF: solo download locale ---
+window.generateBackgroundPdf = function(docId) {
+    buildBackgroundBlob(docId, 'pdf').then(function(res) {
+        downloadBlob(res.blob, res.fileName);
+        triggerChronicaAlert('PDF scaricato', 'Il PDF del background è stato scaricato correttamente.');
+    }).catch(function(err) {
+        triggerChronicaAlert('Errore', err.message || String(err));
+    });
 };
+

@@ -256,6 +256,18 @@ textarea {
 .btn-pdf::before { background: linear-gradient(90deg, var(--gold-dim), var(--gold-accent)); }
 .btn-pdf:hover { box-shadow: 0 5px 20px rgba(197, 160, 89, 0.45); border-color: var(--gold-accent); color: #fff; }
 
+.btn-txt { border-color: #7f8c8d; color: #bdc3c7; }
+.btn-txt::before { background: linear-gradient(90deg, #5d6d6e, #7f8c8d); }
+.btn-txt:hover { box-shadow: 0 5px 20px rgba(127, 140, 141, 0.4); border-color: #bdc3c7; color: #fff; }
+
+.btn-word { border-color: #2b579a; color: #5b9bd5; }
+.btn-word::before { background: linear-gradient(90deg, #1e3a6e, #2b579a); }
+.btn-word:hover { box-shadow: 0 5px 20px rgba(43, 87, 154, 0.45); border-color: #5b9bd5; color: #fff; }
+
+.btn-discord { border-color: #5865F2; color: #7289da; }
+.btn-discord::before { background: linear-gradient(90deg, #404eed, #5865F2); }
+.btn-discord:hover { box-shadow: 0 5px 20px rgba(88, 101, 242, 0.45); border-color: #7289da; color: #fff; }
+
 .nav-link-btn {
     background: transparent;
     border: none;
