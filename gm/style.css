@@ -376,15 +376,15 @@ main {
 /* CARDS E GRID (Mantenute le asimmetrie e gli angoli tagliati) */
 .grid {
     display: grid;
-    grid-template-columns: repeat(auto-fill, minmax(340px, 1fr));
-    gap: 25px;
+    grid-template-columns: repeat(auto-fill, minmax(260px, 1fr));
+    gap: 16px;
 }
 
 .card {
     background: linear-gradient(135deg, rgba(25, 25, 25, 0.8), rgba(10, 10, 10, 0.9));
     border: 1px solid var(--glass-border); 
     border-radius: 20px 0 20px 0; 
-    padding: 25px;
+    padding: 16px 18px;
     backdrop-filter: blur(10px);
     box-shadow: var(--shadow-premium); 
     transition: var(--transition-smooth);
@@ -1015,15 +1015,15 @@ footer {
 /* ========== EVENT CARDS PIÙ LARGHE ========== */
 .grid-events {
     display: grid;
-    grid-template-columns: repeat(auto-fill, minmax(320px, 1fr));
-    gap: 20px;
+    grid-template-columns: repeat(auto-fill, minmax(260px, 1fr));
+    gap: 16px;
 }
 .grid-events .card.event-card {
-    padding: 20px 22px;
+    padding: 16px 18px;
     min-width: 0;
 }
 .grid-events .event-card h3 {
-    font-size: 1.05rem;
+    font-size: 0.95rem;
     margin-bottom: 10px;
 }
 .grid-events .event-badges {
@@ -1209,4 +1209,29 @@ footer {
     margin: 4px 0 8px !important;
     font-style: italic;
     line-height: 1.4 !important;
+}
+
+
+/* Bottone ➕ assegna frammenti (piccolo, giallo) */
+.btn-assign-plus {
+    flex: 0 0 auto !important;
+    min-width: 36px !important;
+    max-width: 40px !important;
+    padding: 6px 8px !important;
+    font-size: 0.95rem !important;
+    line-height: 1 !important;
+    border-color: #f59e0b !important;
+    color: #fbbf24 !important;
+}
+.btn-assign-plus:hover {
+    border-color: #fbbf24 !important;
+    color: #000 !important;
+    box-shadow: 0 0 12px rgba(245, 158, 11, 0.35) !important;
+}
+.btn-assign-plus::before {
+    background: linear-gradient(90deg, #d97706, #f59e0b) !important;
+}
+.grid-events .event-actions .btn-assign-plus {
+    min-width: 36px !important;
+    flex: 0 0 auto !important;
 }

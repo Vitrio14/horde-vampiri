@@ -1290,6 +1290,9 @@ function loadPlayers() {
                 const playerItems = [];
                 playersSnapshot.forEach(doc => {
                     const p = doc.data();
+                    // Esclusi da Giocatori: rito / uscita ospitato → solo in "Uscite & Riti"
+                    const exitType = p.exitType || (p.ritoDellaCarne ? 'rito' : (p.uscitaOspitato ? 'uscita_ospitato' : null));
+                    if (exitType) return;
                     if (p.folderId === currentPlayersFolder.id) {
                         playerItems.push({ id: doc.id, ...p });
                     }
@@ -1624,7 +1627,7 @@ function registerPlayerExit(playerId, playerName, type) {
                 <b style="color:#c5a059;">${(playerName || 'questo player').replace(/</g, '&lt;')}</b>?
             </p>
             <p style="text-align:left;font-size:0.9rem;color:#9ca3af;margin-top:8px;">
-                ${desc} Resta nella cartella attuale e compare solo in <b>Uscite &amp; Riti</b>. Frammenti, quest e note restano salvati.
+                ${desc} Scompare dalle cartelle <b>Giocatori</b> (Vampiri/Ospiti) e resta solo in <b>Uscite &amp; Riti</b>. Frammenti, quest e note restano salvati.
             </p>
             <label style="display:block;text-align:left;margin:14px 0 4px;color:#c5a059;font-size:13px;font-weight:600;">
                 Note sull'uscita
@@ -1655,15 +1658,21 @@ function registerPlayerExit(playerId, playerName, type) {
         const { notes, memoria } = result.value;
         const exitDate = new Date().toISOString();
 
-        // Solo flag: nessuna creazione/spostamento cartella
-        db.collection('players').doc(playerId).update({
-            exitType: type,
-            exitDate,
-            exitNotes: notes,
-            memoriaCancellata: !!memoria,
-            ritoDellaCarne: isRito,
-            uscitaOspitato: !isRito,
-            ritoDate: isRito ? exitDate : null
+        // Flag uscita + esci dalla cartella Giocatori (resta solo in Uscite & Riti)
+        db.collection('players').doc(playerId).get().then(snap => {
+            const prev = snap.exists ? (snap.data() || {}) : {};
+            const prevFolderId = prev.folderId || null;
+            return db.collection('players').doc(playerId).update({
+                exitType: type,
+                exitDate,
+                exitNotes: notes,
+                memoriaCancellata: !!memoria,
+                ritoDellaCarne: isRito,
+                uscitaOspitato: !isRito,
+                ritoDate: isRito ? exitDate : null,
+                previousFolderId: prevFolderId,
+                folderId: null
+            });
         }).then(() => {
             showToast(title + ' registrato per ' + (playerName || 'player'));
             if (typeof loadPlayers === 'function') loadPlayers();
@@ -1681,7 +1690,7 @@ function registerRitoDellaCarne(playerId, playerName) {
 function undoPlayerExit(playerId, playerName) {
     Swal.fire({
         title: 'Annullare uscita?',
-        text: 'Il player tornerà senza flag di uscita. Frammenti e storico restano invariati.',
+        text: 'Il player torna nelle cartelle Giocatori (cartella precedente). Frammenti e storico restano invariati.',
         icon: 'question',
         showCancelButton: true,
         confirmButtonText: 'Annulla uscita',
@@ -1689,16 +1698,22 @@ function undoPlayerExit(playerId, playerName) {
         background: '#131a25'
     }).then(result => {
         if (!result.isConfirmed) return;
-        db.collection('players').doc(playerId).update({
-            exitType: null,
-            exitDate: null,
-            exitNotes: null,
-            memoriaCancellata: false,
-            ritoDellaCarne: false,
-            uscitaOspitato: false,
-            ritoDate: null
+        db.collection('players').doc(playerId).get().then(snap => {
+            const prev = snap.exists ? (snap.data() || {}) : {};
+            const restoreFolder = prev.previousFolderId || prev.folderId || null;
+            return db.collection('players').doc(playerId).update({
+                exitType: null,
+                exitDate: null,
+                exitNotes: null,
+                memoriaCancellata: false,
+                ritoDellaCarne: false,
+                uscitaOspitato: false,
+                ritoDate: null,
+                folderId: restoreFolder,
+                previousFolderId: null
+            });
         }).then(() => {
-            showToast('Uscita annullata per ' + (playerName || 'player'));
+            showToast('Uscita annullata — ' + (playerName || 'player') + ' torna in Giocatori');
             if (typeof loadPlayers === 'function') loadPlayers();
             if (typeof loadRitoPlayers === 'function') loadRitoPlayers();
         });
@@ -2408,6 +2423,9 @@ function buildEventCardHTML(e) {
             ${isRepeatable ? '<p style="font-size:0.8rem;color:#a78bfa;margin-bottom:6px;">Si può assegnare più volte · i punti si sommano</p>' : ''}
             <div class="event-badges">${deliveryBadge} ${timesBadge} ${repeatBadge} ${weekBadge} ${statusBadge} ${archiveTag}</div>
             <div class="action-buttons event-actions">
+                <button class="edit-btn btn-assign-plus" onclick="addFrammentoForEvent('${e.id}')" title="Assegna frammenti a questo evento">
+                    ➕
+                </button>
                 <button class="edit-btn" onclick="openEventFrammentiView('${e.id}', '${safeName}')" title="Partecipanti e consegne">
                     <i class="fa-solid fa-eye"></i> Partecipanti
                 </button>
@@ -2667,7 +2685,7 @@ function openEventFrammentiView(eventId, eventName) {
         let rowsPending = '';
         if (pending.length === 0) {
             rowsPending = participants.length === 0
-                ? '<tr><td colspan="5" style="color:#a0a0a0;">Nessun giocatore assegnato. Usa “+ Assegna Frammenti”.</td></tr>'
+                ? '<tr><td colspan="5" style="color:#a0a0a0;">Nessun giocatore assegnato. Usa ➕ sulla card evento.</td></tr>'
                 : '<tr><td colspan="5" style="color:#a0a0a0;">Nessun frammento da consegnare — tutto consegnato.</td></tr>';
         } else {
             rowsPending = pending.map(p => buildEventParticipantRow(p, eventId, eventName)).join('');
@@ -2909,6 +2927,219 @@ function toggleEventConcluso(eventId, nextStatus) {
     });
 }
 
+/**
+ * Assegna frammenti partendo dalla card di un evento specifico.
+ * - Evento non ripetibile: in lista solo i player NON ancora assegnati a questo evento.
+ * - Evento ripetibile: tutti i player (si può riassegnare).
+ * Player divisi in due liste: Vampiri e Ospiti (solo quelle cartelle).
+ */
+function addFrammentoForEvent(eventId) {
+    if (!eventId) return;
+
+    Promise.all([
+        db.collection('players').get(),
+        db.collection('frammentiEvents').doc(eventId).get(),
+        db.collection('frammenti').get(),
+        db.collection('folders').where('type', '==', 'players').get()
+    ]).then(([playersSnap, eventDoc, frammentiSnap, foldersSnap]) => {
+        if (!eventDoc.exists) {
+            Swal.fire({ icon: 'error', title: 'Errore', text: 'Evento non trovato.', background: '#131a25' });
+            return;
+        }
+
+        const ev = { id: eventDoc.id, ...eventDoc.data() };
+        const isRepeatable = !!ev.repeatable;
+
+        // Cartelle: match flessibile sul nome
+        // Vampiri → nome con "vamp"
+        // Ospiti  → nome con "ospit" (ospiti, ospite, ospitato…)
+        const folderNames = [];
+        let vampiriFolderIds = [];
+        let ospitiFolderIds = [];
+        foldersSnap.forEach(doc => {
+            const raw = String((doc.data() || {}).name || '').trim();
+            const name = raw.toLowerCase();
+            folderNames.push(raw || '(senza nome)');
+            if (/vamp/.test(name)) vampiriFolderIds.push(doc.id);
+            if (/ospit/.test(name)) ospitiFolderIds.push(doc.id);
+        });
+        const vampiriSet = new Set(vampiriFolderIds);
+        const ospitiSet = new Set(ospitiFolderIds);
+
+        // Player già assegnati (solo non ripetibili)
+        const alreadyAssigned = new Set();
+        if (!isRepeatable) {
+            const evNameNorm = String(ev.name || '').trim().toLowerCase();
+            frammentiSnap.forEach(doc => {
+                const f = doc.data();
+                const byId = f.eventId && f.eventId === eventId;
+                const byName = f.eventName && String(f.eventName).trim().toLowerCase() === evNameNorm;
+                if ((byId || byName) && f.playerName) {
+                    alreadyAssigned.add(String(f.playerName).trim().toLowerCase());
+                }
+            });
+        }
+
+        const vampiri = [];
+        const ospiti = [];
+        playersSnap.forEach(doc => {
+            const p = doc.data();
+            if (!p.name) return;
+            // escludi uscite registrate (rito / uscita ospitato)
+            if (p.exitType === 'rito' || p.exitType === 'uscita_ospitato' || p.rito === true) return;
+            if (!isRepeatable) {
+                const key = String(p.name).trim().toLowerCase();
+                if (alreadyAssigned.has(key)) return;
+            }
+            const item = { id: doc.id, ...p };
+            if (p.folderId && vampiriSet.has(p.folderId)) {
+                vampiri.push(item);
+            } else if (p.folderId && ospitiSet.has(p.folderId)) {
+                ospiti.push(item);
+            }
+        });
+        sortAlpha(vampiri, 'name');
+        sortAlpha(ospiti, 'name');
+
+        if (playersSnap.empty) {
+            Swal.fire({
+                icon: 'warning',
+                title: 'Attenzione',
+                text: 'Nessun giocatore presente. Aggiungine uno nella sezione Giocatori.',
+                background: '#131a25'
+            });
+            return;
+        }
+
+        if (vampiriFolderIds.length === 0 && ospitiFolderIds.length === 0) {
+            Swal.fire({
+                icon: 'warning',
+                title: 'Cartelle non trovate',
+                html: `<p style="text-align:left;">Non trovo cartelle <b>Vampiri</b> o <b>Ospiti</b> (type players).<br>
+                    Cartelle attuali:<br><code style="color:#c5a059;">${folderNames.join(', ') || 'nessuna'}</code><br><br>
+                    Rinomina le cartelle includendo “Vampiri” e “Ospiti” nel nome.</p>`,
+                background: '#131a25'
+            });
+            return;
+        }
+
+        if (vampiri.length === 0 && ospiti.length === 0) {
+            const msg = !isRepeatable && alreadyAssigned.size > 0
+                ? 'Tutti i player di Vampiri/Ospiti sono già assegnati a questo evento.'
+                : 'Nessun player nelle cartelle Vampiri o Ospiti.';
+            Swal.fire({ icon: 'info', title: 'Nessun player', text: msg, background: '#131a25' });
+            return;
+        }
+
+        function optsHtml(list) {
+            if (!list.length) {
+                return '<option disabled value="">— nessuno —</option>';
+            }
+            return list.map(p =>
+                `<option value="${String(p.name).replace(/"/g, '&quot;')}">${p.name}</option>`
+            ).join('');
+        }
+
+        // Sempre entrambe le sezioni visibili
+        const vampiriBlock = `
+            <label style="display:block;text-align:left;margin:12px 0 4px 4px;color:#c5a059;font-size:13px;font-weight:700;">
+                🧛 Vampiri <span style="color:#9ca3af;font-weight:400;">(${vampiri.length})</span>
+            </label>
+            <select id="fr-player-vampiri" class="swal2-select" multiple size="${Math.min(7, Math.max(3, vampiri.length || 3))}" style="height:auto !important;min-height:100px;">
+                ${optsHtml(vampiri)}
+            </select>
+        `;
+        const ospitiBlock = `
+            <label style="display:block;text-align:left;margin:14px 0 4px 4px;color:#38bdf8;font-size:13px;font-weight:700;">
+                🚪 Ospiti <span style="color:#9ca3af;font-weight:400;">(${ospiti.length})</span>
+            </label>
+            <select id="fr-player-ospiti" class="swal2-select" multiple size="${Math.min(7, Math.max(3, ospiti.length || 3))}" style="height:auto !important;min-height:100px;">
+                ${optsHtml(ospiti)}
+            </select>
+        `;
+
+        const weekNow = getWeekBounds();
+        const weekLabel = formatWeekLabel(weekNow);
+        const repHint = isRepeatable
+            ? '<span style="color:#a78bfa;">Evento ripetibile — puoi assegnare di nuovo gli stessi player</span>'
+            : '<span style="color:#c5a059;">Evento non ripetibile — solo player non ancora assegnati</span>';
+        const excludedHint = (!isRepeatable && alreadyAssigned.size > 0)
+            ? `<p style="text-align:left;font-size:12px;color:#9ca3af;margin:0 0 8px 4px;">Già assegnati e nascosti: <b>${alreadyAssigned.size}</b></p>`
+            : '';
+
+        Swal.fire({
+            title: 'Assegna — ' + (ev.name || 'Evento'),
+            html: `
+                <p style="text-align:left;font-size:12px;color:#a0a0a0;margin:0 0 8px 4px;">
+                    Settimana attuale: <b style="color:#a78bfa;">${weekLabel}</b><br>
+                    Quantità: <b style="color:#c5a059;">${formatNumber(ev.quantity || 0)}</b> frammenti<br>
+                    ${repHint}
+                </p>
+                ${excludedHint}
+                <p style="text-align:left;font-size:11px;color:#6b7280;margin:0 0 4px 4px;">
+                    Seleziona da una o entrambe le liste (Ctrl / Cmd per multipla)
+                </p>
+                ${vampiriBlock}
+                ${ospitiBlock}
+                <textarea id="fr-note" class="swal2-textarea" placeholder="Note opzionali (uguali per tutti i selezionati)"></textarea>
+            `,
+            confirmButtonText: 'Assegna',
+            background: '#131a25',
+            preConfirm: () => {
+                const selV = document.getElementById('fr-player-vampiri');
+                const selO = document.getElementById('fr-player-ospiti');
+                const fromV = selV ? Array.from(selV.selectedOptions).map(o => o.value).filter(Boolean) : [];
+                const fromO = selO ? Array.from(selO.selectedOptions).map(o => o.value).filter(Boolean) : [];
+                const selectedPlayers = [...fromV, ...fromO];
+                const note = (document.getElementById('fr-note').value || '').trim();
+                if (selectedPlayers.length === 0) {
+                    Swal.showValidationMessage('Seleziona almeno un vampiro o un ospite');
+                    return false;
+                }
+                const week = getWeekBounds();
+                return {
+                    players: selectedPlayers,
+                    eventId: ev.id,
+                    eventName: ev.name,
+                    quantity: ev.quantity,
+                    repeatable: isRepeatable,
+                    note,
+                    weekKey: week.key,
+                    weekStart: week.start.toISOString(),
+                    weekEnd: week.end.toISOString()
+                };
+            }
+        }).then((result) => {
+            if (!result.isConfirmed || !result.value) return;
+            const base = result.value;
+            const createdAt = new Date().toISOString();
+            const adds = base.players.map(playerName =>
+                db.collection('frammenti').add({
+                    playerName,
+                    eventId: base.eventId,
+                    eventName: base.eventName,
+                    quantity: base.quantity,
+                    repeatable: !!base.repeatable,
+                    status: 'non_consegnato',
+                    note: base.note,
+                    weekKey: base.weekKey,
+                    weekStart: base.weekStart,
+                    weekEnd: base.weekEnd,
+                    createdAt
+                })
+            );
+            Promise.all(adds).then(() => {
+                const n = base.players.length;
+                showToast(n + (n === 1 ? ' assegnazione creata' : ' assegnazioni create') + ' (sett. ' + formatWeekLabel(base.weekKey) + ')');
+            });
+        });
+    }).catch(err => {
+        console.error(err);
+        Swal.fire({ icon: 'error', title: 'Errore', text: 'Impossibile caricare i dati per l\'assegnazione.', background: '#131a25' });
+    });
+}
+
+
 function addFrammento() {
     Promise.all([
         db.collection('players').get(),
@@ -3117,7 +3348,7 @@ function renderFrammentiList(items) {
 
     container.innerHTML = '';
     if (filtered.length === 0) {
-        container.innerHTML = '<p style="color:var(--text-dim);padding:10px;">Nessuna assegnazione da consegnare in questa settimana. Usa “+ Assegna Frammenti” oppure cambia filtro settimana.</p>';
+        container.innerHTML = '<p style="color:var(--text-dim);padding:10px;">Nessuna assegnazione da consegnare in questa settimana. Usa ➕ sulla card evento oppure cambia filtro settimana.</p>';
         return;
     }
 
