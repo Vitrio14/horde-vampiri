@@ -1109,3 +1109,104 @@ footer {
 }
 .frammenti-preset-item:last-child { border-bottom: none; }
 .frammenti-preset-item b { color: var(--gold-accent); }
+
+
+/* ========== RITO DELLA CARNE + SPOSTA PLAYER ========== */
+.card-rito {
+    border-color: rgba(139, 92, 246, 0.45) !important;
+    background: linear-gradient(135deg, rgba(40, 25, 55, 0.85), rgba(10, 10, 10, 0.92)) !important;
+    box-shadow: 0 8px 32px rgba(0, 0, 0, 0.9), 0 0 24px rgba(139, 92, 246, 0.12) !important;
+}
+.card-rito:hover {
+    border-color: rgba(167, 139, 250, 0.7) !important;
+    box-shadow: 0 10px 30px rgba(0, 0, 0, 0.9), inset 0 0 20px rgba(139, 92, 246, 0.08) !important;
+}
+.card-rito h3 {
+    color: #c4b5fd !important;
+}
+.status.rito-status {
+    background: rgba(139, 92, 246, 0.15);
+    color: #a78bfa;
+    border-color: #a78bfa;
+    box-shadow: inset 5px 0 15px rgba(139, 92, 246, 0.2);
+    margin-bottom: 10px;
+}
+.btn-move-player {
+    background: transparent !important;
+    border: 1px solid rgba(197, 160, 89, 0.45) !important;
+    color: var(--gold-accent) !important;
+    padding: 8px 10px !important;
+    font-size: 0.7rem !important;
+    min-width: auto !important;
+    flex: 0 0 auto !important;
+}
+.btn-move-player:hover {
+    border-color: var(--gold-accent) !important;
+    color: #fff !important;
+    box-shadow: 0 0 12px rgba(197, 160, 89, 0.3) !important;
+}
+.grid-compact .action-buttons {
+    flex-wrap: wrap;
+}
+
+
+/* ========== ACTION BUTTONS ICON (non tagliati) ========== */
+.action-buttons.action-buttons-icons {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 8px;
+    align-items: stretch;
+}
+.action-buttons.action-buttons-icons button {
+    flex: 1 1 auto;
+    min-width: 44px;
+    white-space: nowrap;
+}
+.btn-icon-only {
+    flex: 0 0 44px !important;
+    min-width: 44px !important;
+    max-width: 52px !important;
+    padding: 8px 6px !important;
+    font-size: 1rem !important;
+    line-height: 1.2 !important;
+}
+.grid-compact .action-buttons.action-buttons-icons {
+    flex-wrap: wrap !important;
+}
+.grid-compact .card {
+    overflow: visible !important;
+}
+
+/* ========== USCITA OSPITATO ========== */
+.card-uscita {
+    border-color: rgba(56, 189, 248, 0.45) !important;
+    background: linear-gradient(135deg, rgba(15, 35, 50, 0.9), rgba(10, 10, 10, 0.92)) !important;
+    box-shadow: 0 8px 32px rgba(0, 0, 0, 0.9), 0 0 24px rgba(56, 189, 248, 0.1) !important;
+}
+.card-uscita:hover {
+    border-color: rgba(56, 189, 248, 0.7) !important;
+}
+.card-uscita h3 {
+    color: #7dd3fc !important;
+}
+.status.uscita-status {
+    background: rgba(56, 189, 248, 0.12);
+    color: #38bdf8;
+    border-color: #38bdf8;
+    box-shadow: inset 5px 0 15px rgba(56, 189, 248, 0.15);
+    margin-bottom: 8px;
+}
+.status.memoria-status {
+    background: rgba(239, 68, 68, 0.12);
+    color: #f87171;
+    border-color: #f87171;
+    box-shadow: inset 5px 0 15px rgba(239, 68, 68, 0.12);
+    margin-bottom: 8px;
+}
+.exit-notes-preview {
+    font-size: 0.8rem !important;
+    color: #9ca3af !important;
+    margin: 4px 0 8px !important;
+    font-style: italic;
+    line-height: 1.4 !important;
+}

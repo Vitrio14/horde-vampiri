@@ -63,6 +63,7 @@ function login() {
             loadCommands();
             loadGlobalLinks();
             loadPlayers();
+            loadRitoPlayers();
             loadFrammentiEvents();
             loadFrammenti();
             updateWeekRangeHints();
@@ -1302,14 +1303,33 @@ function loadPlayers() {
                             activeQuestsHTML = '<span style="color: var(--muted); font-size:13px;">Nessuna quest attiva</span>';
                         }
 
+                        const exitType = p.exitType || (p.ritoDellaCarne ? 'rito' : (p.uscitaOspitato ? 'uscita_ospitato' : null));
+                        const isExit = !!exitType;
+                        const cardClass = isExit
+                            ? (exitType === 'uscita_ospitato' ? 'card card-uscita' : 'card card-rito')
+                            : 'card';
+                        let exitBadge = '';
+                        if (exitType === 'rito') {
+                            const d = p.exitDate || p.ritoDate;
+                            exitBadge = `<div class="status rito-status" title="Ha lasciato la dinastia"><i class="fa-solid fa-skull"></i> Rito della Carne${d ? ' · ' + new Date(d).toLocaleDateString('it-IT') : ''}${p.memoriaCancellata ? ' · 🧠×' : ''}</div>`;
+                        } else if (exitType === 'uscita_ospitato') {
+                            const d = p.exitDate;
+                            exitBadge = `<div class="status uscita-status" title="Uscita ospitato"><i class="fa-solid fa-door-open"></i> Uscita Ospitato${d ? ' · ' + new Date(d).toLocaleDateString('it-IT') : ''}${p.memoriaCancellata ? ' · 🧠×' : ''}</div>`;
+                        }
+                        if (p.exitNotes) {
+                            const safeNotes = String(p.exitNotes).replace(/</g, '&lt;');
+                            exitBadge += `<p class="exit-notes-preview" title="Note uscita"><i class="fa-solid fa-note-sticky"></i> ${safeNotes.slice(0, 80)}${safeNotes.length > 80 ? '…' : ''}</p>`;
+                        }
+
                         container.innerHTML += `
-                            <div class="card">
+                            <div class="${cardClass}">
                                 <h3>${p.name}</h3>
+                                ${exitBadge}
                                 <p>${p.notes || 'Nessuna nota'}</p>
                                 <div style="margin-top:10px;">
                                     <b>Quest Attive:</b><br>${activeQuestsHTML}
                                 </div>
-                                <div class="action-buttons">
+                                <div class="action-buttons action-buttons-icons">
                                     <button
                                         class="edit-btn"
                                         onclick="openPlayerModal('${p.id}')"
@@ -1324,14 +1344,23 @@ function loadPlayers() {
                                         🔮
                                     </button>
                                     <button
-                                        class="delete-btn"
-                                        onclick="confirmDelete('players', '${p.id}', loadPlayers)"
+                                        class="btn-move-player"
+                                        onclick="movePlayerToFolder('${p.id}')"
+                                        title="Sposta in un'altra cartella"
                                     >
-                                        Elimina
+                                        📂
+                                    </button>
+                                    <button
+                                        class="delete-btn btn-icon-only"
+                                        onclick="confirmDelete('players', '${p.id}', loadPlayers)"
+                                        title="Elimina player"
+                                    >
+                                        🗑️
                                     </button>
                                 </div>
                             </div>
                         `;
+
                 });
             } else {
                 const folderItems = [];
@@ -1363,9 +1392,11 @@ function openPlayerModal(playerId) {
         .get()
         .then(playerDoc => {
 
+            if (!playerDoc.exists) return;
             const player = playerDoc.data();
+            const exitType = player.exitType || (player.ritoDellaCarne ? 'rito' : (player.uscitaOspitato ? 'uscita_ospitato' : null));
+            const isExit = !!exitType;
 
-            // Recupera dinamicamente le quest correnti dal database delle quest
             db.collection('quests').get().then(snapshot => {
 
                 let questOptions = '';
@@ -1381,23 +1412,50 @@ function openPlayerModal(playerId) {
                             : '';
 
                     questOptions += `
-
                         <option
                             value="${q.title}"
                             ${selected}
                         >
                             ${q.title}
                         </option>
-
                     `;
                 });
 
+                let exitInfo = '';
+                if (isExit) {
+                    const label = exitType === 'uscita_ospitato' ? 'Uscita Ospitato' : 'Rito della Carne';
+                    const color = exitType === 'uscita_ospitato' ? '#38bdf8' : '#a78bfa';
+                    const d = player.exitDate || player.ritoDate;
+                    const mem = player.memoriaCancellata
+                        ? '<br><span style="color:#f87171;">🧠× Memoria cancellata</span>'
+                        : '';
+                    const notes = player.exitNotes
+                        ? `<br><small style="color:#9ca3af;"><i>${String(player.exitNotes).replace(/</g,'&lt;')}</i></small>`
+                        : '';
+                    exitInfo = `<div style="margin:10px 0 14px;padding:10px 12px;background:rgba(139,92,246,0.1);border:1px solid rgba(139,92,246,0.3);border-left:3px solid ${color};text-align:left;">
+                            <b style="color:${color};">${exitType === 'uscita_ospitato' ? '🚪' : '💀'} ${label}</b>
+                            <br><small style="color:#9ca3af;">${d ? 'Data: ' + new Date(d).toLocaleString('it-IT') : 'Data non registrata'}. Frammenti e storico restano intatti.</small>
+                            ${mem}${notes}
+                       </div>`;
+                } else {
+                    exitInfo = `<div style="margin:10px 0 14px;text-align:left;display:flex;flex-direction:column;gap:8px;">
+                            <button type="button" id="btn-reg-rito" class="swal2-styled" style="background:transparent;border:1px solid #a78bfa;color:#a78bfa;width:100%;padding:10px;cursor:pointer;font-weight:700;text-transform:uppercase;letter-spacing:1px;">
+                                💀 Registra Rito della Carne
+                            </button>
+                            <button type="button" id="btn-reg-uscita" class="swal2-styled" style="background:transparent;border:1px solid #38bdf8;color:#38bdf8;width:100%;padding:10px;cursor:pointer;font-weight:700;text-transform:uppercase;letter-spacing:1px;">
+                                🚪 Registra Uscita Ospitato
+                            </button>
+                            <p style="font-size:12px;color:#9ca3af;margin:0;">Puoi aggiungere note e segnare la cancellazione memoria (RP). I dati restano salvati.</p>
+                       </div>`;
+                }
+
+                const titleSuffix = exitType === 'rito' ? ' · Fuori dinastia'
+                    : (exitType === 'uscita_ospitato' ? ' · Uscita ospitato' : '');
+
                 Swal.fire({
-
-                    title: player.name,
-
+                    title: player.name + titleSuffix,
                     html: `
-
+                        ${exitInfo}
                         <textarea
                             id="player-notes-edit"
                             class="swal2-textarea"
@@ -1411,64 +1469,318 @@ function openPlayerModal(playerId) {
                             multiple
                             style="height:200px;"
                         >
-
                             ${questOptions}
-
                         </select>
 
+                        <div style="margin-top:12px;text-align:left;">
+                            <button type="button" id="btn-move-from-modal" class="swal2-styled" style="background:transparent;border:1px solid #c5a059;color:#c5a059;width:100%;padding:10px;cursor:pointer;font-weight:700;text-transform:uppercase;letter-spacing:1px;">
+                                📂 Sposta in altra cartella
+                            </button>
+                        </div>
                     `,
-
                     width: 700,
-
                     confirmButtonText: 'Salva',
-
+                    showCancelButton: true,
+                    cancelButtonText: 'Chiudi',
                     background: '#131a25',
-
+                    didOpen: () => {
+                        const btnRito = document.getElementById('btn-reg-rito');
+                        if (btnRito) {
+                            btnRito.addEventListener('click', () => {
+                                Swal.close();
+                                registerPlayerExit(playerId, player.name, 'rito');
+                            });
+                        }
+                        const btnUscita = document.getElementById('btn-reg-uscita');
+                        if (btnUscita) {
+                            btnUscita.addEventListener('click', () => {
+                                Swal.close();
+                                registerPlayerExit(playerId, player.name, 'uscita_ospitato');
+                            });
+                        }
+                        const btnMove = document.getElementById('btn-move-from-modal');
+                        if (btnMove) {
+                            btnMove.addEventListener('click', () => {
+                                Swal.close();
+                                movePlayerToFolder(playerId);
+                            });
+                        }
+                    },
                     preConfirm: () => {
-
                         const selectedQuests =
                             Array.from(
-                                document.getElementById(
-                                    'player-quests'
-                                ).selectedOptions
+                                document.getElementById('player-quests').selectedOptions
                             ).map(option => option.value);
-
                         return {
-
-                            notes:
-                                document.getElementById(
-                                    'player-notes-edit'
-                                ).value,
-
-                            quests:
-                                selectedQuests
+                            notes: document.getElementById('player-notes-edit').value,
+                            quests: selectedQuests
                         };
                     }
-
                 }).then((result) => {
-
                     if (result.isConfirmed) {
-
                         db.collection('players')
                             .doc(playerId)
                             .update({
-
                                 notes: result.value.notes,
                                 quests: result.value.quests
-
                             })
                             .then(() => {
-
-                                showToast(
-                                    'Player aggiornato'
-                                );
+                                showToast('Player aggiornato');
                             });
                     }
                 });
-
             });
-
         });
+}
+
+/** Sposta un player in un'altra cartella (tipo players). Ideale per Ospiti → dinastia. */
+function movePlayerToFolder(playerId) {
+    Promise.all([
+        db.collection('players').doc(playerId).get(),
+        db.collection('folders').where('type', '==', 'players').get()
+    ]).then(([playerDoc, foldersSnap]) => {
+        if (!playerDoc.exists) {
+            showToast('Player non trovato');
+            return;
+        }
+        const player = playerDoc.data();
+        const folders = [];
+        foldersSnap.forEach(f => folders.push({ id: f.id, ...f.data() }));
+        sortAlpha(folders, 'name');
+
+        if (folders.length === 0) {
+            Swal.fire({
+                icon: 'info',
+                title: 'Nessuna cartella',
+                text: 'Crea prima almeno una cartella in Giocatori.',
+                background: '#131a25'
+            });
+            return;
+        }
+
+        let opts = '';
+        folders.forEach(f => {
+            const sel = f.id === player.folderId ? 'selected' : '';
+            opts += `<option value="${f.id}" ${sel}>${f.name}</option>`;
+        });
+
+        Swal.fire({
+            title: 'Sposta player',
+            html: `
+                <p style="text-align:left;color:#a0a0a0;margin-bottom:10px;">
+                    <b style="color:#c5a059;">${player.name || 'Player'}</b> — scegli la cartella di destinazione.
+                </p>
+                <select id="move-folder-select" class="swal2-select">${opts}</select>
+            `,
+            confirmButtonText: 'Sposta',
+            showCancelButton: true,
+            cancelButtonText: 'Annulla',
+            background: '#131a25',
+            preConfirm: () => {
+                const folderId = document.getElementById('move-folder-select').value;
+                if (!folderId) {
+                    Swal.showValidationMessage('Seleziona una cartella');
+                    return false;
+                }
+                if (folderId === player.folderId) {
+                    Swal.showValidationMessage('Il player è già in questa cartella');
+                    return false;
+                }
+                return folderId;
+            }
+        }).then(result => {
+            if (!result.isConfirmed || !result.value) return;
+            const folderId = result.value;
+            const dest = folders.find(f => f.id === folderId);
+            db.collection('players').doc(playerId).update({ folderId }).then(() => {
+                showToast('Spostato in «' + (dest ? dest.name : 'cartella') + '»');
+                if (typeof loadPlayers === 'function') loadPlayers();
+                if (typeof loadRitoPlayers === 'function') loadRitoPlayers();
+            });
+        });
+    });
+}
+
+/**
+ * Registra uscita: Rito della Carne oppure Uscita Ospitato.
+ * - exitNotes: note libere
+ * - memoriaCancellata: flag RP (il personaggio non ricorda nulla) — NON cancella dati dal DB
+ * Frammenti, quest e note restano intatti.
+ * @param {'rito'|'uscita_ospitato'} type
+ */
+function registerPlayerExit(playerId, playerName, type) {
+    const isRito = type === 'rito';
+    const title = isRito ? 'Rito della Carne' : 'Uscita Ospitato';
+    const accent = isRito ? '#a78bfa' : '#38bdf8';
+    const desc = isRito
+        ? "Segna l'uscita dalla <b>dinastia</b>."
+        : 'Segna la fine del periodo da <b>ospitato</b>.';
+
+    Swal.fire({
+        title: title,
+        html: `
+            <p style="text-align:left;line-height:1.55;color:#d1d5db;">
+                Confermi <b style="color:${accent};">${title}</b> per
+                <b style="color:#c5a059;">${(playerName || 'questo player').replace(/</g, '&lt;')}</b>?
+            </p>
+            <p style="text-align:left;font-size:0.9rem;color:#9ca3af;margin-top:8px;">
+                ${desc} Resta nella cartella attuale e compare solo in <b>Uscite &amp; Riti</b>. Frammenti, quest e note restano salvati.
+            </p>
+            <label style="display:block;text-align:left;margin:14px 0 4px;color:#c5a059;font-size:13px;font-weight:600;">
+                Note sull'uscita
+            </label>
+            <textarea id="exit-notes" class="swal2-textarea" placeholder="Motivo, dettagli RP, chi ha assistito…" style="min-height:90px;"></textarea>
+            <label style="display:flex;align-items:flex-start;gap:10px;margin-top:12px;cursor:pointer;color:#f87171;font-size:13px;font-weight:600;text-align:left;">
+                <input type="checkbox" id="exit-memoria" checked style="width:auto;margin:3px 0 0;accent-color:#ef4444;flex-shrink:0;">
+                <span>🧠 Cancellazione memoria (RP)<br>
+                <small style="color:#9ca3af;font-weight:400;">Il personaggio non ricorderà nulla. I dati nel gestionale restano intatti.</small>
+                </span>
+            </label>
+        `,
+        icon: 'warning',
+        showCancelButton: true,
+        confirmButtonText: 'Conferma',
+        cancelButtonText: 'Annulla',
+        confirmButtonColor: isRito ? '#7c3aed' : '#0284c7',
+        background: '#131a25',
+        preConfirm: () => {
+            return {
+                notes: (document.getElementById('exit-notes').value || '').trim(),
+                memoria: !!(document.getElementById('exit-memoria') && document.getElementById('exit-memoria').checked)
+            };
+        }
+    }).then(result => {
+        if (!result.isConfirmed || !result.value) return;
+
+        const { notes, memoria } = result.value;
+        const exitDate = new Date().toISOString();
+
+        // Solo flag: nessuna creazione/spostamento cartella
+        db.collection('players').doc(playerId).update({
+            exitType: type,
+            exitDate,
+            exitNotes: notes,
+            memoriaCancellata: !!memoria,
+            ritoDellaCarne: isRito,
+            uscitaOspitato: !isRito,
+            ritoDate: isRito ? exitDate : null
+        }).then(() => {
+            showToast(title + ' registrato per ' + (playerName || 'player'));
+            if (typeof loadPlayers === 'function') loadPlayers();
+            if (typeof loadRitoPlayers === 'function') loadRitoPlayers();
+        });
+    });
+}
+
+/** @deprecated usa registerPlayerExit(..., 'rito') */
+function registerRitoDellaCarne(playerId, playerName) {
+    registerPlayerExit(playerId, playerName, 'rito');
+}
+
+/** Annulla flag uscita/rito senza toccare i dati storici */
+function undoPlayerExit(playerId, playerName) {
+    Swal.fire({
+        title: 'Annullare uscita?',
+        text: 'Il player tornerà senza flag di uscita. Frammenti e storico restano invariati.',
+        icon: 'question',
+        showCancelButton: true,
+        confirmButtonText: 'Annulla uscita',
+        cancelButtonText: 'Chiudi',
+        background: '#131a25'
+    }).then(result => {
+        if (!result.isConfirmed) return;
+        db.collection('players').doc(playerId).update({
+            exitType: null,
+            exitDate: null,
+            exitNotes: null,
+            memoriaCancellata: false,
+            ritoDellaCarne: false,
+            uscitaOspitato: false,
+            ritoDate: null
+        }).then(() => {
+            showToast('Uscita annullata per ' + (playerName || 'player'));
+            if (typeof loadPlayers === 'function') loadPlayers();
+            if (typeof loadRitoPlayers === 'function') loadRitoPlayers();
+        });
+    });
+}
+
+function undoRitoDellaCarne(playerId, playerName) {
+    undoPlayerExit(playerId, playerName);
+}
+
+/** Sezione dedicata: player con Rito della Carne o Uscita Ospitato */
+function loadRitoPlayers() {
+    const container = document.getElementById('rito-list');
+    if (!container) return;
+
+    db.collection('players').onSnapshot(playersSnapshot => {
+        const items = [];
+        playersSnapshot.forEach(doc => {
+            const p = doc.data();
+            const exitType = p.exitType || (p.ritoDellaCarne ? 'rito' : (p.uscitaOspitato ? 'uscita_ospitato' : null));
+            if (exitType) items.push({ id: doc.id, ...p, _exitType: exitType });
+        });
+        sortAlpha(items, 'name');
+        container.innerHTML = '';
+
+        if (items.length === 0) {
+            container.innerHTML = `
+                <p style="color:var(--text-dim);padding:16px;">
+                    Nessuna uscita registrata.
+                    Da Giocatori → Apri player → «Rito della Carne» o «Uscita Ospitato».
+                </p>`;
+            return;
+        }
+
+        items.forEach(p => {
+            let activeQuestsHTML = '';
+            if (p.quests && p.quests.length > 0) {
+                const sortedQuests = p.quests.slice().sort((a, b) => String(a).localeCompare(String(b), 'it', { sensitivity: 'base' }));
+                activeQuestsHTML = sortedQuests.map(q => `<span class="status progress" style="margin: 2px;">${q}</span>`).join(' ');
+            } else {
+                activeQuestsHTML = '<span style="color: var(--muted); font-size:13px;">Nessuna quest attiva</span>';
+            }
+            const exitType = p._exitType;
+            const isUscita = exitType === 'uscita_ospitato';
+            const d = p.exitDate || p.ritoDate;
+            const dateLabel = d
+                ? new Date(d).toLocaleDateString('it-IT', { day: '2-digit', month: 'short', year: 'numeric' })
+                : '—';
+            const badgeClass = isUscita ? 'uscita-status' : 'rito-status';
+            const badgeText = isUscita
+                ? `🚪 Uscita Ospitato · ${dateLabel}`
+                : `💀 Rito della Carne · ${dateLabel}`;
+            const memBadge = p.memoriaCancellata
+                ? `<div class="status memoria-status">🧠× Memoria cancellata</div>`
+                : '';
+            const notesHtml = p.exitNotes
+                ? `<p class="exit-notes-preview"><i class="fa-solid fa-note-sticky"></i> ${String(p.exitNotes).replace(/</g,'&lt;')}</p>`
+                : '';
+            const cardClass = isUscita ? 'card card-uscita' : 'card card-rito';
+            const safeName = (p.name || '').replace(/'/g, "\\'");
+
+            container.innerHTML += `
+                <div class="${cardClass}">
+                    <h3>${p.name}</h3>
+                    <div class="status ${badgeClass}">${badgeText}</div>
+                    ${memBadge}
+                    ${notesHtml}
+                    <p>${p.notes || 'Nessuna nota'}</p>
+                    <div style="margin-top:10px;">
+                        <b>Quest Attive:</b><br>${activeQuestsHTML}
+                    </div>
+                    <div class="action-buttons action-buttons-icons">
+                        <button class="edit-btn" onclick="openPlayerModal('${p.id}')">Apri</button>
+                        <button class="btn-frammenti" onclick="openPlayerFrammentiModal('${p.id}', '${safeName}')" title="Resoconto Frammenti">🔮</button>
+                        <button class="btn-move-player" onclick="movePlayerToFolder('${p.id}')" title="Sposta cartella">📂</button>
+                        <button class="edit-btn" style="border-color:#a78bfa;color:#a78bfa;" onclick="undoPlayerExit('${p.id}', '${safeName}')" title="Annulla uscita">↩</button>
+                        <button class="delete-btn btn-icon-only" onclick="confirmDelete('players', '${p.id}', loadRitoPlayers)" title="Elimina">🗑️</button>
+                    </div>
+                </div>
+            `;
+        });
+    });
 }
 
 
@@ -3460,6 +3772,7 @@ auth.onAuthStateChanged(user => {
         loadCommands();
         loadGlobalLinks();
         loadPlayers();
+        loadRitoPlayers();
         loadFrammentiEvents();
         loadFrammenti();
         updateWeekRangeHints();
