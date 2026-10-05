@@ -1255,6 +1255,7 @@ function addPlayer() {
                 <option value="Adulto">Adulto</option>
                 <option value="Neonata">Neonata</option>
                 <option value="Neonato">Neonato</option>
+                <option value="Ospite">Ospite</option>
             </select>
             <textarea
                 id="player-notes"
@@ -1390,52 +1391,75 @@ function loadPlayers() {
 
                 });
             } else {
-                // Contatori globali (solo player attivi, esclusi rito/uscita)
+                // ID cartelle esistenti (tipo players)
+                const validFolderIds = new Set();
+                foldersSnapshot.forEach(fDoc => validFolderIds.add(fDoc.id));
+
+                // Contatori: solo player attivi (no rito/uscita) e in una cartella esistente
                 const countByFolder = {};
+                // Adulto = Adulta+Adulto, Neonato = Neonata+Neonato (badge resta distinto)
                 const countByGrado = {
-                    Ekaton: 0, Mentore: 0, Adulta: 0, Adulto: 0,
-                    Neonata: 0, Neonato: 0, '': 0
+                    Ekaton: 0,
+                    Mentore: 0,
+                    Adulto: 0,
+                    Neonato: 0,
+                    Ospite: 0,
+                    '': 0
                 };
                 let totalActive = 0;
+                let orphanCount = 0;
+
                 playersSnapshot.forEach(doc => {
                     const p = doc.data();
                     const exitType = p.exitType || (p.ritoDellaCarne ? 'rito' : (p.uscitaOspitato ? 'uscita_ospitato' : null));
                     if (exitType) return;
-                    totalActive++;
-                    const fid = p.folderId || '_none';
-                    countByFolder[fid] = (countByFolder[fid] || 0) + 1;
-                    const g = p.grado || '';
-                    if (Object.prototype.hasOwnProperty.call(countByGrado, g)) {
-                        countByGrado[g]++;
-                    } else {
-                        countByGrado['']++;
+
+                    const fid = p.folderId || '';
+                    if (!fid || !validFolderIds.has(fid)) {
+                        orphanCount++;
+                        return; // non conta nel totale legenda (cartella eliminata / senza cartella)
                     }
+
+                    totalActive++;
+                    countByFolder[fid] = (countByFolder[fid] || 0) + 1;
+
+                    const g = (p.grado || '').trim();
+                    if (g === 'Ekaton') countByGrado.Ekaton++;
+                    else if (g === 'Mentore') countByGrado.Mentore++;
+                    else if (g === 'Adulta' || g === 'Adulto') countByGrado.Adulto++;
+                    else if (g === 'Neonata' || g === 'Neonato') countByGrado.Neonato++;
+                    else if (g === 'Ospite') countByGrado.Ospite++;
+                    else countByGrado['']++;
                 });
 
-                // Legenda contatori sopra le cartelle
+                // Legenda: Adulto e Neonato aggregati; maschio/femmina resta sulla targhetta del player
                 const gradoOrder = [
                     { key: 'Ekaton', label: 'Ekaton', cls: 'grado-ekaton' },
                     { key: 'Mentore', label: 'Mentore', cls: 'grado-mentore' },
-                    { key: 'Adulta', label: 'Adulta', cls: 'grado-adulta' },
                     { key: 'Adulto', label: 'Adulto', cls: 'grado-adulto' },
-                    { key: 'Neonata', label: 'Neonata', cls: 'grado-neonata' },
                     { key: 'Neonato', label: 'Neonato', cls: 'grado-neonato' },
+                    { key: 'Ospite', label: 'Ospite', cls: 'grado-ospite' },
                     { key: '', label: 'Senza grado', cls: 'grado-none' }
                 ];
                 let legendChips = gradoOrder.map(g => {
                     const n = countByGrado[g.key] || 0;
-                    if (n === 0 && g.key === '') return '';
+                    if (n === 0) return '';
                     return `<span class="players-legend-chip ${g.cls}"><b>${g.label}</b> ${n}</span>`;
                 }).filter(Boolean).join('');
+
+                const orphanHint = orphanCount > 0
+                    ? `<span class="players-legend-chip grado-none" title="Player senza cartella valida (cartella eliminata o mai assegnata)">Senza cartella ${orphanCount}</span>`
+                    : '';
 
                 container.innerHTML += `
                     <div class="players-legend-bar" style="grid-column: 1 / -1;">
                         <div class="players-legend-total">
                             <i class="fa-solid fa-users"></i>
-                            <span>Totale attivi: <b>${formatNumber(totalActive)}</b></span>
+                            <span>Totale in cartelle: <b>${formatNumber(totalActive)}</b></span>
                         </div>
                         <div class="players-legend-chips">
                             ${legendChips || '<span class="players-legend-chip grado-none">Nessun player</span>'}
+                            ${orphanHint}
                         </div>
                     </div>
                 `;
@@ -1533,7 +1557,7 @@ function openPlayerModal(playerId) {
                     : (exitType === 'uscita_ospitato' ? ' · Uscita ospitato' : '');
 
                 const gradoVal = player.grado || '';
-                const gradoOptions = ['', 'Ekaton', 'Mentore', 'Adulta', 'Adulto', 'Neonata', 'Neonato']
+                const gradoOptions = ['', 'Ekaton', 'Mentore', 'Adulta', 'Adulto', 'Neonata', 'Neonato', 'Ospite']
                     .map(g => {
                         const label = g || '— Nessuno —';
                         return `<option value="${g}" ${gradoVal === g ? 'selected' : ''}>${label}</option>`;

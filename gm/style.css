@@ -1274,6 +1274,12 @@ footer {
     border-color: #10b981;
     box-shadow: inset 5px 0 15px rgba(16, 185, 129, 0.18);
 }
+.grado-ospite {
+    background: rgba(56, 189, 248, 0.12);
+    color: #38bdf8;
+    border-color: #38bdf8;
+    box-shadow: inset 5px 0 15px rgba(56, 189, 248, 0.18);
+}
 .grado-none {
     background: rgba(156, 163, 175, 0.1);
     color: #9ca3af;
@@ -1341,6 +1347,11 @@ footer {
     background: rgba(16, 185, 129, 0.1);
     border-color: rgba(16, 185, 129, 0.35);
     color: #34d399;
+}
+.players-legend-chip.grado-ospite {
+    background: rgba(56, 189, 248, 0.1);
+    border-color: rgba(56, 189, 248, 0.35);
+    color: #38bdf8;
 }
 .players-legend-chip.grado-none {
     background: rgba(156, 163, 175, 0.08);
