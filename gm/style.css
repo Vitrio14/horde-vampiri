@@ -1235,3 +1235,128 @@ footer {
     min-width: 36px !important;
     flex: 0 0 auto !important;
 }
+
+/* ========== GRADO PLAYER + LEGENDA CONTATORI ========== */
+.status.grado-status {
+    display: inline-block;
+    margin: 0 0 8px 0;
+    padding: 4px 10px;
+    font-size: 0.65rem;
+    font-weight: 800;
+    letter-spacing: 0.8px;
+    text-transform: uppercase;
+    font-family: 'Cinzel', serif;
+    border-left: 3px solid #fff;
+}
+.grado-ekaton {
+    background: rgba(245, 158, 11, 0.15);
+    color: #fbbf24;
+    border-color: #f59e0b;
+    box-shadow: inset 5px 0 15px rgba(245, 158, 11, 0.2);
+}
+.grado-mentore {
+    background: rgba(139, 92, 246, 0.15);
+    color: #a78bfa;
+    border-color: #8b5cf6;
+    box-shadow: inset 5px 0 15px rgba(139, 92, 246, 0.2);
+}
+.grado-adulta,
+.grado-adulto {
+    background: rgba(59, 130, 246, 0.12);
+    color: #60a5fa;
+    border-color: #3b82f6;
+    box-shadow: inset 5px 0 15px rgba(59, 130, 246, 0.18);
+}
+.grado-neonata,
+.grado-neonato {
+    background: rgba(16, 185, 129, 0.12);
+    color: #34d399;
+    border-color: #10b981;
+    box-shadow: inset 5px 0 15px rgba(16, 185, 129, 0.18);
+}
+.grado-none {
+    background: rgba(156, 163, 175, 0.1);
+    color: #9ca3af;
+    border-color: #6b7280;
+}
+
+.players-legend-bar {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    gap: 12px 18px;
+    margin-bottom: 8px;
+    padding: 14px 18px;
+    background: rgba(18, 18, 18, 0.75);
+    border: 1px solid var(--glass-border);
+    border-left: 4px solid var(--gold-accent);
+    border-radius: 0 12px 0 12px;
+}
+.players-legend-total {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    color: var(--gold-accent);
+    font-size: 0.9rem;
+    font-weight: 600;
+    white-space: nowrap;
+}
+.players-legend-total i {
+    color: var(--blood-light);
+}
+.players-legend-chips {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 8px;
+}
+.players-legend-chip {
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+    padding: 5px 12px;
+    font-size: 0.75rem;
+    font-weight: 600;
+    border-radius: 100px;
+    border: 1px solid transparent;
+    letter-spacing: 0.3px;
+}
+.players-legend-chip.grado-ekaton {
+    background: rgba(245, 158, 11, 0.12);
+    border-color: rgba(245, 158, 11, 0.35);
+    color: #fbbf24;
+}
+.players-legend-chip.grado-mentore {
+    background: rgba(139, 92, 246, 0.12);
+    border-color: rgba(139, 92, 246, 0.35);
+    color: #a78bfa;
+}
+.players-legend-chip.grado-adulta,
+.players-legend-chip.grado-adulto {
+    background: rgba(59, 130, 246, 0.1);
+    border-color: rgba(59, 130, 246, 0.35);
+    color: #60a5fa;
+}
+.players-legend-chip.grado-neonata,
+.players-legend-chip.grado-neonato {
+    background: rgba(16, 185, 129, 0.1);
+    border-color: rgba(16, 185, 129, 0.35);
+    color: #34d399;
+}
+.players-legend-chip.grado-none {
+    background: rgba(156, 163, 175, 0.08);
+    border-color: rgba(156, 163, 175, 0.25);
+    color: #9ca3af;
+}
+.folder-count-badge {
+    background: rgba(197, 160, 89, 0.1) !important;
+    color: var(--gold-accent) !important;
+    border-color: var(--gold-accent) !important;
+    box-shadow: inset 5px 0 15px rgba(197, 160, 89, 0.15) !important;
+    margin: 8px auto 0 !important;
+}
+@media (max-width: 600px) {
+    .players-legend-bar {
+        flex-direction: column;
+        align-items: flex-start;
+    }
+}

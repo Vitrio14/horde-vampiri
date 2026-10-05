@@ -1244,6 +1244,18 @@ function addPlayer() {
                 class="swal2-input"
                 placeholder="Nome Player"
             >
+            <label style="display:block; text-align:left; margin: 8px 0 4px 4px; color: #a0a0a0; font-size:13px; font-weight:600;">
+                Grado / Status
+            </label>
+            <select id="player-grado" class="swal2-select">
+                <option value="">— Nessuno —</option>
+                <option value="Ekaton">Ekaton</option>
+                <option value="Mentore">Mentore</option>
+                <option value="Adulta">Adulta</option>
+                <option value="Adulto">Adulto</option>
+                <option value="Neonata">Neonata</option>
+                <option value="Neonato">Neonato</option>
+            </select>
             <textarea
                 id="player-notes"
                 class="swal2-textarea"
@@ -1253,9 +1265,15 @@ function addPlayer() {
         confirmButtonText: 'Crea Player',
         background: '#131a25',
         preConfirm: () => {
+            const name = document.getElementById('player-name').value;
+            if (!name || !name.trim()) {
+                Swal.showValidationMessage('Inserisci un nome');
+                return false;
+            }
             return {
-                name: document.getElementById('player-name').value,
-                notes: document.getElementById('player-notes').value
+                name: name.trim(),
+                notes: document.getElementById('player-notes').value,
+                grado: document.getElementById('player-grado').value || ''
             };
         }
     }).then((result) => {
@@ -1263,6 +1281,7 @@ function addPlayer() {
             db.collection('players').add({
                 name: result.value.name,
                 notes: result.value.notes,
+                grado: result.value.grado,
                 quests: [],
                 folderId: currentPlayersFolder.id
             }).then(() => {
@@ -1324,9 +1343,14 @@ function loadPlayers() {
                             exitBadge += `<p class="exit-notes-preview" title="Note uscita"><i class="fa-solid fa-note-sticky"></i> ${safeNotes.slice(0, 80)}${safeNotes.length > 80 ? '…' : ''}</p>`;
                         }
 
+                        const gradoBadge = p.grado
+                            ? `<div class="status grado-status grado-${String(p.grado).toLowerCase()}">${p.grado}</div>`
+                            : '';
+
                         container.innerHTML += `
                             <div class="${cardClass}">
                                 <h3>${p.name}</h3>
+                                ${gradoBadge}
                                 ${exitBadge}
                                 <p>${p.notes || 'Nessuna nota'}</p>
                                 <div style="margin-top:10px;">
@@ -1366,15 +1390,68 @@ function loadPlayers() {
 
                 });
             } else {
+                // Contatori globali (solo player attivi, esclusi rito/uscita)
+                const countByFolder = {};
+                const countByGrado = {
+                    Ekaton: 0, Mentore: 0, Adulta: 0, Adulto: 0,
+                    Neonata: 0, Neonato: 0, '': 0
+                };
+                let totalActive = 0;
+                playersSnapshot.forEach(doc => {
+                    const p = doc.data();
+                    const exitType = p.exitType || (p.ritoDellaCarne ? 'rito' : (p.uscitaOspitato ? 'uscita_ospitato' : null));
+                    if (exitType) return;
+                    totalActive++;
+                    const fid = p.folderId || '_none';
+                    countByFolder[fid] = (countByFolder[fid] || 0) + 1;
+                    const g = p.grado || '';
+                    if (Object.prototype.hasOwnProperty.call(countByGrado, g)) {
+                        countByGrado[g]++;
+                    } else {
+                        countByGrado['']++;
+                    }
+                });
+
+                // Legenda contatori sopra le cartelle
+                const gradoOrder = [
+                    { key: 'Ekaton', label: 'Ekaton', cls: 'grado-ekaton' },
+                    { key: 'Mentore', label: 'Mentore', cls: 'grado-mentore' },
+                    { key: 'Adulta', label: 'Adulta', cls: 'grado-adulta' },
+                    { key: 'Adulto', label: 'Adulto', cls: 'grado-adulto' },
+                    { key: 'Neonata', label: 'Neonata', cls: 'grado-neonata' },
+                    { key: 'Neonato', label: 'Neonato', cls: 'grado-neonato' },
+                    { key: '', label: 'Senza grado', cls: 'grado-none' }
+                ];
+                let legendChips = gradoOrder.map(g => {
+                    const n = countByGrado[g.key] || 0;
+                    if (n === 0 && g.key === '') return '';
+                    return `<span class="players-legend-chip ${g.cls}"><b>${g.label}</b> ${n}</span>`;
+                }).filter(Boolean).join('');
+
+                container.innerHTML += `
+                    <div class="players-legend-bar" style="grid-column: 1 / -1;">
+                        <div class="players-legend-total">
+                            <i class="fa-solid fa-users"></i>
+                            <span>Totale attivi: <b>${formatNumber(totalActive)}</b></span>
+                        </div>
+                        <div class="players-legend-chips">
+                            ${legendChips || '<span class="players-legend-chip grado-none">Nessun player</span>'}
+                        </div>
+                    </div>
+                `;
+
                 const folderItems = [];
                 foldersSnapshot.forEach(fDoc => {
                     folderItems.push({ id: fDoc.id, ...fDoc.data() });
                 });
                 sortAlpha(folderItems, 'name').forEach(f => {
+                    const n = countByFolder[f.id] || 0;
+                    const countLabel = n === 1 ? '1 player' : (n + ' player');
                     container.innerHTML += `
                         <div class="card folder-card" style="border-color: #f59e0b; cursor: pointer;" onclick="currentPlayersFolder = {id: '${f.id}', name: '${f.name}'}; loadPlayers();">
                             <h3><i class="fa-solid fa-folder" style="color: #f59e0b; margin-right: 8px;"></i> ${f.name}</h3>
                             <p>Apri per visualizzare i player</p>
+                            <div class="status folder-count-badge">${countLabel}</div>
                             <div class="action-buttons" onclick="event.stopPropagation();" style="margin-top: 15px;">
                                 <button class="delete-btn" style="padding: 6px; font-size: 13px;" onclick="confirmDelete('folders', '${f.id}', loadPlayers)">
                                     Elimina Cartella
@@ -1455,10 +1532,24 @@ function openPlayerModal(playerId) {
                 const titleSuffix = exitType === 'rito' ? ' · Fuori dinastia'
                     : (exitType === 'uscita_ospitato' ? ' · Uscita ospitato' : '');
 
+                const gradoVal = player.grado || '';
+                const gradoOptions = ['', 'Ekaton', 'Mentore', 'Adulta', 'Adulto', 'Neonata', 'Neonato']
+                    .map(g => {
+                        const label = g || '— Nessuno —';
+                        return `<option value="${g}" ${gradoVal === g ? 'selected' : ''}>${label}</option>`;
+                    }).join('');
+
                 Swal.fire({
                     title: player.name + titleSuffix,
                     html: `
                         ${exitInfo}
+                        <label style="display:block; text-align:left; margin: 8px 0 4px 4px; color: #a0a0a0; font-size:13px; font-weight:600;">
+                            Grado / Status
+                        </label>
+                        <select id="player-grado-edit" class="swal2-select">
+                            ${gradoOptions}
+                        </select>
+
                         <textarea
                             id="player-notes-edit"
                             class="swal2-textarea"
@@ -1516,7 +1607,8 @@ function openPlayerModal(playerId) {
                             ).map(option => option.value);
                         return {
                             notes: document.getElementById('player-notes-edit').value,
-                            quests: selectedQuests
+                            quests: selectedQuests,
+                            grado: document.getElementById('player-grado-edit').value || ''
                         };
                     }
                 }).then((result) => {
@@ -1525,7 +1617,8 @@ function openPlayerModal(playerId) {
                             .doc(playerId)
                             .update({
                                 notes: result.value.notes,
-                                quests: result.value.quests
+                                quests: result.value.quests,
+                                grado: result.value.grado
                             })
                             .then(() => {
                                 showToast('Player aggiornato');
@@ -1775,9 +1868,14 @@ function loadRitoPlayers() {
             const cardClass = isUscita ? 'card card-uscita' : 'card card-rito';
             const safeName = (p.name || '').replace(/'/g, "\\'");
 
+            const gradoBadgeRito = p.grado
+                ? `<div class="status grado-status grado-${String(p.grado).toLowerCase()}">${p.grado}</div>`
+                : '';
+
             container.innerHTML += `
                 <div class="${cardClass}">
                     <h3>${p.name}</h3>
+                    ${gradoBadgeRito}
                     <div class="status ${badgeClass}">${badgeText}</div>
                     ${memBadge}
                     ${notesHtml}
