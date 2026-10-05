@@ -14,15 +14,32 @@ function formatNumber(n) {
     return num.toLocaleString('it-IT');
 }
 
-/** Ordina array di oggetti per un campo testo in ordine alfabetico italiano (case-insensitive).
- *  Ordina IN PLACE e restituisce lo stesso array (così funziona sia sortAlpha(x) sia sortAlpha(x).forEach). */
+/** Confronta due stringhe in ordine alfabetico italiano (case-insensitive, ignora spazi ai lati). */
+function cmpAlpha(a, b) {
+    const va = (a != null ? String(a) : '').trim();
+    const vb = (b != null ? String(b) : '').trim();
+    return va.localeCompare(vb, 'it', { sensitivity: 'base', numeric: true });
+}
+
+/** Ordina array di oggetti per un campo testo in ordine alfabetico italiano.
+ *  Ordina IN PLACE e restituisce lo stesso array (funziona sia sortAlpha(x) sia sortAlpha(x).forEach). */
 function sortAlpha(arr, key = 'name') {
     if (!arr || !arr.length) return arr || [];
-    return arr.sort((a, b) => {
-        const va = (a[key] != null ? String(a[key]) : '').trim();
-        const vb = (b[key] != null ? String(b[key]) : '').trim();
-        return va.localeCompare(vb, 'it', { sensitivity: 'base' });
-    });
+    return arr.sort((a, b) => cmpAlpha(a[key], b[key]));
+}
+
+/** Riordina le <option> di un <select> in ordine alfabetico sul testo visibile. */
+function sortSelectOptions(selectEl) {
+    if (!selectEl || !selectEl.options) return;
+    const opts = Array.from(selectEl.options);
+    // tieni le option disabled/placeholder in cima
+    const placeholders = opts.filter(o => o.disabled || !o.value);
+    const rest = opts.filter(o => !o.disabled && o.value);
+    rest.sort((a, b) => cmpAlpha(a.textContent, b.textContent));
+    // svuota e reinserisci
+    while (selectEl.firstChild) selectEl.removeChild(selectEl.firstChild);
+    placeholders.forEach(o => selectEl.appendChild(o));
+    rest.forEach(o => selectEl.appendChild(o));
 }
 
 /** Formatta data/ora ISO in stile italiano leggibile: 05/10/2026, 22:15 */
@@ -3037,7 +3054,7 @@ function openEventFrammentiView(eventId, eventName) {
             });
         });
 
-        participants.sort((a, b) => String(a.playerName || '').localeCompare(String(b.playerName || ''), 'it', { sensitivity: 'base' }));
+        sortAlpha(participants, 'playerName');
 
         const pending = participants.filter(p => p.status !== 'consegnato');
         const delivered = participants.filter(p => p.status === 'consegnato');
@@ -3399,8 +3416,10 @@ function addFrammentoForEvent(eventId) {
             if (!list.length) {
                 return '<option disabled value="">— nessuno —</option>';
             }
-            return list.map(p =>
-                `<option value="${String(p.name).replace(/"/g, '&quot;')}">${p.name}</option>`
+            // Copia + sort esplicito (non fidarsi solo dell'array in input)
+            const sorted = list.slice().sort((a, b) => cmpAlpha(a.name, b.name));
+            return sorted.map(p =>
+                `<option value="${String(p.name).replace(/"/g, '&quot;')}">${String(p.name)}</option>`
             ).join('');
         }
 
@@ -3449,6 +3468,10 @@ function addFrammentoForEvent(eventId) {
             `,
             confirmButtonText: 'Assegna',
             background: '#131a25',
+            didOpen: () => {
+                sortSelectOptions(document.getElementById('fr-player-vampiri'));
+                sortSelectOptions(document.getElementById('fr-player-ospiti'));
+            },
             preConfirm: () => {
                 const selV = document.getElementById('fr-player-vampiri');
                 const selO = document.getElementById('fr-player-ospiti');
@@ -3562,6 +3585,10 @@ function addFrammento() {
             `,
             confirmButtonText: 'Assegna',
             background: '#131a25',
+            didOpen: () => {
+                sortSelectOptions(document.getElementById('fr-player'));
+                sortSelectOptions(document.getElementById('fr-event'));
+            },
             preConfirm: () => {
                 const playerSelect = document.getElementById('fr-player');
                 const selectedPlayers = Array.from(playerSelect.selectedOptions).map(o => o.value).filter(Boolean);
