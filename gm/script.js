@@ -14,9 +14,11 @@ function formatNumber(n) {
     return num.toLocaleString('it-IT');
 }
 
-/** Ordina array di oggetti per un campo testo in ordine alfabetico italiano (case-insensitive) */
+/** Ordina array di oggetti per un campo testo in ordine alfabetico italiano (case-insensitive).
+ *  Ordina IN PLACE e restituisce lo stesso array (così funziona sia sortAlpha(x) sia sortAlpha(x).forEach). */
 function sortAlpha(arr, key = 'name') {
-    return arr.slice().sort((a, b) => {
+    if (!arr || !arr.length) return arr || [];
+    return arr.sort((a, b) => {
         const va = (a[key] != null ? String(a[key]) : '').trim();
         const vb = (b[key] != null ? String(b[key]) : '').trim();
         return va.localeCompare(vb, 'it', { sensitivity: 'base' });
@@ -3361,6 +3363,7 @@ function addFrammentoForEvent(eventId) {
         });
         sortAlpha(vampiri, 'name');
         sortAlpha(ospiti, 'name');
+        // ordinati in-place: Vampiri e Ospiti in A→Z
 
         if (playersSnap.empty) {
             Swal.fire({
