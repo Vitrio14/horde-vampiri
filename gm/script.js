@@ -1393,9 +1393,13 @@ function loadPlayers() {
             } else {
                 // ID cartelle esistenti (tipo players)
                 const validFolderIds = new Set();
-                foldersSnapshot.forEach(fDoc => validFolderIds.add(fDoc.id));
+                const folderIdList = [];
+                foldersSnapshot.forEach(fDoc => {
+                    validFolderIds.add(fDoc.id);
+                    folderIdList.push(fDoc.id);
+                });
 
-                // Contatori: solo player attivi (no rito/uscita) e in una cartella esistente
+                // Contatori: TUTTI i player attivi (no rito/uscita)
                 const countByFolder = {};
                 // Adulto = Adulta+Adulto, Neonato = Neonata+Neonato (badge resta distinto)
                 const countByGrado = {
@@ -1407,21 +1411,21 @@ function loadPlayers() {
                     '': 0
                 };
                 let totalActive = 0;
-                let orphanCount = 0;
+                const orphanIds = [];
 
                 playersSnapshot.forEach(doc => {
                     const p = doc.data();
                     const exitType = p.exitType || (p.ritoDellaCarne ? 'rito' : (p.uscitaOspitato ? 'uscita_ospitato' : null));
                     if (exitType) return;
 
-                    const fid = p.folderId || '';
-                    if (!fid || !validFolderIds.has(fid)) {
-                        orphanCount++;
-                        return; // non conta nel totale legenda (cartella eliminata / senza cartella)
-                    }
-
                     totalActive++;
-                    countByFolder[fid] = (countByFolder[fid] || 0) + 1;
+
+                    const fid = p.folderId || '';
+                    if (fid && validFolderIds.has(fid)) {
+                        countByFolder[fid] = (countByFolder[fid] || 0) + 1;
+                    } else {
+                        orphanIds.push(doc.id);
+                    }
 
                     const g = (p.grado || '').trim();
                     if (g === 'Ekaton') countByGrado.Ekaton++;
@@ -1431,6 +1435,22 @@ function loadPlayers() {
                     else if (g === 'Ospite') countByGrado.Ospite++;
                     else countByGrado['']++;
                 });
+
+                // Auto-riparazione: se c'è esattamente 1 cartella e ci sono orfani, li riassegna
+                if (orphanIds.length > 0 && folderIdList.length === 1) {
+                    const onlyFolder = folderIdList[0];
+                    const batch = db.batch();
+                    orphanIds.forEach(pid => {
+                        batch.update(db.collection('players').doc(pid), { folderId: onlyFolder });
+                    });
+                    batch.commit().then(() => {
+                        showToast(orphanIds.length + ' player riassegnati alla cartella');
+                        // onSnapshot ricaricherà da solo
+                    }).catch(() => {});
+                    // Mostra conteggi provvisori includendo gli orfani nella cartella unica
+                    countByFolder[onlyFolder] = (countByFolder[onlyFolder] || 0) + orphanIds.length;
+                    orphanIds.length = 0;
+                }
 
                 // Legenda: Adulto e Neonato aggregati; maschio/femmina resta sulla targhetta del player
                 const gradoOrder = [
@@ -1447,15 +1467,19 @@ function loadPlayers() {
                     return `<span class="players-legend-chip ${g.cls}"><b>${g.label}</b> ${n}</span>`;
                 }).filter(Boolean).join('');
 
-                const orphanHint = orphanCount > 0
-                    ? `<span class="players-legend-chip grado-none" title="Player senza cartella valida (cartella eliminata o mai assegnata)">Senza cartella ${orphanCount}</span>`
+                const orphanHint = orphanIds.length > 0
+                    ? `<button type="button" class="players-legend-chip grado-none" style="cursor:pointer;font:inherit;"
+                        onclick="repairOrphanPlayers()"
+                        title="Clicca per assegnare questi player a una cartella">
+                        Da assegnare: ${orphanIds.length} — sistema
+                      </button>`
                     : '';
 
                 container.innerHTML += `
                     <div class="players-legend-bar" style="grid-column: 1 / -1;">
                         <div class="players-legend-total">
                             <i class="fa-solid fa-users"></i>
-                            <span>Totale in cartelle: <b>${formatNumber(totalActive)}</b></span>
+                            <span>Totale attivi: <b>${formatNumber(totalActive)}</b></span>
                         </div>
                         <div class="players-legend-chips">
                             ${legendChips || '<span class="players-legend-chip grado-none">Nessun player</span>'}
@@ -1477,7 +1501,7 @@ function loadPlayers() {
                             <p>Apri per visualizzare i player</p>
                             <div class="status folder-count-badge">${countLabel}</div>
                             <div class="action-buttons" onclick="event.stopPropagation();" style="margin-top: 15px;">
-                                <button class="delete-btn" style="padding: 6px; font-size: 13px;" onclick="confirmDelete('folders', '${f.id}', loadPlayers)">
+                                <button class="delete-btn" style="padding: 6px; font-size: 13px;" onclick="deletePlayersFolder('${f.id}', '${String(f.name).replace(/'/g, "\\'")}')">
                                     Elimina Cartella
                                 </button>
                             </div>
@@ -1702,6 +1726,11 @@ function movePlayerToFolder(playerId) {
                     Swal.showValidationMessage('Seleziona una cartella');
                     return false;
                 }
+                // Verifica che la cartella esista ancora nella lista
+                if (!folders.some(f => f.id === folderId)) {
+                    Swal.showValidationMessage('Cartella non valida');
+                    return false;
+                }
                 if (folderId === player.folderId) {
                     Swal.showValidationMessage('Il player è già in questa cartella');
                     return false;
@@ -1712,10 +1741,198 @@ function movePlayerToFolder(playerId) {
             if (!result.isConfirmed || !result.value) return;
             const folderId = result.value;
             const dest = folders.find(f => f.id === folderId);
-            db.collection('players').doc(playerId).update({ folderId }).then(() => {
+            // Scrive SOLO l'id reale della cartella Firestore (non il nome)
+            db.collection('players').doc(playerId).update({ folderId: folderId }).then(() => {
                 showToast('Spostato in «' + (dest ? dest.name : 'cartella') + '»');
                 if (typeof loadPlayers === 'function') loadPlayers();
                 if (typeof loadRitoPlayers === 'function') loadRitoPlayers();
+            }).catch(err => {
+                showToast('Errore spostamento: ' + (err.message || 'sconosciuto'));
+            });
+        });
+    });
+}
+
+/**
+ * Riassegna tutti i player attivi senza cartella valida a una cartella scelta.
+ */
+function repairOrphanPlayers() {
+    Promise.all([
+        db.collection('players').get(),
+        db.collection('folders').where('type', '==', 'players').get()
+    ]).then(([playersSnap, foldersSnap]) => {
+        const folders = [];
+        const validIds = new Set();
+        foldersSnap.forEach(f => {
+            folders.push({ id: f.id, ...f.data() });
+            validIds.add(f.id);
+        });
+        sortAlpha(folders, 'name');
+
+        if (folders.length === 0) {
+            Swal.fire({
+                icon: 'warning',
+                title: 'Nessuna cartella',
+                text: 'Crea prima una cartella in Giocatori.',
+                background: '#131a25'
+            });
+            return;
+        }
+
+        const orphans = [];
+        playersSnap.forEach(doc => {
+            const p = doc.data();
+            const exitType = p.exitType || (p.ritoDellaCarne ? 'rito' : (p.uscitaOspitato ? 'uscita_ospitato' : null));
+            if (exitType) return;
+            const fid = p.folderId || '';
+            if (!fid || !validIds.has(fid)) {
+                orphans.push({ id: doc.id, name: p.name || doc.id });
+            }
+        });
+
+        if (orphans.length === 0) {
+            showToast('Nessun player da sistemare');
+            return;
+        }
+
+        let opts = folders.map(f => `<option value="${f.id}">${f.name}</option>`).join('');
+
+        Swal.fire({
+            title: 'Sistema player senza cartella',
+            html: `
+                <p style="text-align:left;color:#a0a0a0;margin-bottom:10px;">
+                    <b style="color:#c5a059;">${orphans.length}</b> player non risultano in una cartella valida
+                    (cartella eliminata o id non aggiornato). Scegli dove assegnarli.
+                </p>
+                <select id="repair-folder-select" class="swal2-select">${opts}</select>
+            `,
+            confirmButtonText: 'Assegna tutti',
+            showCancelButton: true,
+            cancelButtonText: 'Annulla',
+            background: '#131a25',
+            preConfirm: () => {
+                const folderId = document.getElementById('repair-folder-select').value;
+                if (!folderId || !validIds.has(folderId)) {
+                    Swal.showValidationMessage('Seleziona una cartella valida');
+                    return false;
+                }
+                return folderId;
+            }
+        }).then(result => {
+            if (!result.isConfirmed || !result.value) return;
+            const folderId = result.value;
+            const dest = folders.find(f => f.id === folderId);
+            const batch = db.batch();
+            orphans.forEach(o => {
+                batch.update(db.collection('players').doc(o.id), { folderId: folderId });
+            });
+            batch.commit().then(() => {
+                showToast(orphans.length + ' player assegnati a «' + (dest ? dest.name : 'cartella') + '»');
+            }).catch(err => {
+                showToast('Errore: ' + (err.message || 'sconosciuto'));
+            });
+        });
+    });
+}
+
+/**
+ * Elimina una cartella Giocatori: se contiene player, chiede dove spostarli prima.
+ * Così non restano folderId orfani.
+ */
+function deletePlayersFolder(folderId, folderName) {
+    Promise.all([
+        db.collection('players').get(),
+        db.collection('folders').where('type', '==', 'players').get()
+    ]).then(([playersSnap, foldersSnap]) => {
+        const folders = [];
+        foldersSnap.forEach(f => {
+            if (f.id !== folderId) folders.push({ id: f.id, ...f.data() });
+        });
+        sortAlpha(folders, 'name');
+
+        const inFolder = [];
+        playersSnap.forEach(doc => {
+            const p = doc.data();
+            if (p.folderId === folderId) {
+                inFolder.push({ id: doc.id, name: p.name || doc.id });
+            }
+        });
+
+        if (inFolder.length === 0) {
+            // Cartella vuota: elimina direttamente
+            Swal.fire({
+                title: 'Eliminare cartella?',
+                text: '«' + (folderName || 'Cartella') + '» è vuota. Confermi?',
+                icon: 'warning',
+                showCancelButton: true,
+                confirmButtonColor: '#ef4444',
+                confirmButtonText: 'Elimina',
+                cancelButtonText: 'Annulla',
+                background: '#131a25'
+            }).then(result => {
+                if (!result.isConfirmed) return;
+                db.collection('folders').doc(folderId).delete().then(() => {
+                    showToast('Cartella eliminata');
+                    if (currentPlayersFolder && currentPlayersFolder.id === folderId) {
+                        currentPlayersFolder = null;
+                    }
+                });
+            });
+            return;
+        }
+
+        if (folders.length === 0) {
+            Swal.fire({
+                icon: 'warning',
+                title: 'Impossibile eliminare',
+                html: `La cartella contiene <b>${inFolder.length}</b> player e non ci sono altre cartelle dove spostarli.<br>
+                       Crea prima un’altra cartella, oppure sposta/elimina i player.`,
+                background: '#131a25'
+            });
+            return;
+        }
+
+        let opts = folders.map(f => `<option value="${f.id}">${f.name}</option>`).join('');
+
+        Swal.fire({
+            title: 'Elimina cartella con player',
+            html: `
+                <p style="text-align:left;color:#a0a0a0;margin-bottom:10px;">
+                    «<b style="color:#c5a059;">${folderName || 'Cartella'}</b>» contiene
+                    <b>${inFolder.length}</b> player. Prima di eliminarla, scegli dove spostarli
+                    (il grado Ospite/Adulto ecc. non cambia).
+                </p>
+                <select id="delete-folder-dest" class="swal2-select">${opts}</select>
+            `,
+            confirmButtonText: 'Sposta ed elimina',
+            showCancelButton: true,
+            cancelButtonText: 'Annulla',
+            confirmButtonColor: '#ef4444',
+            background: '#131a25',
+            preConfirm: () => {
+                const destId = document.getElementById('delete-folder-dest').value;
+                if (!destId || !folders.some(f => f.id === destId)) {
+                    Swal.showValidationMessage('Seleziona una cartella di destinazione');
+                    return false;
+                }
+                return destId;
+            }
+        }).then(result => {
+            if (!result.isConfirmed || !result.value) return;
+            const destId = result.value;
+            const dest = folders.find(f => f.id === destId);
+            const batch = db.batch();
+            inFolder.forEach(p => {
+                batch.update(db.collection('players').doc(p.id), { folderId: destId });
+            });
+            batch.delete(db.collection('folders').doc(folderId));
+            batch.commit().then(() => {
+                showToast(inFolder.length + ' player spostati in «' + (dest ? dest.name : 'cartella') + '» · cartella eliminata');
+                if (currentPlayersFolder && currentPlayersFolder.id === folderId) {
+                    currentPlayersFolder = null;
+                }
+            }).catch(err => {
+                showToast('Errore: ' + (err.message || 'sconosciuto'));
             });
         });
     });
