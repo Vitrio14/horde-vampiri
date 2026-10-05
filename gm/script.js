@@ -23,6 +23,24 @@ function sortAlpha(arr, key = 'name') {
     });
 }
 
+/** Formatta data/ora ISO in stile italiano leggibile: 05/10/2026, 22:15 */
+function formatDateTime(iso) {
+    if (!iso) return '';
+    try {
+        const d = new Date(iso);
+        if (isNaN(d.getTime())) return '';
+        return d.toLocaleString('it-IT', {
+            day: '2-digit',
+            month: '2-digit',
+            year: 'numeric',
+            hour: '2-digit',
+            minute: '2-digit'
+        });
+    } catch (e) {
+        return '';
+    }
+}
+
 function login() {
 
     const email = document.getElementById('email').value;
@@ -2920,9 +2938,13 @@ function buildEventParticipantRow(p, eventId, eventName) {
             <input type="checkbox" class="event-fr-check" value="${p.id}"
                 style="width:auto;margin:0;accent-color:#2ecc71;cursor:pointer;transform:scale(1.15);">
            </td>`;
+    const when = formatDateTime(p.createdAt);
+    const whenHtml = when
+        ? `<br><small style="color:#a78bfa;"><i class="fa-regular fa-clock"></i> ${when}</small>`
+        : '';
     return `<tr>
         ${checkCell}
-        <td><b>${p.playerName}</b>${p.note ? `<br><small style="color:#a0a0a0;">${p.note}</small>` : ''}</td>
+        <td><b>${p.playerName}</b>${whenHtml}${p.note ? `<br><small style="color:#a0a0a0;">${p.note}</small>` : ''}</td>
         <td>${formatNumber(p.quantity)}</td>
         <td>${st}</td>
         <td>
@@ -3013,7 +3035,7 @@ function openEventFrammentiView(eventId, eventName) {
             });
         });
 
-        participants.sort((a, b) => (a.playerName || '').localeCompare(b.playerName || ''));
+        participants.sort((a, b) => String(a.playerName || '').localeCompare(String(b.playerName || ''), 'it', { sensitivity: 'base' }));
 
         const pending = participants.filter(p => p.status !== 'consegnato');
         const delivered = participants.filter(p => p.status === 'consegnato');
@@ -3699,11 +3721,16 @@ function renderFrammentiList(items) {
         const wk = weekKeyFromItem(f);
         const weekBadge = `<span class="week-badge">${formatWeekLabel(wk)}</span>`;
 
+        const whenAssign = formatDateTime(f.createdAt);
+        const whenLine = whenAssign
+            ? `<p style="font-size:0.8rem;color:#a78bfa;"><i class="fa-regular fa-clock"></i> Assegnato: ${whenAssign}</p>`
+            : '';
         container.innerHTML += `
             <div class="card">
                 <h3>${f.playerName || '—'}</h3>
                 <p><b>Evento:</b> ${f.eventName || '—'}</p>
                 <p><b>Quantità:</b> ${formatNumber(f.quantity || 0)} frammenti</p>
+                ${whenLine}
                 ${f.note ? `<p style="font-size:0.85rem;color:var(--text-dim);"><i>${f.note}</i></p>` : ''}
                 ${weekBadge}
                 <div class="status ${statusClass}">${statusLabel}</div>
@@ -4081,10 +4108,15 @@ function buildPlayerFrammentiContent(items, playerId, playerName, showConsegnati
         const evStatusHtml = evStatus === 'Concluso'
             ? ' <span style="color:#2ecc71;font-size:0.7rem;font-weight:600;">· Concluso</span>'
             : ' <span style="color:#c5a059;font-size:0.7rem;font-weight:600;">· Aperto</span>';
+        const whenAssign = formatDateTime(f.createdAt);
+        const whenHtml = whenAssign
+            ? `<br><small style="color:#a78bfa;"><i class="fa-regular fa-clock"></i> Assegnato: ${whenAssign}</small>`
+            : '';
         return `<li style="margin-bottom:8px;padding-bottom:6px;border-bottom:1px dashed rgba(255,255,255,0.06);display:flex;justify-content:space-between;align-items:flex-start;gap:10px;">
             <div>
                 <b>${f.eventName || '—'}</b>${repTag}${evStatusHtml} — ${formatNumber(f.quantity)} fr. ${st}
                 <br><small style="color:#a78bfa;">Sett. ${formatWeekLabel(f.weekKey)}</small>
+                ${whenHtml}
                 ${f.note ? `<br><small style="color:#a0a0a0;">${f.note}</small>` : ''}
             </div>
             <button type="button"
