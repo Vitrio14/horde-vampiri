@@ -60,7 +60,247 @@ function formatDateTime(iso) {
     }
 }
 
+
+/* ========== FILTRI LISTE (ricerca + grado player) ========== */
+const listFilters = {
+    quests: '',
+    docs: '',
+    notes: '',
+    media: '',
+    commands: '',
+    admin: '',
+    players: { text: '', grado: 'all' },
+    rito: { text: '', tipo: 'all' }
+};
+
+const SECTION_LIST_IDS = {
+    quests: 'quest-list',
+    docs: 'docs-list',
+    notes: 'notes-list',
+    media: 'media-list',
+    commands: 'commands-list',
+    admin: 'global-links',
+    players: 'players-list',
+    rito: 'rito-list'
+};
+
+/** Normalizza grado: Adulta/Adulto → Adulto, Neonata/Neonato → Neonato */
+function normalizeGradoKey(g) {
+    const s = (g == null ? '' : String(g)).trim();
+    if (!s) return '';
+    const lower = s.toLowerCase();
+    if (lower === 'adulta' || lower === 'adulto') return 'Adulto';
+    if (lower === 'neonata' || lower === 'neonato') return 'Neonato';
+    if (lower === 'ekaton') return 'Ekaton';
+    if (lower === 'mentore') return 'Mentore';
+    if (lower === 'ospite') return 'Ospite';
+    return s.charAt(0).toUpperCase() + s.slice(1);
+}
+
+function matchesSearch(haystack, query) {
+    if (!query) return true;
+    const q = String(query).trim().toLowerCase();
+    if (!q) return true;
+    return String(haystack == null ? '' : haystack).toLowerCase().includes(q);
+}
+
+function escapeAttr(s) {
+    return String(s == null ? '' : s)
+        .replace(/&/g, '&amp;')
+        .replace(/"/g, '&quot;')
+        .replace(/</g, '&lt;')
+        .replace(/>/g, '&gt;');
+}
+
+function buildSearchBarHtml(sectionKey, placeholder) {
+    const raw = typeof listFilters[sectionKey] === 'string'
+        ? listFilters[sectionKey]
+        : (listFilters[sectionKey] && listFilters[sectionKey].text) || '';
+    const val = escapeAttr(raw);
+    const hasVal = !!(raw && String(raw).trim());
+    return `
+        <div class="section-filter-bar" style="grid-column: 1 / -1;" data-filter-bar="${sectionKey}">
+            <div class="section-filter-search">
+                <i class="fa-solid fa-magnifying-glass"></i>
+                <input type="search" id="filter-input-${sectionKey}"
+                    placeholder="${placeholder}"
+                    value="${val}"
+                    autocomplete="off"
+                    oninput="onSectionSearch('${sectionKey}', this.value)">
+                ${hasVal ? `<button type="button" class="filter-clear-btn" onclick="clearSectionSearch('${sectionKey}')" title="Pulisci ricerca">×</button>` : ''}
+            </div>
+        </div>`;
+}
+
+function buildPlayersFilterBarHtml(insideFolder) {
+    const f = listFilters.players;
+    const val = escapeAttr(f.text || '');
+    const hasVal = !!(f.text && String(f.text).trim());
+    const grados = [
+        { key: 'all', label: 'Tutti' },
+        { key: 'Ekaton', label: 'Ekaton' },
+        { key: 'Mentore', label: 'Mentore' },
+        { key: 'Adulto', label: 'Adulti' },
+        { key: 'Neonato', label: 'Neonati' },
+        { key: 'Ospite', label: 'Ospiti' },
+        { key: '', label: 'Senza grado' }
+    ];
+    const chips = grados.map(g => {
+        const isActive = f.grado === g.key;
+        const cls = isActive ? 'filter-chip active' : 'filter-chip';
+        const keyAttr = g.key === '' ? '__none__' : g.key;
+        return `<button type="button" class="${cls}" onclick="onPlayersGradoFilter('${keyAttr}')">${g.label}</button>`;
+    }).join('');
+    const hint = insideFolder
+        ? 'Cerca per nome o note · filtra per grado'
+        : 'Cerca cartella per nome';
+    return `
+        <div class="section-filter-bar" style="grid-column: 1 / -1;" data-filter-bar="players">
+            <div class="section-filter-search">
+                <i class="fa-solid fa-magnifying-glass"></i>
+                <input type="search" id="filter-input-players"
+                    placeholder="${hint}"
+                    value="${val}"
+                    autocomplete="off"
+                    oninput="onSectionSearch('players', this.value)">
+                ${hasVal ? `<button type="button" class="filter-clear-btn" onclick="clearSectionSearch('players')" title="Pulisci ricerca">×</button>` : ''}
+            </div>
+            ${insideFolder ? `<div class="section-filter-chips">${chips}</div>` : ''}
+        </div>`;
+}
+
+function buildRitoFilterBarHtml() {
+    const f = listFilters.rito;
+    const val = escapeAttr(f.text || '');
+    const hasVal = !!(f.text && String(f.text).trim());
+    const tipos = [
+        { key: 'all', label: 'Tutti' },
+        { key: 'rito', label: 'Rito della Carne' },
+        { key: 'uscita_ospitato', label: 'Uscita Ospitato' }
+    ];
+    const chips = tipos.map(t => {
+        const isActive = f.tipo === t.key;
+        return `<button type="button" class="filter-chip ${isActive ? 'active' : ''}" onclick="onRitoTipoFilter('${t.key}')">${t.label}</button>`;
+    }).join('');
+    return `
+        <div class="section-filter-bar" style="grid-column: 1 / -1;" data-filter-bar="rito">
+            <div class="section-filter-search">
+                <i class="fa-solid fa-magnifying-glass"></i>
+                <input type="search" id="filter-input-rito"
+                    placeholder="Cerca per nome o note..."
+                    value="${val}"
+                    autocomplete="off"
+                    oninput="onSectionSearch('rito', this.value)">
+                ${hasVal ? `<button type="button" class="filter-clear-btn" onclick="clearSectionSearch('rito')" title="Pulisci ricerca">×</button>` : ''}
+            </div>
+            <div class="section-filter-chips">${chips}</div>
+        </div>`;
+}
+
+function onSectionSearch(sectionKey, value) {
+    if (typeof listFilters[sectionKey] === 'string') {
+        listFilters[sectionKey] = value;
+    } else if (listFilters[sectionKey]) {
+        listFilters[sectionKey].text = value;
+    }
+    applyListFilter(sectionKey);
+}
+
+function clearSectionSearch(sectionKey) {
+    onSectionSearch(sectionKey, '');
+    const input = document.getElementById('filter-input-' + sectionKey);
+    if (input) input.value = '';
+}
+
+function onPlayersGradoFilter(key) {
+    const grado = key === '__none__' ? '' : key;
+    listFilters.players.grado = grado;
+    // Aggiorna stato visuale chips
+    const bar = document.querySelector('[data-filter-bar="players"]');
+    if (bar) {
+        bar.querySelectorAll('.filter-chip').forEach(btn => {
+            const onclick = btn.getAttribute('onclick') || '';
+            const m = onclick.match(/onPlayersGradoFilter\\('([^']+)'\\)/);
+            const k = m ? m[1] : '';
+            const mapped = k === '__none__' ? '' : k;
+            btn.classList.toggle('active', mapped === grado);
+        });
+    }
+    applyListFilter('players');
+}
+
+function onRitoTipoFilter(key) {
+    listFilters.rito.tipo = key;
+    const bar = document.querySelector('[data-filter-bar="rito"]');
+    if (bar) {
+        bar.querySelectorAll('.filter-chip').forEach(btn => {
+            const onclick = btn.getAttribute('onclick') || '';
+            const m = onclick.match(/onRitoTipoFilter\\('([^']+)'\\)/);
+            const k = m ? m[1] : '';
+            btn.classList.toggle('active', k === key);
+        });
+    }
+    applyListFilter('rito');
+}
+
+/** Mostra/nasconde card in base ai filtri attivi (non tocca back-card e filter-bar) */
+function applyListFilter(sectionKey) {
+    const listId = SECTION_LIST_IDS[sectionKey];
+    if (!listId) return;
+    const container = document.getElementById(listId);
+    if (!container) return;
+
+    let query = '';
+    let gradoFilter = null;
+    let tipoFilter = null;
+    if (typeof listFilters[sectionKey] === 'string') {
+        query = listFilters[sectionKey];
+    } else if (listFilters[sectionKey]) {
+        query = listFilters[sectionKey].text || '';
+        if (sectionKey === 'players') gradoFilter = listFilters[sectionKey].grado;
+        if (sectionKey === 'rito') tipoFilter = listFilters[sectionKey].tipo;
+    }
+
+    let visible = 0;
+    let total = 0;
+    container.querySelectorAll('[data-filter-text]').forEach(el => {
+        total++;
+        const text = el.getAttribute('data-filter-text') || '';
+        let show = matchesSearch(text, query);
+
+        if (show && gradoFilter != null && gradoFilter !== 'all') {
+            const g = el.getAttribute('data-grado');
+            const ng = normalizeGradoKey(g);
+            // gradoFilter '' = senza grado
+            show = (ng === gradoFilter);
+        }
+        if (show && tipoFilter != null && tipoFilter !== 'all') {
+            const t = el.getAttribute('data-exit-type') || '';
+            show = (t === tipoFilter);
+        }
+
+        el.style.display = show ? '' : 'none';
+        if (show) visible++;
+    });
+
+    // Messaggio "nessun risultato"
+    let emptyMsg = container.querySelector('.filter-empty-msg');
+    if (total > 0 && visible === 0) {
+        if (!emptyMsg) {
+            emptyMsg = document.createElement('p');
+            emptyMsg.className = 'filter-empty-msg';
+            emptyMsg.style.cssText = 'grid-column:1/-1;color:var(--text-dim);padding:12px;';
+            container.appendChild(emptyMsg);
+        }
+        emptyMsg.textContent = 'Nessun risultato per i filtri attivi.';
+        emptyMsg.style.display = '';
+    } else if (emptyMsg) {
+        emptyMsg.style.display = 'none';
+    }
+}
+
 function login() {
+
 
     const email = document.getElementById('email').value;
     const password = document.getElementById('password').value;
@@ -306,6 +546,7 @@ function loadQuests() {
                         <p style="margin-top: 8px;">Cartella attiva: <b>${currentQuestsFolder.name}</b></p>
                     </div>
                 `;
+                container.innerHTML += buildSearchBarHtml('quests', 'Cerca quest per titolo, dinastia, player...');
 
                 const questItems = [];
                 questsSnapshot.forEach(doc => {
@@ -334,8 +575,9 @@ function loadQuests() {
                             `;
                         }
 
+                        const qFilterText = [q.title, q.details, q.dynasty, q.player, q.status].filter(Boolean).join(' ');
                         container.innerHTML += `
-                            <div class="card" id="${cardId}">
+                            <div class="card" id="${cardId}" data-filter-text="${escapeAttr(qFilterText)}">
                                 <h3>${q.title}</h3>
                                 
                                 <div class="quest-steps-box">
@@ -395,15 +637,17 @@ function loadQuests() {
                         }
                     };
                 });
+                applyListFilter('quests');
             } else {
                 // Vista principale: mostra l'elenco delle cartelle disponibili
+                container.innerHTML += buildSearchBarHtml('quests', 'Cerca cartella per nome...');
                 const folderItems = [];
                 foldersSnapshot.forEach(fDoc => {
                     folderItems.push({ id: fDoc.id, ...fDoc.data() });
                 });
                 sortAlpha(folderItems, 'name').forEach(f => {
                     container.innerHTML += `
-                        <div class="card folder-card" style="border-color: #f59e0b; cursor: pointer;" onclick="currentQuestsFolder = {id: '${f.id}', name: '${f.name}'}; loadQuests();">
+                        <div class="card folder-card" style="border-color: #f59e0b; cursor: pointer;" data-filter-text="${escapeAttr(f.name)}" onclick="currentQuestsFolder = {id: '${f.id}', name: '${f.name}'}; loadQuests();">
                             <h3><i class="fa-solid fa-folder" style="color: #f59e0b; margin-right: 8px;"></i> ${f.name}</h3>
                             <p>Apri per visualizzare le quest</p>
                             <div class="action-buttons" onclick="event.stopPropagation();" style="margin-top: 15px;">
@@ -414,6 +658,7 @@ function loadQuests() {
                         </div>
                     `;
                 });
+                applyListFilter('quests');
             }
         });
     });
@@ -506,6 +751,7 @@ function loadDocs() {
                         <p style="margin-top: 8px;">Cartella attiva: <b>${currentDocsFolder.name}</b></p>
                     </div>
                 `;
+                container.innerHTML += buildSearchBarHtml('docs', 'Cerca documento per titolo...');
 
                 const docItems = [];
                 docsSnapshot.forEach(doc => {
@@ -517,7 +763,7 @@ function loadDocs() {
                 sortAlpha(docItems, 'title').forEach(d => {
                         const cardId = `doc-card-${d.id}`;
                         container.innerHTML += `
-                            <div class="card" id="${cardId}">
+                            <div class="card" id="${cardId}" data-filter-text="${escapeAttr(d.title || '')}">
                                 <h3>${d.title}</h3>
                                 <button 
                                     class="open-doc-btn"
@@ -551,14 +797,16 @@ function loadDocs() {
                         }
                     };
                 });
+                applyListFilter('docs');
             } else {
+                container.innerHTML += buildSearchBarHtml('docs', 'Cerca cartella per nome...');
                 const folderItems = [];
                 foldersSnapshot.forEach(fDoc => {
                     folderItems.push({ id: fDoc.id, ...fDoc.data() });
                 });
                 sortAlpha(folderItems, 'name').forEach(f => {
                     container.innerHTML += `
-                        <div class="card folder-card" style="border-color: #f59e0b; cursor: pointer;" onclick="currentDocsFolder = {id: '${f.id}', name: '${f.name}'}; loadDocs();">
+                        <div class="card folder-card" style="border-color: #f59e0b; cursor: pointer;" data-filter-text="${escapeAttr(f.name)}" onclick="currentDocsFolder = {id: '${f.id}', name: '${f.name}'}; loadDocs();">
                             <h3><i class="fa-solid fa-folder" style="color: #f59e0b; margin-right: 8px;"></i> ${f.name}</h3>
                             <p>Apri per visualizzare i documenti</p>
                             <div class="action-buttons" onclick="event.stopPropagation();" style="margin-top: 15px;">
@@ -569,6 +817,7 @@ function loadDocs() {
                         </div>
                     `;
                 });
+                applyListFilter('docs');
             }
         });
     });
@@ -649,6 +898,7 @@ function loadNotes() {
                         <p style="margin-top: 8px;">Cartella attiva: <b>${currentNotesFolder.name}</b></p>
                     </div>
                 `;
+                container.innerHTML += buildSearchBarHtml('notes', 'Cerca nelle note...');
 
                 const noteItems = [];
                 notesSnapshot.forEach(doc => {
@@ -659,7 +909,7 @@ function loadNotes() {
                 });
                 sortAlpha(noteItems, 'note').forEach(n => {
                         container.innerHTML += `
-                            <div class="card">
+                            <div class="card" data-filter-text="${escapeAttr(n.note || '')}">
                                 <p>${n.note}</p>
                                 <div class="action-buttons">
                                     <button
@@ -672,14 +922,16 @@ function loadNotes() {
                             </div>
                         `;
                 });
+                applyListFilter('notes');
             } else {
+                container.innerHTML += buildSearchBarHtml('notes', 'Cerca cartella per nome...');
                 const folderItems = [];
                 foldersSnapshot.forEach(fDoc => {
                     folderItems.push({ id: fDoc.id, ...fDoc.data() });
                 });
                 sortAlpha(folderItems, 'name').forEach(f => {
                     container.innerHTML += `
-                        <div class="card folder-card" style="border-color: #f59e0b; cursor: pointer;" onclick="currentNotesFolder = {id: '${f.id}', name: '${f.name}'}; loadNotes();">
+                        <div class="card folder-card" style="border-color: #f59e0b; cursor: pointer;" data-filter-text="${escapeAttr(f.name)}" onclick="currentNotesFolder = {id: '${f.id}', name: '${f.name}'}; loadNotes();">
                             <h3><i class="fa-solid fa-folder" style="color: #f59e0b; margin-right: 8px;"></i> ${f.name}</h3>
                             <p>Apri per visualizzare le note</p>
                             <div class="action-buttons" onclick="event.stopPropagation();" style="margin-top: 15px;">
@@ -690,6 +942,7 @@ function loadNotes() {
                         </div>
                     `;
                 });
+                applyListFilter('notes');
             }
         });
     });
@@ -779,6 +1032,7 @@ function loadMedia() {
                         <p style="margin-top: 8px;">Cartella attiva: <b>${currentMediaFolder.name}</b></p>
                     </div>
                 `;
+                container.innerHTML += buildSearchBarHtml('media', 'Cerca nell\'archivio per titolo...');
 
                 const mediaItems = [];
                 mediaSnapshot.forEach(doc => {
@@ -812,8 +1066,9 @@ function loadMedia() {
                             </button>
                         ` : '';
 
+                        const mFilterText = [m.title, (isDataImage || isDataPdf || isUrlImage || isPdfLike) ? '' : content].filter(Boolean).join(' ');
                         container.innerHTML += `
-                            <div class="card" id="${cardId}">
+                            <div class="card" id="${cardId}" data-filter-text="${escapeAttr(mFilterText)}">
                                 <h3>${m.title}</h3>
                                 ${mediaHTML}
                                 ${openBtn}
@@ -842,14 +1097,16 @@ function loadMedia() {
                         }
                     };
                 });
+                applyListFilter('media');
             } else {
+                container.innerHTML += buildSearchBarHtml('media', 'Cerca cartella per nome...');
                 const folderItems = [];
                 foldersSnapshot.forEach(fDoc => {
                     folderItems.push({ id: fDoc.id, ...fDoc.data() });
                 });
                 sortAlpha(folderItems, 'name').forEach(f => {
                     container.innerHTML += `
-                        <div class="card folder-card" style="border-color: #f59e0b; cursor: pointer;" onclick="currentMediaFolder = {id: '${f.id}', name: '${f.name}'}; loadMedia();">
+                        <div class="card folder-card" style="border-color: #f59e0b; cursor: pointer;" data-filter-text="${escapeAttr(f.name)}" onclick="currentMediaFolder = {id: '${f.id}', name: '${f.name}'}; loadMedia();">
                             <h3><i class="fa-solid fa-folder" style="color: #f59e0b; margin-right: 8px;"></i> ${f.name}</h3>
                             <p>Apri per visualizzare l'archivio</p>
                             <div class="action-buttons" onclick="event.stopPropagation();" style="margin-top: 15px;">
@@ -860,6 +1117,7 @@ function loadMedia() {
                         </div>
                     `;
                 });
+                applyListFilter('media');
             }
         });
     });
@@ -942,6 +1200,7 @@ function loadCommands() {
                         <p style="margin-top: 8px;">Cartella attiva: <b>${currentCommandsFolder.name}</b></p>
                     </div>
                 `;
+                container.innerHTML += buildSearchBarHtml('commands', 'Cerca comando o descrizione...');
 
                 const cmdItems = [];
                 commandsSnapshot.forEach(doc => {
@@ -951,8 +1210,9 @@ function loadCommands() {
                     }
                 });
                 sortAlpha(cmdItems, 'command').forEach(c => {
+                        const cFilter = [c.command, c.description].filter(Boolean).join(' ');
                         container.innerHTML += `
-                            <div class="card">
+                            <div class="card" data-filter-text="${escapeAttr(cFilter)}">
                                 <h3>${c.command}</h3>
                                 <p>${c.description}</p>
                                 <div class="action-buttons">
@@ -966,14 +1226,16 @@ function loadCommands() {
                             </div>
                         `;
                 });
+                applyListFilter('commands');
             } else {
+                container.innerHTML += buildSearchBarHtml('commands', 'Cerca cartella per nome...');
                 const folderItems = [];
                 foldersSnapshot.forEach(fDoc => {
                     folderItems.push({ id: fDoc.id, ...fDoc.data() });
                 });
                 sortAlpha(folderItems, 'name').forEach(f => {
                     container.innerHTML += `
-                        <div class="card folder-card" style="border-color: #f59e0b; cursor: pointer;" onclick="currentCommandsFolder = {id: '${f.id}', name: '${f.name}'}; loadCommands();">
+                        <div class="card folder-card" style="border-color: #f59e0b; cursor: pointer;" data-filter-text="${escapeAttr(f.name)}" onclick="currentCommandsFolder = {id: '${f.id}', name: '${f.name}'}; loadCommands();">
                             <h3><i class="fa-solid fa-folder" style="color: #f59e0b; margin-right: 8px;"></i> ${f.name}</h3>
                             <p>Apri per visualizzare i comandi</p>
                             <div class="action-buttons" onclick="event.stopPropagation();" style="margin-top: 15px;">
@@ -984,6 +1246,7 @@ function loadCommands() {
                         </div>
                     `;
                 });
+                applyListFilter('commands');
             }
         });
     });
@@ -1051,6 +1314,7 @@ function loadGlobalLinks() {
                         <p style="margin-top: 8px;">Cartella attiva: <b>${currentAdminFolder.name}</b></p>
                     </div>
                 `;
+                container.innerHTML += buildSearchBarHtml('admin', 'Cerca link per titolo...');
 
                 const linkItems = [];
                 linksSnapshot.forEach(doc => {
@@ -1061,7 +1325,7 @@ function loadGlobalLinks() {
                 });
                 sortAlpha(linkItems, 'title').forEach(l => {
                         container.innerHTML += `
-                            <div class="card">
+                            <div class="card" data-filter-text="${escapeAttr(l.title || '')}">
                                 <h3>${l.title}</h3>
                                 <a
                                     href="${l.link}"
@@ -1081,14 +1345,16 @@ function loadGlobalLinks() {
                             </div>
                         `;
                 });
+                applyListFilter('admin');
             } else {
+                container.innerHTML += buildSearchBarHtml('admin', 'Cerca cartella per nome...');
                 const folderItems = [];
                 foldersSnapshot.forEach(fDoc => {
                     folderItems.push({ id: fDoc.id, ...fDoc.data() });
                 });
                 sortAlpha(folderItems, 'name').forEach(f => {
                     container.innerHTML += `
-                        <div class="card folder-card" style="border-color: #f59e0b; cursor: pointer;" onclick="currentAdminFolder = {id: '${f.id}', name: '${f.name}'}; loadGlobalLinks();">
+                        <div class="card folder-card" style="border-color: #f59e0b; cursor: pointer;" data-filter-text="${escapeAttr(f.name)}" onclick="currentAdminFolder = {id: '${f.id}', name: '${f.name}'}; loadGlobalLinks();">
                             <h3><i class="fa-solid fa-folder" style="color: #f59e0b; margin-right: 8px;"></i> ${f.name}</h3>
                             <p>Apri per visualizzare i link</p>
                             <div class="action-buttons" onclick="event.stopPropagation();" style="margin-top: 15px;">
@@ -1099,6 +1365,7 @@ function loadGlobalLinks() {
                         </div>
                     `;
                 });
+                applyListFilter('admin');
             }
         });
     });
@@ -1343,6 +1610,7 @@ function loadPlayers() {
                         <p style="margin-top: 8px;">Cartella attiva: <b>${currentPlayersFolder.name}</b></p>
                     </div>
                 `;
+                container.innerHTML += buildPlayersFilterBarHtml(true);
 
                 const playerItems = [];
                 playersSnapshot.forEach(doc => {
@@ -1385,8 +1653,9 @@ function loadPlayers() {
                             ? `<div class="status grado-status grado-${String(p.grado).toLowerCase()}">${p.grado}</div>`
                             : '';
 
+                        const filterText = [p.name, p.notes, p.grado, (p.quests || []).join(' ')].filter(Boolean).join(' ');
                         container.innerHTML += `
-                            <div class="${cardClass}">
+                            <div class="${cardClass}" data-filter-text="${escapeAttr(filterText)}" data-grado="${escapeAttr(p.grado || '')}">
                                 <h3>${p.name}</h3>
                                 ${gradoBadge}
                                 ${exitBadge}
@@ -1427,6 +1696,7 @@ function loadPlayers() {
                         `;
 
                 });
+                applyListFilter('players');
             } else {
                 // ID cartelle esistenti (tipo players)
                 const validFolderIds = new Set();
@@ -1524,6 +1794,7 @@ function loadPlayers() {
                         </div>
                     </div>
                 `;
+                container.innerHTML += buildPlayersFilterBarHtml(false);
 
                 const folderItems = [];
                 foldersSnapshot.forEach(fDoc => {
@@ -1533,7 +1804,7 @@ function loadPlayers() {
                     const n = countByFolder[f.id] || 0;
                     const countLabel = n === 1 ? '1 player' : (n + ' player');
                     container.innerHTML += `
-                        <div class="card folder-card" style="border-color: #f59e0b; cursor: pointer;" onclick="currentPlayersFolder = {id: '${f.id}', name: '${f.name}'}; loadPlayers();">
+                        <div class="card folder-card" style="border-color: #f59e0b; cursor: pointer;" data-filter-text="${escapeAttr(f.name)}" onclick="currentPlayersFolder = {id: '${f.id}', name: '${f.name}'}; loadPlayers();">
                             <h3><i class="fa-solid fa-folder" style="color: #f59e0b; margin-right: 8px;"></i> ${f.name}</h3>
                             <p>Apri per visualizzare i player</p>
                             <div class="status folder-count-badge">${countLabel}</div>
@@ -1545,6 +1816,7 @@ function loadPlayers() {
                         </div>
                     `;
                 });
+                applyListFilter('players');
             }
         });
     });
@@ -2119,6 +2391,8 @@ function loadRitoPlayers() {
             return;
         }
 
+        container.innerHTML += buildRitoFilterBarHtml();
+
         items.forEach(p => {
             let activeQuestsHTML = '';
             if (p.quests && p.quests.length > 0) {
@@ -2150,8 +2424,9 @@ function loadRitoPlayers() {
                 ? `<div class="status grado-status grado-${String(p.grado).toLowerCase()}">${p.grado}</div>`
                 : '';
 
+            const ritoFilterText = [p.name, p.notes, p.exitNotes, p.grado, badgeText].filter(Boolean).join(' ');
             container.innerHTML += `
-                <div class="${cardClass}">
+                <div class="${cardClass}" data-filter-text="${escapeAttr(ritoFilterText)}" data-exit-type="${escapeAttr(exitType)}">
                     <h3>${p.name}</h3>
                     ${gradoBadgeRito}
                     <div class="status ${badgeClass}">${badgeText}</div>
@@ -2171,6 +2446,7 @@ function loadRitoPlayers() {
                 </div>
             `;
         });
+        applyListFilter('rito');
     });
 }
 
