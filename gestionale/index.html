@@ -1338,10 +1338,11 @@
                         </div>
                         <div class="form-group" style="margin:0 0 22px 0;">
                             <label>Fratelli / stesso livello (anche senza stessi genitori)</label>
-                            <select id="adm-albero-fratelli" class="albero-person-select" multiple size="5" style="min-height:110px;">
+                            <input type="text" id="adm-albero-fratelli-search" placeholder="🔍 Cerca nome, cognome, clan..." oninput="window.filtraSelectFratelliAlbero()" style="margin-bottom:8px; font-size:0.85rem;">
+                            <select id="adm-albero-fratelli" class="albero-person-select" multiple size="6" style="min-height:130px;">
                             </select>
                             <span class="field-hint">
-                                Tieni premuto <b>Ctrl</b> (o Cmd su Mac) per selezionare più persone.
+                                Scrivi nel campo sopra per filtrare l’elenco. Tieni premuto <b>Ctrl</b> (o Cmd su Mac) per selezionare più persone.
                                 Compariranno <b>sulla stessa riga</b>, senza creare un secondo ramo. Utile per fratelli di sangue diverso, giurati, stessi livello di clan.
                             </span>
                         </div>

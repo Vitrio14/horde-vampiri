@@ -3166,7 +3166,7 @@ window.popolaSelectParentAlbero = () => {
     const opts = alberoNodi
         .filter(n => n.id !== editId)
         .sort((a, b) => alberoNomeCompleto(a).localeCompare(alberoNomeCompleto(b), 'it'));
-    const optionsHtml = opts.map(n => `<option value="${n.id}">${alberoNomeCompleto(n)}</option>`).join('');
+    const optionsHtml = opts.map(n => `<option value="${n.id}" data-search="${alberoNomeCompleto(n).toLowerCase()} ${(n.clan || '').toLowerCase()}">${alberoNomeCompleto(n)}</option>`).join('');
 
     const selects = [
         { id: 'adm-albero-parent', empty: '— Nessuno (è una radice) —' },
@@ -3190,7 +3190,30 @@ window.popolaSelectParentAlbero = () => {
             const opt = [...fratSel.options].find(o => o.value === v);
             if (opt) opt.selected = true;
         });
+        // Applica filtro ricerca se presente
+        if (typeof window.filtraSelectFratelliAlbero === 'function') {
+            window.filtraSelectFratelliAlbero();
+        }
     }
+};
+
+/** Filtra le opzioni del multi-select Fratelli in base al testo di ricerca */
+window.filtraSelectFratelliAlbero = () => {
+    const searchEl = document.getElementById('adm-albero-fratelli-search');
+    const fratSel = document.getElementById('adm-albero-fratelli');
+    if (!fratSel) return;
+    const q = (searchEl?.value || '').trim().toLowerCase();
+    [...fratSel.options].forEach(opt => {
+        if (!q) {
+            opt.hidden = false;
+            opt.style.display = '';
+            return;
+        }
+        const hay = (opt.getAttribute('data-search') || opt.textContent || '').toLowerCase();
+        const match = hay.includes(q);
+        opt.hidden = !match;
+        opt.style.display = match ? '' : 'none';
+    });
 };
 
 window.resetFormAlbero = () => {
@@ -3205,6 +3228,8 @@ window.resetFormAlbero = () => {
     });
     const fratSel = document.getElementById('adm-albero-fratelli');
     if (fratSel) [...fratSel.options].forEach(o => { o.selected = false; });
+    const searchFrat = document.getElementById('adm-albero-fratelli-search');
+    if (searchFrat) searchFrat.value = '';
     const fileEl = document.getElementById('adm-albero-foto-file');
     if (fileEl) fileEl.value = '';
     window.popolaSelectParentAlbero();
