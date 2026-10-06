@@ -543,6 +543,56 @@ textarea {
     color: #fff;
 }
 
+/* Barra di ricerca GM */
+.gm-search-bar {
+    position: relative;
+    margin-bottom: 20px;
+}
+
+.gm-search-bar input[type="text"] {
+    width: 100%;
+    padding: 12px 40px 12px 18px;
+    background: rgba(10, 10, 10, 0.6);
+    border: 1px solid rgba(197, 160, 89, 0.25);
+    border-left: 4px solid var(--gold-accent);
+    color: #fff;
+    border-radius: 0;
+    font-size: 0.9rem;
+    font-family: 'Quicksand', sans-serif;
+    transition: var(--transition-smooth);
+}
+
+.gm-search-bar input[type="text"]:focus {
+    border-color: var(--blood-red);
+    box-shadow: inset 4px 0 0 var(--blood-red), 0 0 15px rgba(139, 0, 0, 0.2);
+    background: rgba(0, 0, 0, 0.8);
+    outline: none;
+}
+
+.gm-search-bar input[type="text"]::placeholder {
+    color: var(--text-dim);
+    font-size: 0.85rem;
+}
+
+.gm-search-clear {
+    position: absolute;
+    right: 12px;
+    top: 50%;
+    transform: translateY(-50%);
+    background: transparent;
+    border: none;
+    color: var(--text-dim);
+    font-size: 1rem;
+    cursor: pointer;
+    padding: 4px 8px;
+    line-height: 1;
+    transition: var(--transition-smooth);
+}
+
+.gm-search-clear:hover {
+    color: var(--blood-light);
+}
+
 /* Vista dettaglio GM */
 .gm-detail-header {
     display: flex;

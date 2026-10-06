@@ -373,10 +373,13 @@ document.getElementById('btnLogOutAction').addEventListener('click', () => {
 let allBackgroundsCache = [];
 let currentGmTab = 'da_revisionare';
 let currentDetailDocId = null;
+let currentSearchQuery = '';
 
 const gmListView = document.getElementById('gmListView');
 const gmDetailView = document.getElementById('gmDetailView');
 const gmDetailContent = document.getElementById('gmDetailContent');
+const gmSearchInput = document.getElementById('gmSearchInput');
+const gmSearchClear = document.getElementById('gmSearchClear');
 
 // Tab click handlers
 document.querySelectorAll('.gm-tab').forEach(tabBtn => {
@@ -387,6 +390,29 @@ document.querySelectorAll('.gm-tab').forEach(tabBtn => {
         renderGmList();
     });
 });
+
+// Barra di ricerca GM
+if (gmSearchInput) {
+    gmSearchInput.addEventListener('input', () => {
+        currentSearchQuery = gmSearchInput.value.trim().toLowerCase();
+        if (gmSearchClear) {
+            gmSearchClear.classList.toggle('hidden', currentSearchQuery.length === 0);
+        }
+        renderGmList();
+    });
+}
+
+if (gmSearchClear) {
+    gmSearchClear.addEventListener('click', () => {
+        if (gmSearchInput) {
+            gmSearchInput.value = '';
+            currentSearchQuery = '';
+            gmSearchClear.classList.add('hidden');
+            renderGmList();
+            gmSearchInput.focus();
+        }
+    });
+}
 
 // Torna alla lista dalla vista dettaglio
 document.getElementById('btnBackToList').addEventListener('click', () => {
@@ -410,6 +436,9 @@ function loadGmDashboard() {
 
     showGmListView();
     currentGmTab = 'da_revisionare';
+    currentSearchQuery = '';
+    if (gmSearchInput) gmSearchInput.value = '';
+    if (gmSearchClear) gmSearchClear.classList.add('hidden');
     document.querySelectorAll('.gm-tab').forEach(t => t.classList.remove('active'));
     document.getElementById('tabDaRevisionare').classList.add('active');
 
@@ -447,13 +476,30 @@ function updateTabCounts() {
 function renderGmList() {
     gmListContainer.innerHTML = '';
 
-    const filtered = allBackgroundsCache.filter(b => b.status === currentGmTab);
+    let filtered = allBackgroundsCache.filter(b => b.status === currentGmTab);
+
+    // Filtro ricerca (Discord, nome personaggio, ombra, reviewedBy)
+    if (currentSearchQuery) {
+        filtered = filtered.filter(b => {
+            const haystack = [
+                b.discordUser || '',
+                b.name || '',
+                b.shadowName || '',
+                b.reviewedBy || ''
+            ].join(' ').toLowerCase();
+            return haystack.includes(currentSearchQuery);
+        });
+    }
 
     if (filtered.length === 0) {
         let emptyMsg = 'Nessun background in questa sezione.';
-        if (currentGmTab === 'da_revisionare') emptyMsg = 'Nessun background in attesa di revisione.';
-        if (currentGmTab === 'da_modificare') emptyMsg = 'Nessun background con richieste di modifica.';
-        if (currentGmTab === 'approvato') emptyMsg = 'Nessun background approvato.';
+        if (currentSearchQuery) {
+            emptyMsg = 'Nessun risultato per "' + currentSearchQuery + '" in questa sezione.';
+        } else {
+            if (currentGmTab === 'da_revisionare') emptyMsg = 'Nessun background in attesa di revisione.';
+            if (currentGmTab === 'da_modificare') emptyMsg = 'Nessun background con richieste di modifica.';
+            if (currentGmTab === 'approvato') emptyMsg = 'Nessun background approvato.';
+        }
         gmListContainer.innerHTML = '<p style="color: var(--text-dim); text-align:center; padding: 20px;">' + emptyMsg + '</p>';
         return;
     }
