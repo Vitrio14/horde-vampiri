@@ -111,42 +111,6 @@ function sendDiscordWebhook(url, contentText, embedTitle, embedDescription, embe
     }).catch(err => console.error("Errore Invio Webhook Discord:", err));
 }
 
-// Webhook per invio file scaricabili (PDF / TXT / DOCX) generati dal GM
-// Usa lo stesso canale delle notifiche nuovo background; cambia l'URL se serve un canale dedicato
-const WEBHOOK_DOWNLOAD = "https://discord.com/api/webhooks/1556447932125810698/aZwlTl_Q0m6h0xFrldpbhjj78MvMzGzudlbLb7WW91a7RJraGLa7_laXG1F4EYdchtOY";
-
-// Invia un file (Blob) via webhook Discord
-function sendFileToDiscordWebhook(fileBlob, fileName, contentText, embedTitle, embedDescription, embedColor, embedFields) {
-    const formData = new FormData();
-    const payload = {
-        content: contentText,
-        embeds: [{
-            author: {
-                name: "Arpie",
-                icon_url: "https://i.postimg.cc/VLKZxsKd/Logo-vampiri-Modificata.png"
-            },
-            title: embedTitle,
-            description: embedDescription,
-            color: embedColor,
-            fields: embedFields || [],
-            footer: {
-                text: "Le arpie • Download Background",
-                icon_url: "https://i.postimg.cc/VLKZxsKd/Logo-vampiri-Modificata.png"
-            },
-            timestamp: new Date().toISOString()
-        }]
-    };
-    formData.append('payload_json', JSON.stringify(payload));
-    formData.append('files[0]', fileBlob, fileName);
-    return fetch(WEBHOOK_DOWNLOAD, {
-        method: 'POST',
-        body: formData
-    }).catch(err => {
-        console.error("Errore Invio File Webhook Discord:", err);
-        throw err;
-    });
-}
-
 // FUNZIONE PER EMETTERE NOTIFICHE / POP-UP CUSTOM
 function triggerChronicaAlert(title, message, callback = null) {
     popupTitle.innerText = title;
@@ -554,7 +518,6 @@ window.openGmDetail = function(docId) {
                 '<button class="btn btn-pdf" onclick="generateBackgroundPdf(\'' + docId + '\')" style="width:auto; padding:10px 14px; font-size:0.7rem;">Scarica PDF</button>' +
                 '<button class="btn btn-txt" onclick="generateBackgroundTxt(\'' + docId + '\')" style="width:auto; padding:10px 14px; font-size:0.7rem;">Scarica TXT</button>' +
                 '<button class="btn btn-word" onclick="generateBackgroundDocx(\'' + docId + '\')" style="width:auto; padding:10px 14px; font-size:0.7rem;">Scarica Word</button>' +
-                '<button class="btn btn-discord" onclick="openSendToDiscordChooser(\'' + docId + '\')" style="width:auto; padding:10px 14px; font-size:0.7rem;">Invia a Discord</button>' +
             '</div>' +
         '</div>' +
         '<div class="voice-box"><strong>Nome Utente Discord</strong><p>' + userDiscord + '</p></div>' +
@@ -581,7 +544,6 @@ window.openGmDetail = function(docId) {
                 '<button class="btn btn-pdf" onclick="generateBackgroundPdf(\'' + docId + '\')">Scarica PDF</button>' +
                 '<button class="btn btn-txt" onclick="generateBackgroundTxt(\'' + docId + '\')">Scarica TXT</button>' +
                 '<button class="btn btn-word" onclick="generateBackgroundDocx(\'' + docId + '\')">Scarica Word</button>' +
-                '<button class="btn btn-discord" onclick="openSendToDiscordChooser(\'' + docId + '\')">Invia a Discord</button>' +
             '</div>' +
         '</div>';
 
@@ -837,80 +799,6 @@ window.generateBackgroundDocx = function(docId) {
         triggerChronicaAlert('Errore', err.message || String(err));
     });
 };
-
-// Chooser per invio a Discord
-window.openSendToDiscordChooser = function(docId) {
-    const data = allBackgroundsCache.find(b => b.id === docId);
-    if (!data) {
-        triggerChronicaAlert('Errore', 'Background non trovato.');
-        return;
-    }
-
-    // Usiamo il popup custom per chiedere il formato
-    popupTitle.innerText = 'Invia file a Discord';
-    popupMessage.innerHTML = 'Scegli il formato del background da inviare sul canale Discord:<br><br>' +
-        '<div style="display:flex; flex-direction:column; gap:10px; margin-top:12px;">' +
-            '<button class="btn btn-pdf" id="choosePdf" style="width:100%;">PDF</button>' +
-            '<button class="btn btn-txt" id="chooseTxt" style="width:100%;">TXT</button>' +
-            '<button class="btn btn-word" id="chooseDocx" style="width:100%;">Word (DOCX)</button>' +
-        '</div>';
-    currentPopupCallback = null;
-    customPopup.classList.add('active');
-
-    // Sostituiamo temporaneamente i listener del bottone Chiudi e dei formati
-    const btnClose = document.getElementById('btnPopupClose');
-    const oldCloseHandler = btnClose.onclick;
-
-    function cleanup() {
-        customPopup.classList.remove('active');
-        btnClose.onclick = oldCloseHandler;
-        ['choosePdf','chooseTxt','chooseDocx'].forEach(function(id) {
-            const el = document.getElementById(id);
-            if (el) el.onclick = null;
-        });
-    }
-
-    btnClose.onclick = function() { cleanup(); };
-
-    document.getElementById('choosePdf').onclick = function() {
-        cleanup();
-        sendBackgroundToDiscord(docId, 'pdf');
-    };
-    document.getElementById('chooseTxt').onclick = function() {
-        cleanup();
-        sendBackgroundToDiscord(docId, 'txt');
-    };
-    document.getElementById('chooseDocx').onclick = function() {
-        cleanup();
-        sendBackgroundToDiscord(docId, 'docx');
-    };
-};
-
-function sendBackgroundToDiscord(docId, format) {
-    triggerChronicaAlert('Invio in corso', 'Sto generando il file e lo sto inviando a Discord...');
-    buildBackgroundBlob(docId, format).then(function(res) {
-        const charName = res.data.name || 'Senza nome';
-        const userDiscord = res.data.discordUser || 'N/A';
-        return sendFileToDiscordWebhook(
-            res.blob,
-            res.fileName,
-            '📥 **Background richiesto in download** — Formato: **' + res.label + '**',
-            'Horde V5 | Download Background (' + res.label + ')',
-            'È stato generato e allegato il background in formato **' + res.label + '**.\n\nPuoi scaricare il file direttamente da questo messaggio.',
-            0xc5a059,
-            [
-                { name: '👤 Discord User', value: userDiscord, inline: true },
-                { name: '🦇 Nome Personaggio', value: charName, inline: true },
-                { name: '📄 Formato', value: res.label, inline: true },
-                { name: '📁 Nome File', value: res.fileName, inline: false }
-            ]
-        ).then(function() {
-            triggerChronicaAlert('Inviato a Discord', 'Il file ' + res.label + ' è stato inviato correttamente sul canale.');
-        });
-    }).catch(function(err) {
-        triggerChronicaAlert('Errore', err.message || String(err));
-    });
-}
 
 // Helper PDF -> Blob (estratto dalla logica originale)
 function buildPdfBlob(data) {
