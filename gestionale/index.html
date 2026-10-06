@@ -990,7 +990,10 @@
                             </div>
                         </div>
                         <button onclick="window.aggiungiVampiro()" style="width: auto; padding: 14px 25px;">Aggiungi / Aggiorna Membro</button>
-                        <div class="scroll-container" style="max-height: 280px; margin-top: 20px;">
+                        <div class="search-box" style="margin-top: 20px; margin-bottom: 10px;">
+                            <input type="text" id="search-admin-membri" placeholder="Cerca nome, grado o codice..." onkeyup="window.renderAdminMembriTable()">
+                        </div>
+                        <div class="scroll-container" style="max-height: 280px;">
                             <table style="font-size: 0.7rem;">
                                 <thead><tr><th>Nome</th><th>Grado</th><th>Codice</th><th>Permessi</th><th>Azione</th></tr></thead>
                                 <tbody id="admin-vampiri-body"></tbody>
@@ -1364,6 +1367,9 @@
                         </div>
 
                         <h3 class="albero-form-step" style="margin-top:10px;">Persone già nell’albero</h3>
+                        <div class="search-box" style="margin-bottom: 10px;">
+                            <input type="text" id="search-admin-albero" placeholder="Cerca nome, cognome, clan, ruolo, genitore, coniuge..." onkeyup="window.renderAdminAlbero()">
+                        </div>
                         <div class="scroll-container" style="max-height:380px;">
                             <table style="font-size:0.7rem;">
                                 <thead>
@@ -1478,6 +1484,9 @@
                             <button type="button" onclick="window.resetFormTipoLavoro()" style="width:auto; padding:14px 25px; border-color:#555; color:#888;">Annulla / Nuovo</button>
                         </div>
 
+                        <div class="search-box" style="margin-bottom: 10px;">
+                            <input type="text" id="search-admin-tipi-lavoro" placeholder="Cerca tipo lavoro o sblocco..." onkeyup="window.renderAdminTipiLavoro()">
+                        </div>
                         <div class="scroll-container" style="max-height:320px;">
                             <table style="font-size:0.75rem;">
                                 <thead>

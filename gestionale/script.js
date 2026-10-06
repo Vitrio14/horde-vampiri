@@ -564,27 +564,40 @@ function renderVampiriLists() {
         }
     });
 
-    const tbody = document.getElementById('admin-vampiri-body');
-    if(tbody) {
-        tbody.innerHTML = listaVampiri.map(v => {
-            const cod = v.codice ? v.codice : '<span style="opacity:0.4">—</span>';
-            const perms = Array.isArray(v.permessi) ? v.permessi.length + ' sez.' : '0';
-            return `<tr>
-                <td>${v.nome}</td>
-                <td>${v.grado || ''}</td>
-                <td style="font-family:monospace;">${cod}</td>
-                <td style="font-size:0.65rem;">${perms}</td>
-                <td>
-                    <button class="btn-delete" style="border-color:var(--gold-accent);color:var(--gold-accent);margin-right:4px;" onclick="window.caricaMembroPerEdit('${v.nome}')">Modifica</button>
-                    <button class="btn-delete" onclick="eliminaVampiro('${v.nome}')">Elimina</button>
-                </td>
-            </tr>`;
-        }).join('');
-    }
+    window.renderAdminMembriTable();
     
     // Riapplica permessi/visibilità dopo aggiornamento liste
     if (currentUser) applyPermissions();
 }
+
+/** Tabella admin membri con filtro ricerca (nome, grado, codice) */
+window.renderAdminMembriTable = function() {
+    const tbody = document.getElementById('admin-vampiri-body');
+    if (!tbody) return;
+    const search = (document.getElementById('search-admin-membri')?.value || '').toLowerCase().trim();
+    let list = [...listaVampiri];
+    if (search) {
+        list = list.filter(v =>
+            (v.nome || '').toLowerCase().includes(search) ||
+            (v.grado || '').toLowerCase().includes(search) ||
+            String(v.codice || '').toLowerCase().includes(search)
+        );
+    }
+    tbody.innerHTML = list.map(v => {
+        const cod = v.codice ? v.codice : '<span style="opacity:0.4">—</span>';
+        const perms = Array.isArray(v.permessi) ? v.permessi.length + ' sez.' : '0';
+        return `<tr>
+            <td>${v.nome}</td>
+            <td>${v.grado || ''}</td>
+            <td style="font-family:monospace;">${cod}</td>
+            <td style="font-size:0.65rem;">${perms}</td>
+            <td>
+                <button class="btn-delete" style="border-color:var(--gold-accent);color:var(--gold-accent);margin-right:4px;" onclick="window.caricaMembroPerEdit('${v.nome}')">Modifica</button>
+                <button class="btn-delete" onclick="eliminaVampiro('${v.nome}')">Elimina</button>
+            </td>
+        </tr>`;
+    }).join('') || '<tr><td colspan="5" style="opacity:0.5;text-align:center;">Nessun membro trovato.</td></tr>';
+};
 
 // --- POPOLA FILTRO MATERIALI ---
 function popolaFiltroMateriali() {
@@ -2699,7 +2712,20 @@ window.ricaricaLavoriFromDb = async function() {
 window.renderAdminTipiLavoro = function() {
     const tbody = document.getElementById('admin-tipi-lavoro-body');
     if (!tbody) return;
-    const sorted = [...tipiLavoro].sort((a, b) => (a.nome || '').localeCompare(b.nome || '', 'it'));
+    const search = (document.getElementById('search-admin-tipi-lavoro')?.value || '').toLowerCase().trim();
+    let sorted = [...tipiLavoro].sort((a, b) => (a.nome || '').localeCompare(b.nome || '', 'it'));
+    if (search) {
+        sorted = sorted.filter(t => {
+            if ((t.nome || '').toLowerCase().includes(search)) return true;
+            const sbl = Array.isArray(t.sblocchi) ? t.sblocchi : [];
+            return sbl.some(s =>
+                (s.item || '').toLowerCase().includes(search) ||
+                (s.ingredienti || '').toLowerCase().includes(search) ||
+                (s.strumenti || '').toLowerCase().includes(search) ||
+                String(s.livello || '').includes(search)
+            );
+        });
+    }
     tbody.innerHTML = sorted.map(t => {
         const sbl = Array.isArray(t.sblocchi) ? [...t.sblocchi].sort((a, b) => a.livello - b.livello) : [];
         const sblHtml = sbl.length
@@ -2719,7 +2745,7 @@ window.renderAdminTipiLavoro = function() {
                 <button class="btn-delete" onclick="window.eliminaTipoLavoro('${t.id}')">Elimina</button>
             </td>
         </tr>`;
-    }).join('') || '<tr><td colspan="3" style="opacity:0.5;text-align:center;">Nessun tipo di lavoro.</td></tr>';
+    }).join('') || '<tr><td colspan="3" style="opacity:0.5;text-align:center;">Nessun tipo di lavoro trovato.</td></tr>';
 };
 
 // --- Assegnazioni membri (multi-job) ---
@@ -3331,7 +3357,26 @@ window.eliminaNodoAlbero = async (id) => {
 window.renderAdminAlbero = () => {
     const tbody = document.getElementById('admin-albero-body');
     if (!tbody) return;
-    const sorted = [...alberoNodi].sort((a, b) => (a.ordine ?? 0) - (b.ordine ?? 0) || alberoNomeCompleto(a).localeCompare(alberoNomeCompleto(b), 'it'));
+    const search = (document.getElementById('search-admin-albero')?.value || '').toLowerCase().trim();
+    let sorted = [...alberoNodi].sort((a, b) => (a.ordine ?? 0) - (b.ordine ?? 0) || alberoNomeCompleto(a).localeCompare(alberoNomeCompleto(b), 'it'));
+    if (search) {
+        sorted = sorted.filter(n => {
+            const full = alberoNomeCompleto(n).toLowerCase();
+            const p1 = n.parentId ? alberoNomeCompleto(alberoNodi.find(x => x.id === n.parentId)) : '';
+            const p2 = n.parent2Id ? alberoNomeCompleto(alberoNodi.find(x => x.id === n.parent2Id)) : '';
+            const spouse = n.spouseId ? alberoNomeCompleto(alberoNodi.find(x => x.id === n.spouseId)) : '';
+            return full.includes(search) ||
+                (n.nome || '').toLowerCase().includes(search) ||
+                (n.cognome || '').toLowerCase().includes(search) ||
+                (n.clan || '').toLowerCase().includes(search) ||
+                (n.relazione || '').toLowerCase().includes(search) ||
+                (n.note || '').toLowerCase().includes(search) ||
+                (n.anno || '').toLowerCase().includes(search) ||
+                p1.toLowerCase().includes(search) ||
+                p2.toLowerCase().includes(search) ||
+                spouse.toLowerCase().includes(search);
+        });
+    }
     tbody.innerHTML = sorted.map(n => {
         const full = alberoNomeCompleto(n);
         const p1 = n.parentId ? alberoNomeCompleto(alberoNodi.find(x => x.id === n.parentId)) : '';
@@ -3350,7 +3395,7 @@ window.renderAdminAlbero = () => {
                 <button class="btn-delete" onclick="window.eliminaNodoAlbero('${n.id}')">Elimina</button>
             </td>
         </tr>`;
-    }).join('') || '<tr><td colspan="6" style="opacity:0.5;text-align:center;">Nessun nodo. Aggiungine uno sopra.</td></tr>';
+    }).join('') || '<tr><td colspan="6" style="opacity:0.5;text-align:center;">Nessun nodo trovato.</td></tr>';
 };
 
 function buildAlberoTree(nodes) {
