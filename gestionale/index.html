@@ -990,13 +990,27 @@
                             </div>
                         </div>
                         <button onclick="window.aggiungiVampiro()" style="width: auto; padding: 14px 25px;">Aggiungi / Aggiorna Membro</button>
-                        <div class="search-box" style="margin-top: 20px; margin-bottom: 10px;">
+                        <h3 style="font-size:0.8rem; color:var(--gold-accent); margin:22px 0 10px; letter-spacing:1px; text-transform:uppercase;">Membri attivi</h3>
+                        <div class="search-box" style="margin-bottom: 10px;">
                             <input type="text" id="search-admin-membri" placeholder="Cerca nome, grado o codice..." onkeyup="window.renderAdminMembriTable()">
                         </div>
                         <div class="scroll-container" style="max-height: 280px;">
                             <table style="font-size: 0.7rem;">
                                 <thead><tr><th>Nome</th><th>Grado</th><th>Codice</th><th>Permessi</th><th>Azione</th></tr></thead>
                                 <tbody id="admin-vampiri-body"></tbody>
+                            </table>
+                        </div>
+
+                        <h3 style="font-size:0.8rem; color:var(--withdraw-red); margin:28px 0 8px; letter-spacing:1px; text-transform:uppercase;">Membri archiviati (usciti dalla dinastia)</h3>
+                        <p style="font-size:0.7rem; color:var(--text-dim); margin-bottom:10px;">Non compaiono più in Generale né nei selettori. Storico vendite/materiali resta intatto.</p>
+                        <div id="admin-archiviati-counter" class="membri-ranghi-counter" style="margin-bottom:12px;"></div>
+                        <div class="search-box" style="margin-bottom: 10px;">
+                            <input type="text" id="search-admin-archiviati" placeholder="Cerca nome, grado o motivo archiviazione..." onkeyup="window.renderAdminArchiviatiTable()">
+                        </div>
+                        <div class="scroll-container" style="max-height: 280px;">
+                            <table style="font-size: 0.7rem;">
+                                <thead><tr><th>Nome</th><th>Grado</th><th>Motivo</th><th>Data</th><th>Azione</th></tr></thead>
+                                <tbody id="admin-archiviati-body"></tbody>
                             </table>
                         </div>
                     </div>

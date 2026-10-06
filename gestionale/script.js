@@ -113,6 +113,10 @@ window.unlockSite = async () => {
             return vampireToast("Accesso negato. Password errata.", "error");
         }
 
+        if (found.archiviato === true) {
+            return vampireToast("Questo membro risulta archiviato (uscito dalla dinastia). Accesso non consentito.", "error");
+        }
+
         // Login membro riuscito
         currentUser = {
             nome: found.nome,
@@ -453,6 +457,8 @@ window.aggiungiVampiro = async () => {
     const data = { nome, grado, permessi };
     if(codice) data.codice = codice;
     if(password) data.password = password;
+    // Se è un nuovo salvataggio / aggiornamento da form, non archivia; lascia lo stato esistente se merge
+    // (per ripristino usare esplicitamente ripristinaVampiro)
 
     await setDoc(doc(db, "membri", nome), data, { merge: true });
     
@@ -468,8 +474,101 @@ window.aggiungiVampiro = async () => {
     vampireToast("Membro salvato correttamente.", "success");
 };
 
+/** Membri non archiviati (attivi in dinastia) */
+function membriAttivi() {
+    return listaVampiri.filter(v => v.archiviato !== true);
+}
+
+/** Membri archiviati (usciti) */
+function membriArchiviati() {
+    return listaVampiri.filter(v => v.archiviato === true);
+}
+
+window.archiviaVampiro = async (id) => {
+    if (!currentUser || !currentUser.isAdmin) {
+        return vampireToast("Solo il gestore può archiviare membri.", "error");
+    }
+    const v = listaVampiri.find(x => x.nome === id);
+    if (!v) return vampireToast("Membro non trovato.", "error");
+    if (v.archiviato === true) return vampireToast("Questo membro è già archiviato.", "info");
+
+    const res = await Swal.fire({
+        title: 'Archiviare membro?',
+        html: `<p style="margin-bottom:12px;font-size:0.85rem;">Stai per archiviare <strong style="color:#c5a059">${v.nome}</strong>.<br>
+        Non comparirà più in Generale né nei selettori.<br>
+        <span style="color:#aaa;font-size:0.75rem;">Lo storico vendite/materiali resta intatto.</span></p>
+        <label style="display:block;text-align:left;font-size:0.7rem;color:#c5a059;margin-bottom:6px;">Motivo archiviazione *</label>`,
+        input: 'text',
+        inputPlaceholder: 'es. Uscito dalla dinastia, Inattivo, Trasferimento...',
+        inputAttributes: { maxlength: 200 },
+        showCancelButton: true,
+        confirmButtonText: 'Archivia',
+        cancelButtonText: 'Annulla',
+        confirmButtonColor: '#8b0000',
+        background: '#111',
+        color: '#fff',
+        inputValidator: (value) => {
+            if (!value || !value.trim()) return 'Il motivo è obbligatorio.';
+            return null;
+        }
+    });
+    if (!res.isConfirmed) return;
+    const motivo = (res.value || '').trim();
+    try {
+        await setDoc(doc(db, "membri", id), {
+            archiviato: true,
+            motivoArchivio: motivo,
+            dataArchivio: Date.now(),
+            aggiornatoArchivioDa: currentUser.nome || 'GESTORE'
+        }, { merge: true });
+        vampireToast(`${id} archiviato. Motivo: ${motivo}`, "success");
+    } catch (err) {
+        console.error(err);
+        vampireToast("Errore durante l'archiviazione.", "error");
+    }
+};
+
+window.ripristinaVampiro = async (id) => {
+    if (!currentUser || !currentUser.isAdmin) {
+        return vampireToast("Solo il gestore può ripristinare membri.", "error");
+    }
+    const res = await Swal.fire({
+        title: 'Ripristinare membro?',
+        text: 'Tornerà visibile in Generale e nei selettori.',
+        icon: 'question',
+        showCancelButton: true,
+        confirmButtonColor: '#2ecc71',
+        background: '#111',
+        color: '#fff',
+        confirmButtonText: 'Ripristina',
+        cancelButtonText: 'Annulla'
+    });
+    if (!res.isConfirmed) return;
+    try {
+        await setDoc(doc(db, "membri", id), {
+            archiviato: false,
+            motivoArchivio: '',
+            dataArchivio: null,
+            ripristinatoAt: Date.now()
+        }, { merge: true });
+        vampireToast(`${id} ripristinato tra i membri attivi.`, "success");
+    } catch (err) {
+        console.error(err);
+        vampireToast("Errore durante il ripristino.", "error");
+    }
+};
+
 window.eliminaVampiro = async (id) => {
-    const res = await Swal.fire({ title: 'Eliminare membro?', icon: 'warning', showCancelButton: true, confirmButtonColor: '#8b0000', background: '#111', color: '#fff' });
+    const res = await Swal.fire({
+        title: 'Eliminare definitivamente?',
+        html: 'Questa azione <strong>cancella il documento membro</strong>.<br>Lo storico vendite resta, ma il profilo sparisce del tutto.<br><span style="color:#aaa;font-size:0.75rem;">Preferisci archiviare se vuoi solo nasconderlo.</span>',
+        icon: 'warning',
+        showCancelButton: true,
+        confirmButtonColor: '#8b0000',
+        background: '#111',
+        color: '#fff',
+        confirmButtonText: 'Elimina per sempre'
+    });
     if(res.isConfirmed) {
         await deleteDoc(doc(db, "membri", id));
         vampireToast("Vampiro rimosso dal registro.", "success");
@@ -491,8 +590,7 @@ window.caricaMembroPerEdit = (nome) => {
 };
 
 function contaGradiMembri() {
-    // Contatori: Originario, Originaria, Mentore, Adulta, Adulto, Neonata, Neonato
-    // Match case-insensitive sul campo Grado
+    // Contatori solo sui membri ATTIVI (non archiviati)
     const keys = [
         { label: 'Originario', match: ['originario'] },
         { label: 'Originaria', match: ['originaria'] },
@@ -504,7 +602,7 @@ function contaGradiMembri() {
     ];
     const counts = {};
     keys.forEach(k => { counts[k.label] = 0; });
-    listaVampiri.forEach(v => {
+    membriAttivi().forEach(v => {
         const g = (v.grado || '').toLowerCase().trim();
         keys.forEach(k => {
             if (k.match.includes(g)) counts[k.label]++;
@@ -515,12 +613,22 @@ function contaGradiMembri() {
 
 function htmlContatoriRanghi(compact) {
     const rows = contaGradiMembri();
-    const total = listaVampiri.length;
+    const total = membriAttivi().length;
     const chips = rows.map(r =>
         `<span class="rango-count-chip"><span class="rango-count-label">${r.label}</span><strong class="rango-count-num">${r.count}</strong></span>`
     ).join('');
     const tot = `<span class="rango-count-chip rango-count-tot"><span class="rango-count-label">Totale</span><strong class="rango-count-num">${total}</strong></span>`;
     return `<div class="rango-count-wrap${compact ? ' is-compact' : ''}">${chips}${tot}</div>`;
+}
+
+function htmlContatoreArchiviati() {
+    const n = membriArchiviati().length;
+    return `<div class="rango-count-wrap">
+        <span class="rango-count-chip rango-count-tot" style="border-left-color:var(--withdraw-red);">
+            <span class="rango-count-label">Archiviati</span>
+            <strong class="rango-count-num">${n}</strong>
+        </span>
+    </div>`;
 }
 
 function renderVampiriLists() {
@@ -543,39 +651,48 @@ function renderVampiriLists() {
         return (a.nome || "").localeCompare(b.nome || "", 'it');
     });
 
-    // Contatori ranghi (Generale + Admin Membri)
+    const attivi = membriAttivi();
+
+    // Contatori ranghi (Generale + Admin Membri) — solo attivi
     const counterGen = document.getElementById('membri-ranghi-counter');
     if (counterGen) counterGen.innerHTML = htmlContatoriRanghi(true);
     const counterAdm = document.getElementById('admin-membri-ranghi-counter');
     if (counterAdm) counterAdm.innerHTML = htmlContatoriRanghi(false);
+    const counterArch = document.getElementById('admin-archiviati-counter');
+    if (counterArch) counterArch.innerHTML = htmlContatoreArchiviati();
 
+    // Lista Generale: solo membri attivi
     const listaDinamica = document.getElementById('lista-membri-dinamica');
-    if (listaDinamica) listaDinamica.innerHTML = listaVampiri.map(v => `<p style="font-size: 0.8rem; color: var(--text-light); margin-bottom: 5px;"><strong>${v.nome}:</strong> ${v.grado}</p>`).join('');
+    if (listaDinamica) {
+        listaDinamica.innerHTML = attivi.length
+            ? attivi.map(v => `<p style="font-size: 0.8rem; color: var(--text-light); margin-bottom: 5px;"><strong>${v.nome}:</strong> ${v.grado}</p>`).join('')
+            : '<p style="font-size:0.75rem; opacity:0.5;">Nessun membro attivo.</p>';
+    }
 
+    // Select: solo membri attivi (storico vendite resta per nome)
     const selects = document.querySelectorAll('.vampiro-select-list');
-    const options = `<option value="">-- Seleziona Vampiro --</option>` + listaVampiri.map(v => `<option value="${v.nome}">${v.nome}</option>`).join('');
+    const options = `<option value="">-- Seleziona Vampiro --</option>` + attivi.map(v => `<option value="${v.nome}">${v.nome}</option>`).join('');
     selects.forEach(s => { 
         const currentVal = s.value; 
         s.innerHTML = options; 
         s.value = currentVal; 
-        // Se non admin e c'è currentUser, forza il valore sui select personali
         if (currentUser && !currentUser.isAdmin && ['vamp-nome','mat-vamp-nome','saldo-nome','inv-user-name','calc-search-name'].includes(s.id)) {
             s.value = currentUser.nome;
         }
     });
 
     window.renderAdminMembriTable();
+    if (typeof window.renderAdminArchiviatiTable === 'function') window.renderAdminArchiviatiTable();
     
-    // Riapplica permessi/visibilità dopo aggiornamento liste
     if (currentUser) applyPermissions();
 }
 
-/** Tabella admin membri con filtro ricerca (nome, grado, codice) */
+/** Tabella admin membri ATTIVI con filtro ricerca */
 window.renderAdminMembriTable = function() {
     const tbody = document.getElementById('admin-vampiri-body');
     if (!tbody) return;
     const search = (document.getElementById('search-admin-membri')?.value || '').toLowerCase().trim();
-    let list = [...listaVampiri];
+    let list = membriAttivi();
     if (search) {
         list = list.filter(v =>
             (v.nome || '').toLowerCase().includes(search) ||
@@ -586,17 +703,56 @@ window.renderAdminMembriTable = function() {
     tbody.innerHTML = list.map(v => {
         const cod = v.codice ? v.codice : '<span style="opacity:0.4">—</span>';
         const perms = Array.isArray(v.permessi) ? v.permessi.length + ' sez.' : '0';
+        const safeName = String(v.nome || '').replace(/'/g, "\\'");
         return `<tr>
             <td>${v.nome}</td>
             <td>${v.grado || ''}</td>
             <td style="font-family:monospace;">${cod}</td>
             <td style="font-size:0.65rem;">${perms}</td>
-            <td>
-                <button class="btn-delete" style="border-color:var(--gold-accent);color:var(--gold-accent);margin-right:4px;" onclick="window.caricaMembroPerEdit('${v.nome}')">Modifica</button>
-                <button class="btn-delete" onclick="eliminaVampiro('${v.nome}')">Elimina</button>
+            <td style="white-space:nowrap;">
+                <button class="btn-delete" style="border-color:var(--gold-accent);color:var(--gold-accent);margin-right:4px;" onclick="window.caricaMembroPerEdit('${safeName}')">Modifica</button>
+                <button class="btn-delete" style="border-color:#e67e22;color:#e67e22;margin-right:4px;" onclick="window.archiviaVampiro('${safeName}')">Archivia</button>
+                <button class="btn-delete" onclick="window.eliminaVampiro('${safeName}')">Elimina</button>
             </td>
         </tr>`;
-    }).join('') || '<tr><td colspan="5" style="opacity:0.5;text-align:center;">Nessun membro trovato.</td></tr>';
+    }).join('') || '<tr><td colspan="5" style="opacity:0.5;text-align:center;">Nessun membro attivo trovato.</td></tr>';
+};
+
+/** Tabella admin membri ARCHIVIATI */
+window.renderAdminArchiviatiTable = function() {
+    const tbody = document.getElementById('admin-archiviati-body');
+    if (!tbody) return;
+    const search = (document.getElementById('search-admin-archiviati')?.value || '').toLowerCase().trim();
+    let list = membriArchiviati();
+    if (search) {
+        list = list.filter(v =>
+            (v.nome || '').toLowerCase().includes(search) ||
+            (v.grado || '').toLowerCase().includes(search) ||
+            (v.motivoArchivio || '').toLowerCase().includes(search) ||
+            String(v.codice || '').toLowerCase().includes(search)
+        );
+    }
+    list = [...list].sort((a, b) => (b.dataArchivio || 0) - (a.dataArchivio || 0));
+    tbody.innerHTML = list.map(v => {
+        const safeName = String(v.nome || '').replace(/'/g, "\\'");
+        const motivo = v.motivoArchivio || '—';
+        let dataStr = '—';
+        if (v.dataArchivio) {
+            try {
+                dataStr = new Date(v.dataArchivio).toLocaleString('it-IT', { day: '2-digit', month: '2-digit', year: 'numeric', hour: '2-digit', minute: '2-digit' });
+            } catch (_) {}
+        }
+        return `<tr>
+            <td><strong>${v.nome}</strong></td>
+            <td>${v.grado || ''}</td>
+            <td style="font-size:0.65rem; max-width:180px; word-break:break-word;" title="${String(motivo).replace(/"/g, '&quot;')}">${motivo}</td>
+            <td style="font-size:0.65rem; font-family:monospace;">${dataStr}</td>
+            <td style="white-space:nowrap;">
+                <button class="btn-delete" style="border-color:var(--success-green);color:var(--success-green);margin-right:4px;" onclick="window.ripristinaVampiro('${safeName}')">Ripristina</button>
+                <button class="btn-delete" onclick="window.eliminaVampiro('${safeName}')">Elimina</button>
+            </td>
+        </tr>`;
+    }).join('') || '<tr><td colspan="5" style="opacity:0.5;text-align:center;">Nessun membro archiviato.</td></tr>';
 };
 
 // --- POPOLA FILTRO MATERIALI ---
