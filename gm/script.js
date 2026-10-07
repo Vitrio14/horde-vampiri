@@ -346,7 +346,17 @@ function applyListFilter(sectionKey) {
         }
         if (show && statusFilter != null && statusFilter !== 'all') {
             const st = el.getAttribute('data-tempo-status') || '';
-            show = (st === statusFilter);
+            const isArchived = el.getAttribute('data-tempo-archived') === '1';
+            if (statusFilter === 'archiviato') {
+                show = isArchived;
+            } else {
+                // Attivi / Terminati: nascondi gli archiviati
+                show = !isArchived && (st === statusFilter);
+            }
+        } else if (show && sectionKey === 'tempi' && statusFilter === 'all') {
+            // Tutti = tutti i non archiviati
+            const isArchived = el.getAttribute('data-tempo-archived') === '1';
+            show = !isArchived;
         }
         if (show && tempoTipoFilter != null && tempoTipoFilter !== 'all') {
             const tt = el.getAttribute('data-tempo-tipo') || '';
@@ -357,19 +367,24 @@ function applyListFilter(sectionKey) {
         if (show) visible++;
     });
 
-    // Sezioni raggruppate Tempi: nascondi header se nessun card del gruppo è visibile
+    // Sezioni raggruppate Tempi: nascondi header se nessun card del gruppo è visibile + aggiorna count
     if (sectionKey === 'tempi') {
         container.querySelectorAll('.tempi-group-header').forEach(hdr => {
             let next = hdr.nextElementSibling;
             let any = false;
+            let cnt = 0;
             while (next && !next.classList.contains('tempi-group-header') && !next.classList.contains('section-filter-bar')) {
-                if (next.classList.contains('card') && next.style.display !== 'none' && next.hasAttribute('data-tempo-status')) {
-                    any = true;
-                    break;
+                if (next.classList.contains('card') && next.hasAttribute('data-tempo-status')) {
+                    if (next.style.display !== 'none') {
+                        any = true;
+                        cnt++;
+                    }
                 }
                 next = next.nextElementSibling;
             }
             hdr.style.display = any ? '' : 'none';
+            const countEl = hdr.querySelector('.tempi-group-count');
+            if (countEl) countEl.textContent = String(cnt);
         });
     }
 
@@ -5374,6 +5389,7 @@ function buildTempiFilterBarHtml() {
     const statuses = [
         { key: 'attivo', label: 'Attivi' },
         { key: 'terminato', label: 'Terminati' },
+        { key: 'archiviato', label: 'Archiviati' },
         { key: 'all', label: 'Tutti' }
     ];
     const statusChips = statuses.map(s => {
@@ -5973,6 +5989,45 @@ function activateFeraleFromTempo(playerId, playerName) {
     });
 }
 
+
+/** Archivia un tempo (non cancella: resta in Archiviati). */
+function archiveTempo(id) {
+    Swal.fire({
+        title: 'Archiviare questo tempo?',
+        text: 'Non verrà eliminato: sparirà da Attivi/Terminati e comparirà in Archiviati. I dati restano.',
+        icon: 'question',
+        showCancelButton: true,
+        confirmButtonText: 'Sì, archivia',
+        cancelButtonText: 'Annulla',
+        background: '#131a25'
+    }).then(result => {
+        if (!result.isConfirmed) return;
+        db.collection('tempi').doc(id).update({
+            archived: true,
+            archivedAt: new Date().toISOString()
+        }).then(() => showToast('Tempo archiviato'));
+    });
+}
+
+/** Ripristina un tempo archiviato (torna in Attivi/Terminati). */
+function unarchiveTempo(id) {
+    Swal.fire({
+        title: 'Ripristinare questo tempo?',
+        text: 'Tornerà nella lista Attivi o Terminati in base allo stato.',
+        icon: 'question',
+        showCancelButton: true,
+        confirmButtonText: 'Sì, ripristina',
+        cancelButtonText: 'Annulla',
+        background: '#131a25'
+    }).then(result => {
+        if (!result.isConfirmed) return;
+        db.collection('tempi').doc(id).update({
+            archived: false,
+            archivedAt: null
+        }).then(() => showToast('Tempo ripristinato'));
+    });
+}
+
 let _tempiUnsub = null;
 
 
@@ -6090,10 +6145,20 @@ function loadTempi() {
                 postActionBtn = `<button class="btn-tempo-ferale" onclick="activateFeraleFromTempo('${pid}', '${pname}')" title="Attiva flag Ferale sul player in Giocatori">🦇 Ferale</button>`;
             }
 
+            const isArchived = !!t.archived;
+            if (isArchived) {
+                cardExtraClass += ' card-tempo-archived';
+            }
+
+            const archiveBtn = isArchived
+                ? `<button class="btn-tempo-unarchive" onclick="unarchiveTempo('${t.id}')" title="Ripristina dalla lista Archiviati">Ripristina</button>`
+                : `<button class="btn-tempo-archive" onclick="archiveTempo('${t.id}')" title="Archivia (non elimina)">Archivia</button>`;
+
             return `
-                <div class="card ${cardExtraClass}" data-filter-text="${escapeAttr(filterText)}" data-tempo-status="${escapeAttr(status)}" data-tempo-tipo="${escapeAttr(tipoKey)}">
+                <div class="card ${cardExtraClass}" data-filter-text="${escapeAttr(filterText)}" data-tempo-status="${escapeAttr(status)}" data-tempo-tipo="${escapeAttr(tipoKey)}" data-tempo-archived="${isArchived ? '1' : '0'}">
                     <h3>${t.playerName || '—'}</h3>
                     ${punFlag}
+                    ${isArchived ? '<div class="status tempo-status-archived">📦 Archiviato</div>' : ''}
                     <p style="margin-bottom:4px;"><b>Tipo:</b> ${tipoDisplay}</p>
                     <p style="margin-bottom:4px;font-size:0.8rem;color:var(--text-dim);">
                         ${formatTempoDate(t.startDate)} → ${formatTempoDate(t.endDate)}
@@ -6113,10 +6178,11 @@ function loadTempi() {
                             Modifica
                         </button>
                         ${postActionBtn}
-                        ${status !== 'terminato'
+                        ${!isArchived && status !== 'terminato'
                             ? `<button class="btn-tempo-done" onclick="markTempoTerminato('${t.id}')" title="Segna terminato">Fine</button>`
-                            : `<button class="btn-tempo-reopen" onclick="reopenTempo('${t.id}')" title="Riapri">Riapri</button>`
+                            : (!isArchived ? `<button class="btn-tempo-reopen" onclick="reopenTempo('${t.id}')" title="Riapri">Riapri</button>` : '')
                         }
+                        ${archiveBtn}
                         <button class="delete-btn btn-icon-only" onclick="confirmDelete('tempi', '${t.id}', loadTempi)" title="Elimina">
                             🗑️
                         </button>
