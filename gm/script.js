@@ -1700,15 +1700,19 @@ function loadPlayers() {
                         const gradoBadge = p.grado
                             ? `<div class="status grado-status grado-${String(p.grado).toLowerCase()}">${p.grado}</div>`
                             : '';
-                        const punBadge = (typeof playerHasActivePunizione === 'function' && playerHasActivePunizione(p.id, p.name))
-                            ? '<div class="tempo-punizione-flag">⚖️ Punizione attiva</div>'
+                        const punBadge = (typeof formatPunizioneFlagHtml === 'function')
+                            ? formatPunizioneFlagHtml(p.id, p.name)
+                            : '';
+                        const feraleBadge = p.ferale
+                            ? '<div class="status ferale-status">🐺 Ferale</div>'
                             : '';
 
-                        const filterText = [p.name, p.notes, p.grado, (p.quests || []).join(' ')].filter(Boolean).join(' ');
+                        const filterText = [p.name, p.notes, p.grado, (p.quests || []).join(' '), p.ferale ? 'ferale' : ''].filter(Boolean).join(' ');
                         container.innerHTML += `
                             <div class="${cardClass}" data-filter-text="${escapeAttr(filterText)}" data-grado="${escapeAttr(p.grado || '')}">
                                 <h3>${p.name}</h3>
                                 ${gradoBadge}
+                                ${feraleBadge}
                                 ${punBadge}
                                 ${exitBadge}
                                 <p>${p.notes || 'Nessuna nota'}</p>
@@ -1735,6 +1739,13 @@ function loadPlayers() {
                                         title="Punizioni"
                                     >
                                         ⚖️
+                                    </button>
+                                    <button
+                                        class="btn-ferale"
+                                        onclick="togglePlayerFerale('${p.id}')"
+                                        title="Attiva/disattiva flag Ferale"
+                                    >
+                                        🐺
                                     </button>
                                     <button
                                         class="btn-move-player"
@@ -4843,22 +4854,60 @@ function syncExpiredPunizioni(items) {
     }
 }
 
+function punizioneDisplayLabel(p) {
+    if (!p) return 'Punizione';
+    if (p.tipo === 'sigillo_ombra') return 'Sigillo Ombra';
+    return (p.tipoLabel || p.label || 'Punizione libera').trim() || 'Punizione libera';
+}
+
 function rebuildPunizioniActiveMap(items) {
     const map = {};
     items.forEach(p => {
         let st = p.status || 'attiva';
         if (st !== 'conclusa' && p.endDate && punizioneIsExpired(p.endDate)) st = 'conclusa';
         if (st === 'conclusa') return;
-        if (p.playerId) map['id:' + p.playerId] = true;
-        if (p.playerName) map['name:' + String(p.playerName).trim().toLowerCase()] = true;
+        const label = punizioneDisplayLabel(p);
+        const entry = { id: p.id, label: label, tipo: p.tipo || '', motivazione: p.motivazione || '' };
+        if (p.playerId) {
+            const k = 'id:' + p.playerId;
+            if (!map[k]) map[k] = [];
+            map[k].push(entry);
+        }
+        if (p.playerName) {
+            const k = 'name:' + String(p.playerName).trim().toLowerCase();
+            if (!map[k]) map[k] = [];
+            map[k].push(entry);
+        }
     });
     _punizioniActiveByPlayer = map;
 }
 
+function getActivePunizioniInfo(playerId, playerName) {
+    const list = [];
+    const seen = new Set();
+    const pushAll = (arr) => {
+        (arr || []).forEach(e => {
+            if (e && e.id && !seen.has(e.id)) {
+                seen.add(e.id);
+                list.push(e);
+            }
+        });
+    };
+    if (playerId) pushAll(_punizioniActiveByPlayer['id:' + playerId]);
+    if (playerName) pushAll(_punizioniActiveByPlayer['name:' + String(playerName).trim().toLowerCase()]);
+    return list;
+}
+
 function playerHasActivePunizione(playerId, playerName) {
-    if (playerId && _punizioniActiveByPlayer['id:' + playerId]) return true;
-    if (playerName && _punizioniActiveByPlayer['name:' + String(playerName).trim().toLowerCase()]) return true;
-    return false;
+    return getActivePunizioniInfo(playerId, playerName).length > 0;
+}
+
+function formatPunizioneFlagHtml(playerId, playerName) {
+    const infos = getActivePunizioniInfo(playerId, playerName);
+    if (!infos.length) return '';
+    const labels = infos.map(i => i.label).join(', ');
+    const title = infos.map(i => i.label + (i.motivazione ? (' — ' + i.motivazione) : '')).join(' | ');
+    return '<div class="tempo-punizione-flag" title="' + escapeAttr(title) + '">⚖️ ' + escapeAttr(labels) + '</div>';
 }
 
 function ensurePunizioniListener() {
@@ -4872,6 +4921,31 @@ function ensurePunizioniListener() {
         if (typeof renderTempiListFromCache === 'function') {
             try { renderTempiListFromCache(); } catch (e) {}
         }
+        // Aggiorna flag punizioni sulle card giocatori già renderizzate
+        try {
+            document.querySelectorAll('#players-list .card[data-grado], #players-list .card').forEach(card => {
+                const h3 = card.querySelector('h3');
+                if (!h3) return;
+                const name = h3.textContent.trim();
+                const infos = getActivePunizioniInfo(null, name);
+                let flag = card.querySelector('.tempo-punizione-flag');
+                if (infos.length) {
+                    const labels = infos.map(i => i.label).join(', ');
+                    const title = infos.map(i => i.label + (i.motivazione ? (' — ' + i.motivazione) : '')).join(' | ');
+                    if (!flag) {
+                        flag = document.createElement('div');
+                        flag.className = 'tempo-punizione-flag';
+                        const grado = card.querySelector('.grado-status, .ferale-status');
+                        if (grado && grado.nextSibling) grado.insertAdjacentElement('afterend', flag);
+                        else h3.insertAdjacentElement('afterend', flag);
+                    }
+                    flag.title = title;
+                    flag.textContent = '⚖️ ' + labels;
+                } else if (flag) {
+                    flag.remove();
+                }
+            });
+        } catch (e) {}
     });
 }
 
@@ -4916,7 +4990,8 @@ function openPlayerPunizioniModal(playerId, playerName) {
             const notes = p.notes ? ('<br><small style="color:#9ca3af;">' + String(p.notes).replace(/</g, '&lt;') + '</small>') : '';
             const safeP = String(playerName || '').replace(/'/g, "\\'");
             const actions = p.status !== 'conclusa'
-                ? ('<button type="button" onclick="closePunizione(\'' + p.id + '\', \'' + playerId + '\', \'' + safeP + '\')" style="flex-shrink:0;padding:6px 10px;font-size:0.65rem;border:1px solid #2ecc71;color:#2ecc71;background:transparent;cursor:pointer;">Concludi</button>'
+                ? ('<button type="button" onclick="editPunizione(\'' + p.id + '\', \'' + playerId + '\', \'' + safeP + '\')" style="flex-shrink:0;padding:6px 10px;font-size:0.65rem;border:1px solid #a78bfa;color:#a78bfa;background:transparent;cursor:pointer;">Modifica</button>'
+                   + '<button type="button" onclick="closePunizione(\'' + p.id + '\', \'' + playerId + '\', \'' + safeP + '\')" style="flex-shrink:0;padding:6px 10px;font-size:0.65rem;border:1px solid #2ecc71;color:#2ecc71;background:transparent;cursor:pointer;">Concludi</button>'
                    + '<button type="button" onclick="deletePunizione(\'' + p.id + '\', \'' + playerId + '\', \'' + safeP + '\')" style="flex-shrink:0;padding:6px 10px;font-size:0.65rem;border:1px dashed #e74c3c;color:#e74c3c;background:transparent;cursor:pointer;">Elimina</button>')
                 : ('<button type="button" onclick="deletePunizione(\'' + p.id + '\', \'' + playerId + '\', \'' + safeP + '\')" style="flex-shrink:0;padding:6px 10px;font-size:0.65rem;border:1px dashed #e74c3c;color:#e74c3c;background:transparent;cursor:pointer;">Elimina</button>');
             return '<li style="margin-bottom:10px;padding-bottom:8px;border-bottom:1px dashed rgba(255,255,255,0.06);display:flex;justify-content:space-between;gap:10px;align-items:flex-start;">'
@@ -5033,6 +5108,119 @@ function addPunizione(playerId, playerName) {
         db.collection('punizioni').add(data).then(() => {
             showToast('Punizione registrata');
             openPlayerPunizioniModal(playerId, playerName);
+        });
+    });
+}
+
+
+function editPunizione(id, playerId, playerName) {
+    db.collection('punizioni').doc(id).get().then(doc => {
+        if (!doc.exists) return;
+        const p = doc.data();
+        const label = punizioneDisplayLabel(p);
+        const daysNow = p.days != null ? p.days : '';
+        Swal.fire({
+            title: 'Modifica — ' + label,
+            html: `
+                <p style="text-align:left;color:#a0a0a0;font-size:0.85rem;margin-bottom:10px;">
+                    Player: <b>${playerName || p.playerName || '—'}</b>
+                    ${p.days ? (' · durata attuale: <b>' + formatNumber(p.days) + ' gg</b>') : ' · senza scadenza fissa'}
+                </p>
+                <label style="display:block;text-align:left;margin:8px 0 4px 4px;color:#a0a0a0;font-size:13px;font-weight:600;">Motivazione (aggiorna)</label>
+                <textarea id="pun-edit-motivo" class="swal2-textarea">${String(p.motivazione || '').replace(/</g, '&lt;')}</textarea>
+                <label style="display:block;text-align:left;margin:8px 0 4px 4px;color:#a0a0a0;font-size:13px;font-weight:600;">Giorni da aggiungere (+) o togliere (−)</label>
+                <input id="pun-edit-delta" type="number" class="swal2-input" placeholder="Es. +3 o -1 (lascia 0 per non cambiare durata)" value="0">
+                <label style="display:block;text-align:left;margin:8px 0 4px 4px;color:#a0a0a0;font-size:13px;font-weight:600;">Oppure imposta durata totale (giorni)</label>
+                <input id="pun-edit-days" type="number" min="1" class="swal2-input" placeholder="Lascia vuoto per non sovrascrivere" value="">
+                <label style="display:block;text-align:left;margin:8px 0 4px 4px;color:#a0a0a0;font-size:13px;font-weight:600;">Motivo della modifica</label>
+                <input id="pun-edit-reason" class="swal2-input" placeholder="Es. aggravante, riduzione per buona condotta...">
+                <label style="display:block;text-align:left;margin:8px 0 4px 4px;color:#a0a0a0;font-size:13px;font-weight:600;">Note aggiuntive</label>
+                <input id="pun-edit-notes" class="swal2-input" value="${escapeAttr(p.notes || '')}">
+            `,
+            confirmButtonText: 'Salva',
+            showCancelButton: true,
+            cancelButtonText: 'Annulla',
+            background: '#131a25',
+            preConfirm: () => {
+                const motivazione = (document.getElementById('pun-edit-motivo').value || '').trim();
+                if (!motivazione) {
+                    Swal.showValidationMessage('Motivazione obbligatoria');
+                    return false;
+                }
+                const delta = parseInt(document.getElementById('pun-edit-delta').value, 10) || 0;
+                const daysSetRaw = document.getElementById('pun-edit-days').value;
+                const daysSet = daysSetRaw ? parseInt(daysSetRaw, 10) : null;
+                if (daysSetRaw && (!daysSet || daysSet < 1)) {
+                    Swal.showValidationMessage('Durata totale non valida');
+                    return false;
+                }
+                return {
+                    motivazione,
+                    delta,
+                    daysSet,
+                    reason: (document.getElementById('pun-edit-reason').value || '').trim(),
+                    notes: (document.getElementById('pun-edit-notes').value || '').trim()
+                };
+            }
+        }).then(result => {
+            if (!result.isConfirmed || !result.value) {
+                openPlayerPunizioniModal(playerId, playerName);
+                return;
+            }
+            const v = result.value;
+            let newDays = p.days != null ? Number(p.days) : null;
+            if (v.daysSet != null) {
+                newDays = v.daysSet;
+            } else if (v.delta !== 0) {
+                newDays = Math.max(1, (newDays || 0) + v.delta);
+            }
+            const update = {
+                motivazione: v.motivazione,
+                notes: v.notes
+            };
+            if (newDays != null) {
+                update.days = newDays;
+                const start = p.startDate || new Date().toISOString();
+                update.endDate = computeTempoEndDate(start, newDays);
+                if (punizioneIsExpired(update.endDate)) {
+                    update.status = 'conclusa';
+                    update.completedAt = new Date().toISOString();
+                } else {
+                    update.status = 'attiva';
+                    update.completedAt = null;
+                }
+            }
+            const stamp = formatDateTime(new Date().toISOString()) || '';
+            const reason = v.reason || 'modifica punizione';
+            let histLine = '[' + stamp + '] Modifica: ' + reason;
+            if (v.delta) histLine += ' (' + (v.delta > 0 ? '+' : '') + v.delta + ' g.)';
+            if (v.daysSet != null) histLine += ' (durata → ' + v.daysSet + ' gg)';
+            const prevNotes = update.notes ? String(update.notes).trim() : '';
+            update.notes = prevNotes ? (prevNotes + '\n' + histLine) : histLine;
+            const hist = Array.isArray(p.history) ? p.history.slice() : [];
+            hist.push({
+                at: new Date().toISOString(),
+                delta: v.delta || 0,
+                daysAfter: newDays,
+                reason: reason,
+                motivazione: v.motivazione
+            });
+            update.history = hist;
+
+            db.collection('punizioni').doc(id).update(update).then(() => {
+                showToast('Punizione aggiornata');
+                openPlayerPunizioniModal(playerId, playerName);
+            });
+        });
+    });
+}
+
+function togglePlayerFerale(playerId) {
+    db.collection('players').doc(playerId).get().then(doc => {
+        if (!doc.exists) return;
+        const cur = !!doc.data().ferale;
+        db.collection('players').doc(playerId).update({ ferale: !cur }).then(() => {
+            showToast(cur ? 'Flag Ferale rimosso' : 'Flag Ferale attivato');
         });
     });
 }
@@ -5361,6 +5549,24 @@ function openTempoDetails(id) {
         const tipoDisplay = t.tipo === 'custom'
             ? (t.tipoLabel || t.customLabel || 'Personalizzato')
             : meta.label;
+        let historyHtml = '';
+        const hist = Array.isArray(t.history) ? t.history.slice() : [];
+        if (hist.length) {
+            hist.sort((a, b) => String(b.at || '').localeCompare(String(a.at || '')));
+            historyHtml = '<div style="margin-top:14px;padding:12px;background:rgba(139,92,246,0.1);border-left:3px solid #a78bfa;border-radius:0 8px 0 8px;">'
+                + '<p style="margin:0 0 8px;color:#a78bfa;font-size:0.75rem;font-weight:700;text-transform:uppercase;letter-spacing:1px;">Storico aggiustamenti</p>'
+                + '<ul style="list-style:none;padding:0;margin:0;max-height:160px;overflow-y:auto;">'
+                + hist.map(h => {
+                    const d = (h.delta > 0 ? '+' : '') + h.delta + ' g.';
+                    const when = formatDateTime(h.at) || '';
+                    const reason = String(h.reason || 'aggiustamento').replace(/</g, '&lt;');
+                    return '<li style="margin-bottom:6px;font-size:0.82rem;border-bottom:1px dashed rgba(255,255,255,0.06);padding-bottom:4px;">'
+                        + '<b style="color:#c4b5fd;">' + d + '</b> → ' + formatNumber(h.daysAfter || 0) + ' gg totali'
+                        + (when ? ' <small style="color:#6b7280;">(' + when + ')</small>' : '')
+                        + '<br><span style="color:#e5e7eb;">' + reason + '</span></li>';
+                }).join('')
+                + '</ul></div>';
+        }
         let countdownHtml;
         if (status === 'terminato' || (rem != null && rem < 0)) {
             countdownHtml = `<div class="status tempo-status-terminato" style="margin:10px 0;">✓ TERMINATO</div>
@@ -5388,6 +5594,7 @@ function openTempoDetails(id) {
                         <p style="margin:0 0 6px;color:#c5a059;font-size:0.75rem;font-weight:700;text-transform:uppercase;letter-spacing:1px;">Note</p>
                         <p style="margin:0;white-space:pre-wrap;line-height:1.5;">${String(t.notes).replace(/</g, '&lt;')}</p>
                     </div>` : '<p style="color:#9ca3af;font-size:0.85rem;margin-top:12px;">Nessuna nota</p>'}
+                    ${historyHtml}
                     ${t.createdAt ? `<p style="margin-top:14px;font-size:0.75rem;color:#6b7280;">Creato: ${formatDateTime(t.createdAt)}</p>` : ''}
                     ${t.completedAt ? `<p style="font-size:0.75rem;color:#6b7280;">Completato: ${formatDateTime(t.completedAt)}</p>` : ''}
                 </div>
@@ -5489,27 +5696,38 @@ function applyTempoDaysDelta(id, t, delta, note) {
     const newDays = Math.max(1, (Number(t.days) || 1) + delta);
     const endDate = computeTempoEndDate(t.startDate, newDays);
     const expired = tempoIsExpired(endDate);
+    const stamp = formatDateTime(new Date().toISOString()) || new Date().toLocaleString('it-IT');
+    const reason = (note && String(note).trim()) ? String(note).trim() : 'aggiustamento durata';
+    const line = '[' + stamp + '] ' + (delta > 0 ? '+' : '') + delta + ' g. → totale ' + newDays + ' gg: ' + reason;
+    const prevNotes = t.notes ? String(t.notes).trim() : '';
     const update = {
         days: newDays,
         endDate,
-        status: expired ? 'terminato' : 'attivo'
+        status: expired ? 'terminato' : 'attivo',
+        notes: prevNotes ? (prevNotes + '\n' + line) : line
     };
+    const hist = Array.isArray(t.history) ? t.history.slice() : [];
+    hist.push({
+        at: new Date().toISOString(),
+        delta: delta,
+        daysAfter: newDays,
+        reason: reason
+    });
+    update.history = hist;
     if (expired && t.status !== 'terminato') {
         update.completedAt = new Date().toISOString();
     }
-    if (!expired && t.status === 'terminato') {
+    if (!expired) {
         update.completedAt = null;
-    }
-    if (note) {
-        const stamp = formatDateTime(new Date().toISOString()) || '';
-        const line = '[' + stamp + '] ' + (delta > 0 ? '+' : '') + delta + ' g.: ' + note;
-        update.notes = (t.notes ? String(t.notes).trim() + '\n' : '') + line;
     }
     db.collection('tempi').doc(id).update(update).then(() => {
         const msg = delta > 0
             ? ('Durata aumentata di ' + delta + ' g. → ' + newDays + ' giorni totali')
             : ('Durata ridotta di ' + Math.abs(delta) + ' g. → ' + newDays + ' giorni totali');
         showToast(msg);
+    }).catch(err => {
+        console.error(err);
+        showToast('Errore salvataggio aggiustamento');
     });
 }
 
@@ -5524,17 +5742,19 @@ function renderTempiListFromCache() {
         const h3 = card.querySelector('h3');
         if (!h3) return;
         const name = h3.textContent.trim();
-        const hasPun = playerHasActivePunizione(null, name);
+        const infos = getActivePunizioniInfo(null, name);
         let flag = card.querySelector('.tempo-punizione-flag');
-        if (hasPun) {
+        if (infos.length) {
             card.classList.add('card-tempo-punito');
+            const labels = infos.map(i => i.label).join(', ');
+            const title = infos.map(i => i.label + (i.motivazione ? (' — ' + i.motivazione) : '')).join(' | ');
             if (!flag) {
                 flag = document.createElement('div');
                 flag.className = 'tempo-punizione-flag';
-                flag.title = 'Punizione attiva';
-                flag.textContent = '⚖️ Punizione attiva';
                 h3.insertAdjacentElement('afterend', flag);
             }
+            flag.title = title;
+            flag.textContent = '⚖️ ' + labels;
         } else {
             card.classList.remove('card-tempo-punito');
             if (flag) flag.remove();
@@ -5612,10 +5832,9 @@ function loadTempi() {
             const filterText = [t.playerName, tipoDisplay, t.notes, t.tipoLabel, status].filter(Boolean).join(' ');
             const safeName = (t.playerName || '').replace(/'/g, "\\'");
 
-            const hasPun = playerHasActivePunizione(t.playerId, t.playerName);
-            const punFlag = hasPun
-                ? '<div class="tempo-punizione-flag" title="Punizione attiva">⚖️ Punizione attiva</div>'
-                : '';
+            const punInfos = getActivePunizioniInfo(t.playerId, t.playerName);
+            const hasPun = punInfos.length > 0;
+            const punFlag = formatPunizioneFlagHtml(t.playerId, t.playerName);
             if (hasPun) cardExtraClass += ' card-tempo-punito';
 
             container.innerHTML += `

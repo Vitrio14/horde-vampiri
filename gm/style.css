@@ -1761,3 +1761,30 @@ span.exit-type-badge {
 .btn-tempo-adjust::before {
     background: linear-gradient(90deg, #6d28d9, #a78bfa) !important;
 }
+
+
+/* Ferale flag */
+.status.ferale-status {
+    background: rgba(249, 115, 22, 0.15);
+    color: #fb923c;
+    border-color: #f97316;
+    box-shadow: inset 5px 0 15px rgba(249, 115, 22, 0.2);
+    margin: 0 0 8px 0;
+}
+.btn-ferale {
+    background: transparent !important;
+    border: 1px solid rgba(249, 115, 22, 0.45) !important;
+    color: #fb923c !important;
+    padding: 8px 12px !important;
+    font-size: 1rem !important;
+    min-width: auto !important;
+    flex: 0 0 auto !important;
+}
+.btn-ferale:hover {
+    border-color: #fb923c !important;
+    color: #fff !important;
+    box-shadow: 0 0 12px rgba(249, 115, 22, 0.35) !important;
+}
+.btn-ferale::before {
+    background: linear-gradient(90deg, #c2410c, #f97316) !important;
+}
