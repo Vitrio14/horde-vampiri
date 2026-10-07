@@ -5593,7 +5593,7 @@ function openTempoDetails(id) {
                     var dlt = Number(h.delta) || 0;
                     var d = (dlt > 0 ? '+' : '') + dlt + ' g.';
                     var when = h.at ? (formatDateTime(h.at) || String(h.at)) : '';
-                    var reason = String(h.reason || 'aggiustamento').replace(/</g, '&lt;');
+                    var reason = String(h.reason || '(nessun motivo salvato)').replace(/</g, '&lt;');
                     var tot = (h.daysAfter !== '' && h.daysAfter != null) ? (' → ' + formatNumber(h.daysAfter) + ' gg totali') : '';
                     return '<li style="margin-bottom:8px;font-size:0.85rem;border-bottom:1px dashed rgba(255,255,255,0.08);padding-bottom:6px;">'
                         + '<b style="color:#c4b5fd;">' + d + '</b>' + tot
@@ -5691,62 +5691,84 @@ function adjustTempoDays(id) {
 
         Swal.fire({
             title: 'Aggiusta durata',
-            html: `
-                <p style="text-align:left;color:#a0a0a0;font-size:0.9rem;margin-bottom:12px;">
-                    <b>${t.playerName || '—'}</b> · attualmente <b>${formatNumber(t.days || 0)}</b> giorni
-                    (${formatTempoDate(t.startDate)} → ${formatTempoDate(t.endDate)}) · ${remLabel}
-                </p>
-                <label style="display:block;text-align:left;margin:8px 0 4px 4px;color:#a0a0a0;font-size:13px;font-weight:600;">
-                    Giorni da aggiungere (+) o togliere (−)
-                </label>
-                <input id="tempo-delta" type="number" class="swal2-input" placeholder="Es. +2 oppure -1" value="1">
-                <label style="display:block;text-align:left;margin:8px 0 4px 4px;color:#c5a059;font-size:13px;font-weight:600;">
-                    Motivo dell'aggiustamento (obbligatorio)
-                </label>
-                <input id="tempo-delta-note" class="swal2-input" placeholder="Es. violazione RP, bonus, riduzione...">
-                <p style="text-align:left;font-size:0.75rem;color:#6b7280;margin-top:4px;">
-                    Il motivo viene salvato nello storico e nelle note del tempo.
-                </p>
-            `,
+            html:
+                '<p style="text-align:left;color:#a0a0a0;font-size:0.9rem;margin-bottom:12px;">' +
+                '<b>' + (t.playerName || '—') + '</b> · attualmente <b>' + formatNumber(t.days || 0) + '</b> giorni' +
+                ' (' + formatTempoDate(t.startDate) + ' → ' + formatTempoDate(t.endDate) + ') · ' + remLabel +
+                '</p>' +
+                '<label style="display:block;text-align:left;margin:8px 0 4px 4px;color:#a0a0a0;font-size:13px;font-weight:600;">Giorni da aggiungere (+) o togliere (−)</label>' +
+                '<input id="tempo-delta" type="number" class="swal2-input" value="1" step="1">' +
+                '<label style="display:block;text-align:left;margin:8px 0 4px 4px;color:#c5a059;font-size:13px;font-weight:600;">Motivo (obbligatorio)</label>' +
+                '<textarea id="tempo-delta-note" class="swal2-textarea" placeholder="Es. violazione RP, bonus, riduzione..."></textarea>',
             showCancelButton: true,
-            confirmButtonText: 'Applica',
+            confirmButtonText: 'Applica e salva motivo',
             cancelButtonText: 'Annulla',
             background: '#131a25',
             focusConfirm: false,
+            allowOutsideClick: false,
+            didOpen: () => {
+                const popup = Swal.getPopup();
+                const ta = popup && popup.querySelector('#tempo-delta-note');
+                if (ta) setTimeout(() => ta.focus(), 100);
+            },
             preConfirm: () => {
-                const deltaEl = document.getElementById('tempo-delta');
-                const noteEl = document.getElementById('tempo-delta-note');
-                const delta = parseInt(deltaEl && deltaEl.value, 10);
-                const note = (noteEl && noteEl.value ? noteEl.value : '').trim();
+                const popup = Swal.getPopup();
+                if (!popup) {
+                    Swal.showValidationMessage('Popup non disponibile');
+                    return false;
+                }
+                const deltaEl = popup.querySelector('#tempo-delta');
+                const noteEl = popup.querySelector('#tempo-delta-note');
+                const delta = parseInt(deltaEl ? deltaEl.value : '', 10);
+                // legge value e anche textContent per sicurezza
+                let note = '';
+                if (noteEl) {
+                    note = (noteEl.value != null ? String(noteEl.value) : '');
+                    if (!note.trim() && noteEl.textContent) note = String(noteEl.textContent);
+                }
+                note = note.trim();
                 if (isNaN(delta) || delta === 0) {
-                    Swal.showValidationMessage('Inserisci un numero di giorni diverso da zero');
+                    Swal.showValidationMessage('Inserisci un numero di giorni diverso da zero (es. 2 oppure -1)');
                     return false;
                 }
                 if (!note) {
-                    Swal.showValidationMessage('Scrivi il motivo dell\'aggiustamento');
+                    Swal.showValidationMessage('Scrivi il motivo: senza motivo non si salva');
                     return false;
                 }
+                // oggetto esplicito
                 return { delta: delta, note: note };
             }
         }).then(result => {
-            if (!result.isConfirmed || !result.value) return;
-            const delta = result.value.delta;
-            const note = result.value.note;
+            if (!result.isConfirmed) return;
+            const v = result.value;
+            if (!v || typeof v !== 'object') {
+                showToast('Errore: dati form non letti');
+                return;
+            }
+            const delta = v.delta;
+            const note = (v.note || '').trim();
+            if (!note) {
+                showToast('Motivo mancante, operazione annullata');
+                return;
+            }
             applyTempoDaysDelta(id, delta, note);
         });
     });
 }
 
-/** Rilegge il doc da Firestore, applica delta e salva notes + history col motivo */
 function applyTempoDaysDelta(id, delta, note) {
-    const reason = (note && String(note).trim()) ? String(note).trim() : 'aggiustamento durata';
+    const reason = String(note || '').trim();
+    if (!reason) {
+        showToast('Motivo mancante');
+        return;
+    }
     db.collection('tempi').doc(id).get().then(doc => {
         if (!doc.exists) {
             showToast('Tempo non trovato');
             return;
         }
         const t = doc.data();
-        const newDays = Math.max(1, (Number(t.days) || 1) + delta);
+        const newDays = Math.max(1, (Number(t.days) || 1) + Number(delta));
         const endDate = computeTempoEndDate(t.startDate, newDays);
         const expired = tempoIsExpired(endDate);
         const stamp = formatDateTime(new Date().toISOString()) || new Date().toLocaleString('it-IT');
@@ -5756,7 +5778,7 @@ function applyTempoDaysDelta(id, delta, note) {
 
         const entry = {
             at: new Date().toISOString(),
-            delta: delta,
+            delta: Number(delta),
             daysAfter: newDays,
             reason: reason
         };
@@ -5771,14 +5793,25 @@ function applyTempoDaysDelta(id, delta, note) {
             history: hist,
             lastAdjustReason: reason,
             lastAdjustAt: entry.at,
-            lastAdjustDelta: delta
+            lastAdjustDelta: Number(delta)
         };
         if (expired && t.status !== 'terminato') {
             update.completedAt = new Date().toISOString();
         }
 
         return db.collection('tempi').doc(id).update(update).then(() => {
-            showToast((delta > 0 ? '+' : '') + delta + ' g. · ' + reason);
+            showToast('Salvato: ' + (delta > 0 ? '+' : '') + delta + ' g. — ' + reason);
+            // conferma visibile del motivo salvato
+            Swal.fire({
+                icon: 'success',
+                title: 'Aggiustamento salvato',
+                html: '<p style="text-align:left;"><b>Giorni:</b> ' + (delta > 0 ? '+' : '') + delta +
+                    ' → totale ' + newDays + ' gg</p>' +
+                    '<p style="text-align:left;margin-top:8px;"><b style="color:#fbbf24;">Motivo:</b> ' +
+                    String(reason).replace(/</g, '&lt;') + '</p>',
+                background: '#131a25',
+                confirmButtonText: 'OK'
+            });
         });
     }).catch(err => {
         console.error('applyTempoDaysDelta', err);
