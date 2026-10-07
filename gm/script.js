@@ -1704,7 +1704,7 @@ function loadPlayers() {
                             ? formatPunizioneFlagHtml(p.id, p.name)
                             : '';
                         const feraleBadge = p.ferale
-                            ? '<div class="status ferale-status">🐺 Ferale</div>'
+                            ? '<div class="status ferale-status">🦇 Ferale</div>'
                             : '';
 
                         const filterText = [p.name, p.notes, p.grado, (p.quests || []).join(' '), p.ferale ? 'ferale' : ''].filter(Boolean).join(' ');
@@ -1745,7 +1745,7 @@ function loadPlayers() {
                                         onclick="togglePlayerFerale('${p.id}')"
                                         title="Attiva/disattiva flag Ferale"
                                     >
-                                        🐺
+                                        🦇
                                     </button>
                                     <button
                                         class="btn-move-player"
