@@ -112,6 +112,24 @@ function escapeAttr(s) {
         .replace(/>/g, '&gt;');
 }
 
+/** Tipo uscita: rito | uscita_ospitato | reietto | null */
+function resolveExitType(p) {
+    if (!p) return null;
+    if (p.exitType) return p.exitType;
+    if (p.ritoDellaCarne) return 'rito';
+    if (p.uscitaOspitato) return 'uscita_ospitato';
+    if (p.reietto) return 'reietto';
+    return null;
+}
+
+/** Classe CSS card in base al tipo uscita */
+function exitCardClass(exitType) {
+    if (exitType === 'uscita_ospitato') return 'card card-uscita';
+    if (exitType === 'reietto') return 'card card-reietto';
+    if (exitType === 'rito') return 'card card-rito';
+    return 'card';
+}
+
 function buildSearchBarHtml(sectionKey, placeholder) {
     const raw = typeof listFilters[sectionKey] === 'string'
         ? listFilters[sectionKey]
@@ -176,7 +194,8 @@ function buildRitoFilterBarHtml() {
     const tipos = [
         { key: 'all', label: 'Tutti' },
         { key: 'rito', label: 'Rito della Carne' },
-        { key: 'uscita_ospitato', label: 'Uscita Ospitato' }
+        { key: 'uscita_ospitato', label: 'Uscita Ospitato' },
+        { key: 'reietto', label: 'Reietto' }
     ];
     const chips = tipos.map(t => {
         const isActive = f.tipo === t.key;
@@ -1615,8 +1634,8 @@ function loadPlayers() {
                 const playerItems = [];
                 playersSnapshot.forEach(doc => {
                     const p = doc.data();
-                    // Esclusi da Giocatori: rito / uscita ospitato → solo in "Uscite & Riti"
-                    const exitType = p.exitType || (p.ritoDellaCarne ? 'rito' : (p.uscitaOspitato ? 'uscita_ospitato' : null));
+                    // Esclusi da Giocatori: rito / uscita ospitato / reietto → solo in "Uscite & Riti"
+                    const exitType = resolveExitType(p);
                     if (exitType) return;
                     if (p.folderId === currentPlayersFolder.id) {
                         playerItems.push({ id: doc.id, ...p });
@@ -1631,11 +1650,9 @@ function loadPlayers() {
                             activeQuestsHTML = '<span style="color: var(--muted); font-size:13px;">Nessuna quest attiva</span>';
                         }
 
-                        const exitType = p.exitType || (p.ritoDellaCarne ? 'rito' : (p.uscitaOspitato ? 'uscita_ospitato' : null));
+                        const exitType = resolveExitType(p);
                         const isExit = !!exitType;
-                        const cardClass = isExit
-                            ? (exitType === 'uscita_ospitato' ? 'card card-uscita' : 'card card-rito')
-                            : 'card';
+                        const cardClass = isExit ? exitCardClass(exitType) : 'card';
                         let exitBadge = '';
                         if (exitType === 'rito') {
                             const d = p.exitDate || p.ritoDate;
@@ -1643,6 +1660,10 @@ function loadPlayers() {
                         } else if (exitType === 'uscita_ospitato') {
                             const d = p.exitDate;
                             exitBadge = `<div class="status uscita-status" title="Uscita ospitato"><i class="fa-solid fa-door-open"></i> Uscita Ospitato${d ? ' · ' + new Date(d).toLocaleDateString('it-IT') : ''}${p.memoriaCancellata ? ' · 🧠×' : ''}</div>`;
+                        } else if (exitType === 'reietto') {
+                            const d = p.exitDate;
+                            const cacciaLabel = p.cacciaAperta ? ' · 🎯 Caccia aperta' : ' · 🌫️ Allontanato';
+                            exitBadge = `<div class="status reietto-status" title="Reietto"><i class="fa-solid fa-user-slash"></i> Reietto${d ? ' · ' + new Date(d).toLocaleDateString('it-IT') : ''}${cacciaLabel}${p.memoriaCancellata ? ' · 🧠×' : ''}</div>`;
                         }
                         if (p.exitNotes) {
                             const safeNotes = String(p.exitNotes).replace(/</g, '&lt;');
@@ -1722,7 +1743,7 @@ function loadPlayers() {
 
                 playersSnapshot.forEach(doc => {
                     const p = doc.data();
-                    const exitType = p.exitType || (p.ritoDellaCarne ? 'rito' : (p.uscitaOspitato ? 'uscita_ospitato' : null));
+                    const exitType = resolveExitType(p);
                     if (exitType) return;
 
                     totalActive++;
@@ -1831,7 +1852,7 @@ function openPlayerModal(playerId) {
 
             if (!playerDoc.exists) return;
             const player = playerDoc.data();
-            const exitType = player.exitType || (player.ritoDellaCarne ? 'rito' : (player.uscitaOspitato ? 'uscita_ospitato' : null));
+            const exitType = resolveExitType(player);
             const isExit = !!exitType;
 
             db.collection('quests').get().then(snapshot => {
@@ -1860,19 +1881,34 @@ function openPlayerModal(playerId) {
 
                 let exitInfo = '';
                 if (isExit) {
-                    const label = exitType === 'uscita_ospitato' ? 'Uscita Ospitato' : 'Rito della Carne';
-                    const color = exitType === 'uscita_ospitato' ? '#38bdf8' : '#a78bfa';
+                    let label = 'Rito della Carne';
+                    let color = '#a78bfa';
+                    let icon = '💀';
+                    if (exitType === 'uscita_ospitato') {
+                        label = 'Uscita Ospitato';
+                        color = '#38bdf8';
+                        icon = '🚪';
+                    } else if (exitType === 'reietto') {
+                        label = 'Reietto';
+                        color = '#f97316';
+                        icon = '🩸';
+                    }
                     const d = player.exitDate || player.ritoDate;
                     const mem = player.memoriaCancellata
                         ? '<br><span style="color:#f87171;">🧠× Memoria cancellata</span>'
+                        : '';
+                    const cacciaLine = exitType === 'reietto'
+                        ? (player.cacciaAperta
+                            ? '<br><span style="color:#fbbf24;">🎯 Caccia aperta — i giocatori lo stanno cercando</span>'
+                            : '<br><span style="color:#9ca3af;">🌫️ Allontanato da solo — sparito dalla dinastia</span>')
                         : '';
                     const notes = player.exitNotes
                         ? `<br><small style="color:#9ca3af;"><i>${String(player.exitNotes).replace(/</g,'&lt;')}</i></small>`
                         : '';
                     exitInfo = `<div style="margin:10px 0 14px;padding:10px 12px;background:rgba(139,92,246,0.1);border:1px solid rgba(139,92,246,0.3);border-left:3px solid ${color};text-align:left;">
-                            <b style="color:${color};">${exitType === 'uscita_ospitato' ? '🚪' : '💀'} ${label}</b>
+                            <b style="color:${color};">${icon} ${label}</b>
                             <br><small style="color:#9ca3af;">${d ? 'Data: ' + new Date(d).toLocaleString('it-IT') : 'Data non registrata'}. Frammenti e storico restano intatti.</small>
-                            ${mem}${notes}
+                            ${cacciaLine}${mem}${notes}
                        </div>`;
                 } else {
                     exitInfo = `<div style="margin:10px 0 14px;text-align:left;display:flex;flex-direction:column;gap:8px;">
@@ -1882,12 +1918,16 @@ function openPlayerModal(playerId) {
                             <button type="button" id="btn-reg-uscita" class="swal2-styled" style="background:transparent;border:1px solid #38bdf8;color:#38bdf8;width:100%;padding:10px;cursor:pointer;font-weight:700;text-transform:uppercase;letter-spacing:1px;">
                                 🚪 Registra Uscita Ospitato
                             </button>
+                            <button type="button" id="btn-reg-reietto" class="swal2-styled" style="background:transparent;border:1px solid #f97316;color:#f97316;width:100%;padding:10px;cursor:pointer;font-weight:700;text-transform:uppercase;letter-spacing:1px;">
+                                🩸 Registra Reietto
+                            </button>
                             <p style="font-size:12px;color:#9ca3af;margin:0;">Puoi aggiungere note e segnare la cancellazione memoria (RP). I dati restano salvati.</p>
                        </div>`;
                 }
 
                 const titleSuffix = exitType === 'rito' ? ' · Fuori dinastia'
-                    : (exitType === 'uscita_ospitato' ? ' · Uscita ospitato' : '');
+                    : (exitType === 'uscita_ospitato' ? ' · Uscita ospitato'
+                    : (exitType === 'reietto' ? ' · Reietto' : ''));
 
                 const gradoVal = player.grado || '';
                 const gradoOptions = ['', 'Ekaton', 'Mentore', 'Adulta', 'Adulto', 'Neonata', 'Neonato', 'Ospite']
@@ -1947,6 +1987,13 @@ function openPlayerModal(playerId) {
                             btnUscita.addEventListener('click', () => {
                                 Swal.close();
                                 registerPlayerExit(playerId, player.name, 'uscita_ospitato');
+                            });
+                        }
+                        const btnReietto = document.getElementById('btn-reg-reietto');
+                        if (btnReietto) {
+                            btnReietto.addEventListener('click', () => {
+                                Swal.close();
+                                registerPlayerExit(playerId, player.name, 'reietto');
                             });
                         }
                         const btnMove = document.getElementById('btn-move-from-modal');
@@ -2091,7 +2138,7 @@ function repairOrphanPlayers() {
         const orphans = [];
         playersSnap.forEach(doc => {
             const p = doc.data();
-            const exitType = p.exitType || (p.ritoDellaCarne ? 'rito' : (p.uscitaOspitato ? 'uscita_ospitato' : null));
+            const exitType = resolveExitType(p);
             if (exitType) return;
             const fid = p.folderId || '';
             if (!fid || !validIds.has(fid)) {
@@ -2248,19 +2295,43 @@ function deletePlayersFolder(folderId, folderName) {
 }
 
 /**
- * Registra uscita: Rito della Carne oppure Uscita Ospitato.
+ * Registra uscita: Rito della Carne, Uscita Ospitato oppure Reietto.
  * - exitNotes: note libere
  * - memoriaCancellata: flag RP (il personaggio non ricorda nulla) — NON cancella dati dal DB
+ * - cacciaAperta (solo reietto): true = caccia aperta, false = allontanato da solo
  * Frammenti, quest e note restano intatti.
- * @param {'rito'|'uscita_ospitato'} type
+ * @param {'rito'|'uscita_ospitato'|'reietto'} type
  */
 function registerPlayerExit(playerId, playerName, type) {
     const isRito = type === 'rito';
-    const title = isRito ? 'Rito della Carne' : 'Uscita Ospitato';
-    const accent = isRito ? '#a78bfa' : '#38bdf8';
+    const isUscita = type === 'uscita_ospitato';
+    const isReietto = type === 'reietto';
+    const title = isRito ? 'Rito della Carne' : (isUscita ? 'Uscita Ospitato' : 'Reietto');
+    const accent = isRito ? '#a78bfa' : (isUscita ? '#38bdf8' : '#f97316');
+    const confirmColor = isRito ? '#7c3aed' : (isUscita ? '#0284c7' : '#ea580c');
     const desc = isRito
         ? "Segna l'uscita dalla <b>dinastia</b>."
-        : 'Segna la fine del periodo da <b>ospitato</b>.';
+        : (isUscita
+            ? 'Segna la fine del periodo da <b>ospitato</b>.'
+            : "Segna il player come <b>reietto</b>: si è allontanato (caccia aperta oppure sparito da solo).");
+
+    const cacciaBlock = isReietto ? `
+            <label style="display:block;text-align:left;margin:14px 0 6px;color:#c5a059;font-size:13px;font-weight:600;">
+                Modalità Reietto <span style="color:#ef4444;">*</span>
+            </label>
+            <div style="display:flex;flex-direction:column;gap:8px;text-align:left;margin-bottom:4px;">
+                <label style="display:flex;align-items:flex-start;gap:10px;cursor:pointer;color:#fbbf24;font-size:13px;font-weight:600;padding:10px 12px;border:1px solid rgba(251,191,36,0.35);border-radius:8px;background:rgba(251,191,36,0.06);">
+                    <input type="radio" name="reietto-modo" id="reietto-caccia" value="caccia" checked style="width:auto;margin:3px 0 0;accent-color:#fbbf24;flex-shrink:0;">
+                    <span>🎯 Caccia aperta<br>
+                    <small style="color:#9ca3af;font-weight:400;">Il player è stato allontanato e i giocatori lo stanno cercando.</small></span>
+                </label>
+                <label style="display:flex;align-items:flex-start;gap:10px;cursor:pointer;color:#a0a0a0;font-size:13px;font-weight:600;padding:10px 12px;border:1px solid rgba(156,163,175,0.3);border-radius:8px;background:rgba(0,0,0,0.25);">
+                    <input type="radio" name="reietto-modo" id="reietto-solo" value="solo" style="width:auto;margin:3px 0 0;accent-color:#9ca3af;flex-shrink:0;">
+                    <span>🌫️ Allontanato da solo<br>
+                    <small style="color:#9ca3af;font-weight:400;">È sparito dalla dinastia senza caccia attiva.</small></span>
+                </label>
+            </div>
+        ` : '';
 
     Swal.fire({
         title: title,
@@ -2272,6 +2343,7 @@ function registerPlayerExit(playerId, playerName, type) {
             <p style="text-align:left;font-size:0.9rem;color:#9ca3af;margin-top:8px;">
                 ${desc} Scompare dalle cartelle <b>Giocatori</b> (Vampiri/Ospiti) e resta solo in <b>Uscite &amp; Riti</b>. Frammenti, quest e note restano salvati.
             </p>
+            ${cacciaBlock}
             <label style="display:block;text-align:left;margin:14px 0 4px;color:#c5a059;font-size:13px;font-weight:600;">
                 Note sull'uscita
             </label>
@@ -2287,37 +2359,54 @@ function registerPlayerExit(playerId, playerName, type) {
         showCancelButton: true,
         confirmButtonText: 'Conferma',
         cancelButtonText: 'Annulla',
-        confirmButtonColor: isRito ? '#7c3aed' : '#0284c7',
+        confirmButtonColor: confirmColor,
         background: '#131a25',
         preConfirm: () => {
+            let cacciaAperta = null;
+            if (isReietto) {
+                const checked = document.querySelector('input[name="reietto-modo"]:checked');
+                if (!checked) {
+                    Swal.showValidationMessage('Seleziona se c’è caccia aperta oppure allontanato da solo');
+                    return false;
+                }
+                cacciaAperta = checked.value === 'caccia';
+            }
             return {
                 notes: (document.getElementById('exit-notes').value || '').trim(),
-                memoria: !!(document.getElementById('exit-memoria') && document.getElementById('exit-memoria').checked)
+                memoria: !!(document.getElementById('exit-memoria') && document.getElementById('exit-memoria').checked),
+                cacciaAperta
             };
         }
     }).then(result => {
         if (!result.isConfirmed || !result.value) return;
 
-        const { notes, memoria } = result.value;
+        const { notes, memoria, cacciaAperta } = result.value;
         const exitDate = new Date().toISOString();
 
         // Flag uscita + esci dalla cartella Giocatori (resta solo in Uscite & Riti)
         db.collection('players').doc(playerId).get().then(snap => {
             const prev = snap.exists ? (snap.data() || {}) : {};
             const prevFolderId = prev.folderId || null;
-            return db.collection('players').doc(playerId).update({
+            const payload = {
                 exitType: type,
                 exitDate,
                 exitNotes: notes,
                 memoriaCancellata: !!memoria,
                 ritoDellaCarne: isRito,
-                uscitaOspitato: !isRito,
+                uscitaOspitato: isUscita,
+                reietto: isReietto,
                 ritoDate: isRito ? exitDate : null,
+                cacciaAperta: isReietto ? !!cacciaAperta : null,
                 previousFolderId: prevFolderId,
                 folderId: null
-            });
+            };
+            return db.collection('players').doc(playerId).update(payload);
         }).then(() => {
-            showToast(title + ' registrato per ' + (playerName || 'player'));
+            let toastMsg = title + ' registrato per ' + (playerName || 'player');
+            if (isReietto) {
+                toastMsg += cacciaAperta ? ' (caccia aperta)' : ' (allontanato da solo)';
+            }
+            showToast(toastMsg);
             if (typeof loadPlayers === 'function') loadPlayers();
             if (typeof loadRitoPlayers === 'function') loadRitoPlayers();
         });
@@ -2351,6 +2440,8 @@ function undoPlayerExit(playerId, playerName) {
                 memoriaCancellata: false,
                 ritoDellaCarne: false,
                 uscitaOspitato: false,
+                reietto: false,
+                cacciaAperta: null,
                 ritoDate: null,
                 folderId: restoreFolder,
                 previousFolderId: null
@@ -2367,7 +2458,7 @@ function undoRitoDellaCarne(playerId, playerName) {
     undoPlayerExit(playerId, playerName);
 }
 
-/** Sezione dedicata: player con Rito della Carne o Uscita Ospitato */
+/** Sezione dedicata: player con Rito della Carne, Uscita Ospitato o Reietto */
 function loadRitoPlayers() {
     const container = document.getElementById('rito-list');
     if (!container) return;
@@ -2376,7 +2467,7 @@ function loadRitoPlayers() {
         const items = [];
         playersSnapshot.forEach(doc => {
             const p = doc.data();
-            const exitType = p.exitType || (p.ritoDellaCarne ? 'rito' : (p.uscitaOspitato ? 'uscita_ospitato' : null));
+            const exitType = resolveExitType(p);
             if (exitType) items.push({ id: doc.id, ...p, _exitType: exitType });
         });
         sortAlpha(items, 'name');
@@ -2386,7 +2477,7 @@ function loadRitoPlayers() {
             container.innerHTML = `
                 <p style="color:var(--text-dim);padding:16px;">
                     Nessuna uscita registrata.
-                    Da Giocatori → Apri player → «Rito della Carne» o «Uscita Ospitato».
+                    Da Giocatori → Apri player → «Rito della Carne», «Uscita Ospitato» o «Reietto».
                 </p>`;
             return;
         }
@@ -2402,29 +2493,34 @@ function loadRitoPlayers() {
                 activeQuestsHTML = '<span style="color: var(--muted); font-size:13px;">Nessuna quest attiva</span>';
             }
             const exitType = p._exitType;
-            const isUscita = exitType === 'uscita_ospitato';
             const d = p.exitDate || p.ritoDate;
             const dateLabel = d
                 ? new Date(d).toLocaleDateString('it-IT', { day: '2-digit', month: 'short', year: 'numeric' })
                 : '—';
-            const badgeClass = isUscita ? 'uscita-status' : 'rito-status';
-            const badgeText = isUscita
-                ? `🚪 Uscita Ospitato · ${dateLabel}`
-                : `💀 Rito della Carne · ${dateLabel}`;
+            let badgeClass = 'rito-status';
+            let badgeText = `💀 Rito della Carne · ${dateLabel}`;
+            if (exitType === 'uscita_ospitato') {
+                badgeClass = 'uscita-status';
+                badgeText = `🚪 Uscita Ospitato · ${dateLabel}`;
+            } else if (exitType === 'reietto') {
+                badgeClass = 'reietto-status';
+                const cacciaPart = p.cacciaAperta ? '🎯 Caccia aperta' : '🌫️ Allontanato';
+                badgeText = `🩸 Reietto · ${dateLabel} · ${cacciaPart}`;
+            }
             const memBadge = p.memoriaCancellata
                 ? `<div class="status memoria-status">🧠× Memoria cancellata</div>`
                 : '';
             const notesHtml = p.exitNotes
                 ? `<p class="exit-notes-preview"><i class="fa-solid fa-note-sticky"></i> ${String(p.exitNotes).replace(/</g,'&lt;')}</p>`
                 : '';
-            const cardClass = isUscita ? 'card card-uscita' : 'card card-rito';
+            const cardClass = exitCardClass(exitType);
             const safeName = (p.name || '').replace(/'/g, "\\'");
 
             const gradoBadgeRito = p.grado
                 ? `<div class="status grado-status grado-${String(p.grado).toLowerCase()}">${p.grado}</div>`
                 : '';
 
-            const ritoFilterText = [p.name, p.notes, p.exitNotes, p.grado, badgeText].filter(Boolean).join(' ');
+            const ritoFilterText = [p.name, p.notes, p.exitNotes, p.grado, badgeText, exitType === 'reietto' ? (p.cacciaAperta ? 'caccia' : 'allontanato') : ''].filter(Boolean).join(' ');
             container.innerHTML += `
                 <div class="${cardClass}" data-filter-text="${escapeAttr(ritoFilterText)}" data-exit-type="${escapeAttr(exitType)}">
                     <h3>${p.name}</h3>
@@ -3641,8 +3737,8 @@ function addFrammentoForEvent(eventId) {
         playersSnap.forEach(doc => {
             const p = doc.data();
             if (!p.name) return;
-            // escludi uscite registrate (rito / uscita ospitato)
-            if (p.exitType === 'rito' || p.exitType === 'uscita_ospitato' || p.rito === true) return;
+            // escludi uscite registrate (rito / uscita ospitato / reietto)
+            if (resolveExitType(p) || p.rito === true) return;
             if (!isRepeatable) {
                 const key = String(p.name).trim().toLowerCase();
                 if (alreadyAssigned.has(key)) return;

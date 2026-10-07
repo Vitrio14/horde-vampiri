@@ -1196,6 +1196,28 @@ footer {
     box-shadow: inset 5px 0 15px rgba(56, 189, 248, 0.15);
     margin-bottom: 8px;
 }
+
+/* ========== REIETTO ========== */
+.card-reietto {
+    border-color: rgba(249, 115, 22, 0.5) !important;
+    background: linear-gradient(135deg, rgba(50, 25, 10, 0.9), rgba(10, 10, 10, 0.92)) !important;
+    box-shadow: 0 8px 32px rgba(0, 0, 0, 0.9), 0 0 24px rgba(249, 115, 22, 0.12) !important;
+}
+.card-reietto:hover {
+    border-color: rgba(251, 146, 60, 0.75) !important;
+    box-shadow: 0 10px 30px rgba(0, 0, 0, 0.9), inset 0 0 20px rgba(249, 115, 22, 0.08) !important;
+}
+.card-reietto h3 {
+    color: #fb923c !important;
+}
+.status.reietto-status {
+    background: rgba(249, 115, 22, 0.14);
+    color: #fb923c;
+    border-color: #f97316;
+    box-shadow: inset 5px 0 15px rgba(249, 115, 22, 0.18);
+    margin-bottom: 8px;
+}
+
 .status.memoria-status {
     background: rgba(239, 68, 68, 0.12);
     color: #f87171;
