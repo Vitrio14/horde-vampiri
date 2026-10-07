@@ -1788,3 +1788,96 @@ span.exit-type-badge {
 .btn-ferale::before {
     background: linear-gradient(90deg, #c2410c, #f97316) !important;
 }
+
+
+/* ========== TEMPI: gruppi per tipo + azioni post-scadenza ========== */
+.tempi-group-header {
+    grid-column: 1 / -1;
+    margin: 8px 0 4px;
+    padding: 10px 14px;
+    background: rgba(18, 18, 18, 0.75);
+    border: 1px solid var(--glass-border);
+    border-left: 4px solid #38bdf8;
+    border-radius: 0 10px 0 10px;
+}
+.tempi-group-header[data-tempo-group="neonato_adulto"] {
+    border-left-color: #60a5fa;
+}
+.tempi-group-header[data-tempo-group="forma_ferale"] {
+    border-left-color: #fb923c;
+}
+.tempi-group-header[data-tempo-group="custom"] {
+    border-left-color: #a78bfa;
+}
+.tempi-group-title {
+    font-family: 'Cinzel', serif;
+    color: var(--gold-accent);
+    font-size: 0.95rem;
+    letter-spacing: 1px;
+    margin: 0;
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    flex-wrap: wrap;
+}
+.tempi-group-title i {
+    color: #38bdf8;
+}
+.tempi-group-header[data-tempo-group="neonato_adulto"] .tempi-group-title i { color: #60a5fa; }
+.tempi-group-header[data-tempo-group="forma_ferale"] .tempi-group-title i { color: #fb923c; }
+.tempi-group-header[data-tempo-group="custom"] .tempi-group-title i { color: #a78bfa; }
+.tempi-group-count {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    min-width: 22px;
+    height: 22px;
+    padding: 0 7px;
+    font-size: 0.7rem;
+    font-weight: 700;
+    font-family: 'Quicksand', sans-serif;
+    letter-spacing: 0;
+    border-radius: 100px;
+    background: rgba(197, 160, 89, 0.15);
+    border: 1px solid rgba(197, 160, 89, 0.35);
+    color: var(--gold-accent);
+}
+.filter-chips-label {
+    color: var(--text-dim);
+    font-size: 0.7rem;
+    font-weight: 700;
+    text-transform: uppercase;
+    letter-spacing: 0.8px;
+    margin-right: 4px;
+    align-self: center;
+}
+.btn-tempo-promote {
+    border-color: rgba(59, 130, 246, 0.55) !important;
+    color: #60a5fa !important;
+    padding: 8px 10px !important;
+    font-size: 0.7rem !important;
+    flex: 0 0 auto !important;
+    white-space: nowrap;
+}
+.btn-tempo-promote:hover {
+    border-color: #60a5fa !important;
+    color: #fff !important;
+}
+.btn-tempo-promote::before {
+    background: linear-gradient(90deg, #1d4ed8, #3b82f6) !important;
+}
+.btn-tempo-ferale {
+    border-color: rgba(249, 115, 22, 0.55) !important;
+    color: #fb923c !important;
+    padding: 8px 10px !important;
+    font-size: 0.7rem !important;
+    flex: 0 0 auto !important;
+    white-space: nowrap;
+}
+.btn-tempo-ferale:hover {
+    border-color: #fb923c !important;
+    color: #fff !important;
+}
+.btn-tempo-ferale::before {
+    background: linear-gradient(90deg, #c2410c, #f97316) !important;
+}

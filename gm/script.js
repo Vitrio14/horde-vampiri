@@ -71,7 +71,7 @@ const listFilters = {
     admin: '',
     players: { text: '', grado: 'all' },
     rito: { text: '', tipo: 'all' },
-    tempi: { text: '', status: 'all' }
+    tempi: { text: '', status: 'attivo', tipo: 'all' }
 };
 
 const SECTION_LIST_IDS = {
@@ -275,13 +275,17 @@ function applyListFilter(sectionKey) {
     let gradoFilter = null;
     let tipoFilter = null;
     let statusFilter = null;
+    let tempoTipoFilter = null;
     if (typeof listFilters[sectionKey] === 'string') {
         query = listFilters[sectionKey];
     } else if (listFilters[sectionKey]) {
         query = listFilters[sectionKey].text || '';
         if (sectionKey === 'players') gradoFilter = listFilters[sectionKey].grado;
         if (sectionKey === 'rito') tipoFilter = listFilters[sectionKey].tipo;
-        if (sectionKey === 'tempi') statusFilter = listFilters[sectionKey].status;
+        if (sectionKey === 'tempi') {
+            statusFilter = listFilters[sectionKey].status;
+            tempoTipoFilter = listFilters[sectionKey].tipo;
+        }
     }
 
     let visible = 0;
@@ -305,10 +309,30 @@ function applyListFilter(sectionKey) {
             const st = el.getAttribute('data-tempo-status') || '';
             show = (st === statusFilter);
         }
+        if (show && tempoTipoFilter != null && tempoTipoFilter !== 'all') {
+            const tt = el.getAttribute('data-tempo-tipo') || '';
+            show = (tt === tempoTipoFilter);
+        }
 
         el.style.display = show ? '' : 'none';
         if (show) visible++;
     });
+
+    // Sezioni raggruppate Tempi: nascondi header se nessun card del gruppo è visibile
+    if (sectionKey === 'tempi') {
+        container.querySelectorAll('.tempi-group-header').forEach(hdr => {
+            let next = hdr.nextElementSibling;
+            let any = false;
+            while (next && !next.classList.contains('tempi-group-header') && !next.classList.contains('section-filter-bar')) {
+                if (next.classList.contains('card') && next.style.display !== 'none' && next.hasAttribute('data-tempo-status')) {
+                    any = true;
+                    break;
+                }
+                next = next.nextElementSibling;
+            }
+            hdr.style.display = any ? '' : 'none';
+        });
+    }
 
     // Messaggio "nessun risultato"
     let emptyMsg = container.querySelector('.filter-empty-msg');
@@ -5305,17 +5329,27 @@ function tempoReadyMessage(t) {
 }
 
 function buildTempiFilterBarHtml() {
-    const f = listFilters.tempi || { text: '', status: 'all' };
+    const f = listFilters.tempi || { text: '', status: 'attivo', tipo: 'all' };
     const val = escapeAttr(f.text || '');
     const hasVal = !!(f.text && String(f.text).trim());
     const statuses = [
-        { key: 'all', label: 'Tutti' },
         { key: 'attivo', label: 'Attivi' },
-        { key: 'terminato', label: 'Terminati' }
+        { key: 'terminato', label: 'Terminati' },
+        { key: 'all', label: 'Tutti' }
     ];
-    const chips = statuses.map(s => {
+    const statusChips = statuses.map(s => {
         const isActive = f.status === s.key;
-        return `<button type="button" class="filter-chip ${isActive ? 'active' : ''}" onclick="onTempiStatusFilter('${s.key}')">${s.label}</button>`;
+        return `<button type="button" class="filter-chip ${isActive ? 'active' : ''}" data-tempi-status-chip="${s.key}" onclick="onTempiStatusFilter('${s.key}')">${s.label}</button>`;
+    }).join('');
+    const tipos = [
+        { key: 'all', label: 'Tutti i tipi' },
+        { key: 'neonato_adulto', label: 'Neonato → Adulto' },
+        { key: 'forma_ferale', label: 'Forma Ferale' },
+        { key: 'custom', label: 'Personalizzati' }
+    ];
+    const tipoChips = tipos.map(t => {
+        const isActive = f.tipo === t.key;
+        return `<button type="button" class="filter-chip ${isActive ? 'active' : ''}" data-tempi-tipo-chip="${t.key}" onclick="onTempiTipoFilter('${t.key}')">${t.label}</button>`;
     }).join('');
     return `
         <div class="section-filter-bar" style="grid-column: 1 / -1;" data-filter-bar="tempi">
@@ -5328,7 +5362,14 @@ function buildTempiFilterBarHtml() {
                     oninput="onSectionSearch('tempi', this.value)">
                 ${hasVal ? `<button type="button" class="filter-clear-btn" onclick="clearSectionSearch('tempi')" title="Pulisci ricerca">×</button>` : ''}
             </div>
-            <div class="section-filter-chips">${chips}</div>
+            <div class="section-filter-chips" style="margin-bottom:4px;">
+                <span class="filter-chips-label">Stato:</span>
+                ${statusChips}
+            </div>
+            <div class="section-filter-chips">
+                <span class="filter-chips-label">Tipo:</span>
+                ${tipoChips}
+            </div>
         </div>`;
 }
 
@@ -5336,11 +5377,19 @@ function onTempiStatusFilter(key) {
     listFilters.tempi.status = key;
     const bar = document.querySelector('[data-filter-bar="tempi"]');
     if (bar) {
-        bar.querySelectorAll('.filter-chip').forEach(btn => {
-            const onclick = btn.getAttribute('onclick') || '';
-            const m = onclick.match(/onTempiStatusFilter\\('([^']+)'\\)/);
-            const k = m ? m[1] : '';
-            btn.classList.toggle('active', k === key);
+        bar.querySelectorAll('[data-tempi-status-chip]').forEach(btn => {
+            btn.classList.toggle('active', btn.getAttribute('data-tempi-status-chip') === key);
+        });
+    }
+    applyListFilter('tempi');
+}
+
+function onTempiTipoFilter(key) {
+    listFilters.tempi.tipo = key;
+    const bar = document.querySelector('[data-filter-bar="tempi"]');
+    if (bar) {
+        bar.querySelectorAll('[data-tempi-tipo-chip]').forEach(btn => {
+            btn.classList.toggle('active', btn.getAttribute('data-tempi-tipo-chip') === key);
         });
     }
     applyListFilter('tempi');
@@ -5819,6 +5868,72 @@ function applyTempoDaysDelta(id, delta, note) {
     });
 }
 
+
+/** Promuove grado player da Neonato/Neonata ad Adulto (da card Tempo terminato). */
+function promotePlayerFromTempo(playerId, playerName) {
+    if (!playerId) {
+        Swal.fire({ icon: 'warning', title: 'Player non collegato', text: 'Questo tempo non ha un playerId. Apri il player da Giocatori e aggiorna il grado manualmente.', background: '#131a25' });
+        return;
+    }
+    Swal.fire({
+        title: 'Promuovere ad Adulto?',
+        html: `<p style="text-align:left;">Il grado di <b>${String(playerName || '').replace(/</g, '&lt;')}</b> passerà da Neonato/Neonata a <b>Adulto</b> nella sezione Giocatori.</p>`,
+        icon: 'question',
+        showCancelButton: true,
+        confirmButtonText: 'Sì, promuovi',
+        cancelButtonText: 'Annulla',
+        background: '#131a25'
+    }).then(result => {
+        if (!result.isConfirmed) return;
+        db.collection('players').doc(playerId).get().then(doc => {
+            if (!doc.exists) {
+                showToast('Player non trovato');
+                return;
+            }
+            const cur = normalizeGradoKey(doc.data().grado);
+            if (cur === 'Adulto') {
+                showToast('Il player è già Adulto');
+                return;
+            }
+            db.collection('players').doc(playerId).update({ grado: 'Adulto' }).then(() => {
+                showToast((playerName || 'Player') + ' promosso ad Adulto');
+            });
+        });
+    });
+}
+
+/** Attiva flag Ferale sul player (da card Tempo Forma Ferale terminato). */
+function activateFeraleFromTempo(playerId, playerName) {
+    if (!playerId) {
+        Swal.fire({ icon: 'warning', title: 'Player non collegato', text: 'Questo tempo non ha un playerId. Usa il bottone Ferale sulla card del player in Giocatori.', background: '#131a25' });
+        return;
+    }
+    Swal.fire({
+        title: 'Attivare Ferale?',
+        html: `<p style="text-align:left;">Verrà attivato il flag <b>🦇 Ferale</b> su <b>${String(playerName || '').replace(/</g, '&lt;')}</b> nella sezione Giocatori.</p>`,
+        icon: 'question',
+        showCancelButton: true,
+        confirmButtonText: 'Sì, attiva Ferale',
+        cancelButtonText: 'Annulla',
+        background: '#131a25'
+    }).then(result => {
+        if (!result.isConfirmed) return;
+        db.collection('players').doc(playerId).get().then(doc => {
+            if (!doc.exists) {
+                showToast('Player non trovato');
+                return;
+            }
+            if (doc.data().ferale) {
+                showToast('Ferale già attivo su questo player');
+                return;
+            }
+            db.collection('players').doc(playerId).update({ ferale: true }).then(() => {
+                showToast('Flag Ferale attivato su ' + (playerName || 'player'));
+            });
+        });
+    });
+}
+
 let _tempiUnsub = null;
 
 
@@ -5894,11 +6009,12 @@ function loadTempi() {
             return;
         }
 
-        items.forEach(t => {
+        function renderTempoCard(t) {
             const status = t.status || 'attivo';
             const rem = tempoDaysRemaining(t.endDate);
             const meta = tempoTipoMeta(t.tipo);
-            const tipoDisplay = t.tipo === 'custom'
+            const tipoKey = t.tipo || 'custom';
+            const tipoDisplay = tipoKey === 'custom'
                 ? (t.tipoLabel || t.customLabel || 'Personalizzato')
                 : meta.label;
 
@@ -5917,15 +6033,26 @@ function loadTempi() {
             }
 
             const filterText = [t.playerName, tipoDisplay, t.notes, t.tipoLabel, status].filter(Boolean).join(' ');
-            const safeName = (t.playerName || '').replace(/'/g, "\\'");
 
             const punInfos = getActivePunizioniInfo(t.playerId, t.playerName);
             const hasPun = punInfos.length > 0;
             const punFlag = formatPunizioneFlagHtml(t.playerId, t.playerName);
             if (hasPun) cardExtraClass += ' card-tempo-punito';
 
-            container.innerHTML += `
-                <div class="card ${cardExtraClass}" data-filter-text="${escapeAttr(filterText)}" data-tempo-status="${escapeAttr(status)}">
+            // Azioni post-scadenza: promuovi Adulto / attiva Ferale
+            let postActionBtn = '';
+            if (status === 'terminato' && tipoKey === 'neonato_adulto') {
+                const pid = (t.playerId || '').replace(/'/g, "\\'");
+                const pname = String(t.playerName || '').replace(/\\/g, '\\\\').replace(/'/g, "\\'");
+                postActionBtn = `<button class="btn-tempo-promote" onclick="promotePlayerFromTempo('${pid}', '${pname}')" title="Imposta grado Adulto sul player in Giocatori">→ Adulto</button>`;
+            } else if (status === 'terminato' && tipoKey === 'forma_ferale') {
+                const pid = (t.playerId || '').replace(/'/g, "\\'");
+                const pname = String(t.playerName || '').replace(/\\/g, '\\\\').replace(/'/g, "\\'");
+                postActionBtn = `<button class="btn-tempo-ferale" onclick="activateFeraleFromTempo('${pid}', '${pname}')" title="Attiva flag Ferale sul player in Giocatori">🦇 Ferale</button>`;
+            }
+
+            return `
+                <div class="card ${cardExtraClass}" data-filter-text="${escapeAttr(filterText)}" data-tempo-status="${escapeAttr(status)}" data-tempo-tipo="${escapeAttr(tipoKey)}">
                     <h3>${t.playerName || '—'}</h3>
                     ${punFlag}
                     <p style="margin-bottom:4px;"><b>Tipo:</b> ${tipoDisplay}</p>
@@ -5946,6 +6073,7 @@ function loadTempi() {
                         <button class="edit-btn" onclick="editTempo('${t.id}')" title="Modifica">
                             Modifica
                         </button>
+                        ${postActionBtn}
                         ${status !== 'terminato'
                             ? `<button class="btn-tempo-done" onclick="markTempoTerminato('${t.id}')" title="Segna terminato">Fine</button>`
                             : `<button class="btn-tempo-reopen" onclick="reopenTempo('${t.id}')" title="Riapri">Riapri</button>`
@@ -5956,10 +6084,46 @@ function loadTempi() {
                     </div>
                 </div>
             `;
+        }
+
+        // Raggruppa per tipo: Neonato→Adulto, Forma Ferale, Personalizzati
+        const groups = [
+            { key: 'neonato_adulto', title: 'Neonato → Adulto', icon: 'fa-solid fa-user-graduate' },
+            { key: 'forma_ferale', title: 'Forma Ferale', icon: 'fa-solid fa-paw' },
+            { key: 'custom', title: 'Personalizzati', icon: 'fa-solid fa-sliders' }
+        ];
+
+        groups.forEach(g => {
+            const groupItems = items.filter(t => (t.tipo || 'custom') === g.key);
+            if (!groupItems.length) return;
+            container.innerHTML += `
+                <div class="tempi-group-header" data-tempo-group="${g.key}" style="grid-column:1/-1;">
+                    <h2 class="tempi-group-title"><i class="${g.icon}"></i> ${g.title} <span class="tempi-group-count">${groupItems.length}</span></h2>
+                </div>
+            `;
+            groupItems.forEach(t => {
+                container.innerHTML += renderTempoCard(t);
+            });
         });
+
+        // Eventuali tipi sconosciuti
+        const known = new Set(groups.map(g => g.key));
+        const other = items.filter(t => !known.has(t.tipo || 'custom'));
+        if (other.length) {
+            container.innerHTML += `
+                <div class="tempi-group-header" data-tempo-group="other" style="grid-column:1/-1;">
+                    <h2 class="tempi-group-title"><i class="fa-solid fa-question"></i> Altri <span class="tempi-group-count">${other.length}</span></h2>
+                </div>
+            `;
+            other.forEach(t => {
+                container.innerHTML += renderTempoCard(t);
+            });
+        }
+
         applyListFilter('tempi');
     });
 }
+
 
 
 auth.onAuthStateChanged(user => {
