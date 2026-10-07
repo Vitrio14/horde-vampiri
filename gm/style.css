@@ -1218,43 +1218,56 @@ footer {
     margin-bottom: 8px;
 }
 
-/* Badge uscita compatti (non escono dalla card) */
+/* Badge uscita compatti — restano DENTRO la card */
+.card-rito,
+.card-uscita,
+.card-reietto {
+    overflow: hidden !important;
+    min-width: 0 !important;
+}
 .exit-badge-stack {
     display: flex;
     flex-direction: column;
-    align-items: flex-start;
-    gap: 6px;
+    align-items: stretch;
+    gap: 5px;
+    width: 100%;
     max-width: 100%;
     margin: 4px 0 8px;
     min-width: 0;
-}
-.exit-type-badge {
-    max-width: 100% !important;
-    width: auto !important;
     box-sizing: border-box;
+}
+.exit-type-badge.status,
+span.exit-type-badge {
+    display: inline-block !important;
+    width: fit-content !important;
+    max-width: 100% !important;
+    box-sizing: border-box !important;
     white-space: nowrap;
     overflow: hidden;
     text-overflow: ellipsis;
     padding: 3px 8px !important;
-    font-size: 0.62rem !important;
+    font-size: 0.6rem !important;
     margin: 0 !important;
-    letter-spacing: 0.6px !important;
+    letter-spacing: 0.5px !important;
+    line-height: 1.3 !important;
 }
 .exit-meta-row {
     display: flex;
     flex-wrap: wrap;
-    gap: 4px 6px;
+    gap: 4px;
+    width: 100%;
     max-width: 100%;
     align-items: center;
+    min-width: 0;
 }
 .exit-meta-chip {
     display: inline-flex;
     align-items: center;
-    gap: 4px;
-    padding: 2px 7px;
-    font-size: 0.65rem;
+    gap: 3px;
+    padding: 2px 6px;
+    font-size: 0.6rem;
     font-weight: 600;
-    letter-spacing: 0.2px;
+    letter-spacing: 0.15px;
     border-radius: 4px;
     border: 1px solid rgba(255,255,255,0.1);
     background: rgba(0,0,0,0.35);
@@ -1263,10 +1276,7 @@ footer {
     max-width: 100%;
     font-family: 'Quicksand', sans-serif;
     text-transform: none;
-}
-.exit-meta-chip i {
-    font-size: 0.7em;
-    opacity: 0.9;
+    box-sizing: border-box;
 }
 .exit-meta-date {
     color: #d1d5db;
@@ -1280,11 +1290,40 @@ footer {
 .exit-meta-solo {
     color: #9ca3af;
     border-color: rgba(156, 163, 175, 0.3);
+    background: rgba(156, 163, 175, 0.08);
 }
 .exit-meta-mem {
     color: #f87171;
     border-color: rgba(248, 113, 113, 0.35);
     background: rgba(239, 68, 68, 0.1);
+}
+/* Riga dedicata Caccia / Allontanato — a capo sotto data */
+.exit-reietto-mode {
+    display: block;
+    width: 100%;
+    max-width: 100%;
+    box-sizing: border-box;
+    padding: 4px 8px;
+    font-size: 0.62rem;
+    font-weight: 700;
+    letter-spacing: 0.3px;
+    border-radius: 4px;
+    border: 1px solid transparent;
+    font-family: 'Quicksand', sans-serif;
+    text-transform: none;
+    white-space: normal;
+    word-break: break-word;
+    line-height: 1.35;
+}
+.exit-reietto-mode.exit-meta-caccia {
+    color: #fbbf24;
+    border-color: rgba(251, 191, 36, 0.35);
+    background: rgba(251, 191, 36, 0.1);
+}
+.exit-reietto-mode.exit-meta-solo {
+    color: #9ca3af;
+    border-color: rgba(156, 163, 175, 0.3);
+    background: rgba(156, 163, 175, 0.08);
 }
 
 .status.memoria-status {

@@ -1660,26 +1660,26 @@ function loadPlayers() {
                                 ? new Date(d).toLocaleDateString('it-IT', { day: '2-digit', month: '2-digit', year: 'numeric' })
                                 : '—';
                             let badgeClass = 'rito-status';
-                            let badgeLabel = '💀 Rito della Carne';
-                            let extraMeta = '';
+                            let badgeLabel = '💀 Rito';
+                            let reiettoLine = '';
                             if (exitType === 'uscita_ospitato') {
                                 badgeClass = 'uscita-status';
-                                badgeLabel = '🚪 Uscita Ospitato';
+                                badgeLabel = '🚪 Uscita';
                             } else if (exitType === 'reietto') {
                                 badgeClass = 'reietto-status';
                                 badgeLabel = '🩸 Reietto';
-                                extraMeta = p.cacciaAperta
-                                    ? '<span class="exit-meta-chip exit-meta-caccia">🎯 Caccia</span>'
-                                    : '<span class="exit-meta-chip exit-meta-solo">🌫️ Solo</span>';
+                                reiettoLine = p.cacciaAperta
+                                    ? '<div class="exit-reietto-mode exit-meta-caccia">🎯 Caccia aperta</div>'
+                                    : '<div class="exit-reietto-mode exit-meta-solo">🌫️ Allontanato</div>';
                             }
                             exitBadge = `
                                 <div class="exit-badge-stack">
-                                    <div class="status ${badgeClass} exit-type-badge">${badgeLabel}</div>
+                                    <span class="status ${badgeClass} exit-type-badge">${badgeLabel}</span>
                                     <div class="exit-meta-row">
-                                        <span class="exit-meta-chip exit-meta-date"><i class="fa-regular fa-calendar"></i> ${dateLabel}</span>
-                                        ${extraMeta}
+                                        <span class="exit-meta-chip exit-meta-date">${dateLabel}</span>
                                         ${p.memoriaCancellata ? '<span class="exit-meta-chip exit-meta-mem">🧠×</span>' : ''}
                                     </div>
+                                    ${reiettoLine}
                                 </div>`;
                         }
                         if (p.exitNotes) {
@@ -2515,26 +2515,26 @@ function loadRitoPlayers() {
                 ? new Date(d).toLocaleDateString('it-IT', { day: '2-digit', month: '2-digit', year: 'numeric' })
                 : '—';
             let badgeClass = 'rito-status';
-            let badgeLabel = '💀 Rito della Carne';
-            let extraMeta = '';
+            let badgeLabel = '💀 Rito';
+            let reiettoLine = '';
             if (exitType === 'uscita_ospitato') {
                 badgeClass = 'uscita-status';
-                badgeLabel = '🚪 Uscita Ospitato';
+                badgeLabel = '🚪 Uscita';
             } else if (exitType === 'reietto') {
                 badgeClass = 'reietto-status';
                 badgeLabel = '🩸 Reietto';
-                extraMeta = p.cacciaAperta
-                    ? '<span class="exit-meta-chip exit-meta-caccia">🎯 Caccia</span>'
-                    : '<span class="exit-meta-chip exit-meta-solo">🌫️ Solo</span>';
+                reiettoLine = p.cacciaAperta
+                    ? '<div class="exit-reietto-mode exit-meta-caccia">🎯 Caccia aperta</div>'
+                    : '<div class="exit-reietto-mode exit-meta-solo">🌫️ Allontanato</div>';
             }
             const exitBadgesHtml = `
                 <div class="exit-badge-stack">
-                    <div class="status ${badgeClass} exit-type-badge">${badgeLabel}</div>
+                    <span class="status ${badgeClass} exit-type-badge">${badgeLabel}</span>
                     <div class="exit-meta-row">
-                        <span class="exit-meta-chip exit-meta-date"><i class="fa-regular fa-calendar"></i> ${dateLabel}</span>
-                        ${extraMeta}
+                        <span class="exit-meta-chip exit-meta-date">${dateLabel}</span>
                         ${p.memoriaCancellata ? '<span class="exit-meta-chip exit-meta-mem">🧠×</span>' : ''}
                     </div>
+                    ${reiettoLine}
                 </div>`;
             const notesHtml = p.exitNotes
                 ? `<p class="exit-notes-preview"><i class="fa-solid fa-note-sticky"></i> ${String(p.exitNotes).replace(/</g,'&lt;')}</p>`
