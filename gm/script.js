@@ -5550,22 +5550,61 @@ function openTempoDetails(id) {
             ? (t.tipoLabel || t.customLabel || 'Personalizzato')
             : meta.label;
         let historyHtml = '';
-        const hist = Array.isArray(t.history) ? t.history.slice() : [];
+        let hist = Array.isArray(t.history) ? t.history.slice() : [];
+        // Fallback: ricava righe dallo storico nelle note se history e' vuoto
+        if (!hist.length && t.notes) {
+            String(t.notes).split('\n').forEach(function(line) {
+                var idx = line.indexOf('] ');
+                if (line.charAt(0) === '[' && idx > 0) {
+                    var whenPart = line.slice(1, idx);
+                    var rest = line.slice(idx + 2);
+                    var dm = rest.match(/^([+\-]?\d+)\s*g/);
+                    var deltaVal = dm ? parseInt(dm[1], 10) : 0;
+                    var reasonPart = rest;
+                    var mi = rest.indexOf('Motivo:');
+                    if (mi >= 0) reasonPart = rest.slice(mi + 8).trim();
+                    else {
+                        var dash = rest.search(/[—\-–]/);
+                        if (dash >= 0) reasonPart = rest.slice(dash + 1).trim();
+                    }
+                    hist.push({
+                        at: whenPart,
+                        delta: deltaVal,
+                        daysAfter: t.days,
+                        reason: reasonPart || 'aggiustamento'
+                    });
+                }
+            });
+        }
+        if (t.lastAdjustReason && !hist.length) {
+            hist.push({
+                at: t.lastAdjustAt || '',
+                delta: t.lastAdjustDelta || 0,
+                daysAfter: t.days,
+                reason: t.lastAdjustReason
+            });
+        }
         if (hist.length) {
-            hist.sort((a, b) => String(b.at || '').localeCompare(String(a.at || '')));
-            historyHtml = '<div style="margin-top:14px;padding:12px;background:rgba(139,92,246,0.1);border-left:3px solid #a78bfa;border-radius:0 8px 0 8px;">'
+            hist.sort(function(a, b) { return String(b.at || '').localeCompare(String(a.at || '')); });
+            historyHtml = '<div style="margin-top:14px;padding:12px;background:rgba(139,92,246,0.12);border-left:3px solid #a78bfa;border-radius:0 8px 0 8px;">'
                 + '<p style="margin:0 0 8px;color:#a78bfa;font-size:0.75rem;font-weight:700;text-transform:uppercase;letter-spacing:1px;">Storico aggiustamenti</p>'
-                + '<ul style="list-style:none;padding:0;margin:0;max-height:160px;overflow-y:auto;">'
-                + hist.map(h => {
-                    const d = (h.delta > 0 ? '+' : '') + h.delta + ' g.';
-                    const when = formatDateTime(h.at) || '';
-                    const reason = String(h.reason || 'aggiustamento').replace(/</g, '&lt;');
-                    return '<li style="margin-bottom:6px;font-size:0.82rem;border-bottom:1px dashed rgba(255,255,255,0.06);padding-bottom:4px;">'
-                        + '<b style="color:#c4b5fd;">' + d + '</b> → ' + formatNumber(h.daysAfter || 0) + ' gg totali'
+                + '<ul style="list-style:none;padding:0;margin:0;max-height:180px;overflow-y:auto;">'
+                + hist.map(function(h) {
+                    var dlt = Number(h.delta) || 0;
+                    var d = (dlt > 0 ? '+' : '') + dlt + ' g.';
+                    var when = h.at ? (formatDateTime(h.at) || String(h.at)) : '';
+                    var reason = String(h.reason || 'aggiustamento').replace(/</g, '&lt;');
+                    var tot = (h.daysAfter !== '' && h.daysAfter != null) ? (' → ' + formatNumber(h.daysAfter) + ' gg totali') : '';
+                    return '<li style="margin-bottom:8px;font-size:0.85rem;border-bottom:1px dashed rgba(255,255,255,0.08);padding-bottom:6px;">'
+                        + '<b style="color:#c4b5fd;">' + d + '</b>' + tot
                         + (when ? ' <small style="color:#6b7280;">(' + when + ')</small>' : '')
-                        + '<br><span style="color:#e5e7eb;">' + reason + '</span></li>';
+                        + '<br><span style="color:#fbbf24;font-weight:600;">Motivo:</span> <span style="color:#e5e7eb;">' + reason + '</span></li>';
                 }).join('')
                 + '</ul></div>';
+        } else if (t.lastAdjustReason) {
+            historyHtml = '<div style="margin-top:14px;padding:12px;background:rgba(139,92,246,0.12);border-left:3px solid #a78bfa;border-radius:0 8px 0 8px;">'
+                + '<p style="margin:0;color:#e5e7eb;font-size:0.85rem;"><span style="color:#fbbf24;font-weight:600;">Ultimo motivo:</span> '
+                + String(t.lastAdjustReason).replace(/</g, '&lt;') + '</p></div>';
         }
         let countdownHtml;
         if (status === 'terminato' || (rem != null && rem < 0)) {
@@ -5651,7 +5690,7 @@ function adjustTempoDays(id) {
         const remLabel = rem == null ? '—' : (rem < 0 ? 'scaduto' : (rem + ' g. rim.'));
 
         Swal.fire({
-            title: '⏱ Aggiusta durata',
+            title: 'Aggiusta durata',
             html: `
                 <p style="text-align:left;color:#a0a0a0;font-size:0.9rem;margin-bottom:12px;">
                     <b>${t.playerName || '—'}</b> · attualmente <b>${formatNumber(t.days || 0)}</b> giorni
@@ -5661,76 +5700,91 @@ function adjustTempoDays(id) {
                     Giorni da aggiungere (+) o togliere (−)
                 </label>
                 <input id="tempo-delta" type="number" class="swal2-input" placeholder="Es. +2 oppure -1" value="1">
-                <label style="display:block;text-align:left;margin:8px 0 4px 4px;color:#a0a0a0;font-size:13px;font-weight:600;">
-                    Motivo (opzionale, va nelle note)
+                <label style="display:block;text-align:left;margin:8px 0 4px 4px;color:#c5a059;font-size:13px;font-weight:600;">
+                    Motivo dell'aggiustamento (obbligatorio)
                 </label>
-                <input id="tempo-delta-note" class="swal2-input" placeholder="Es. violazione RP, bonus, ecc.">
+                <input id="tempo-delta-note" class="swal2-input" placeholder="Es. violazione RP, bonus, riduzione...">
+                <p style="text-align:left;font-size:0.75rem;color:#6b7280;margin-top:4px;">
+                    Il motivo viene salvato nello storico e nelle note del tempo.
+                </p>
             `,
-            showDenyButton: true,
             showCancelButton: true,
             confirmButtonText: 'Applica',
-            denyButtonText: '+1 giorno',
             cancelButtonText: 'Annulla',
             background: '#131a25',
+            focusConfirm: false,
             preConfirm: () => {
-                const delta = parseInt(document.getElementById('tempo-delta').value, 10);
+                const deltaEl = document.getElementById('tempo-delta');
+                const noteEl = document.getElementById('tempo-delta-note');
+                const delta = parseInt(deltaEl && deltaEl.value, 10);
+                const note = (noteEl && noteEl.value ? noteEl.value : '').trim();
                 if (isNaN(delta) || delta === 0) {
-                    Swal.showValidationMessage('Inserisci un numero diverso da zero');
+                    Swal.showValidationMessage('Inserisci un numero di giorni diverso da zero');
                     return false;
                 }
-                return {
-                    delta,
-                    note: (document.getElementById('tempo-delta-note').value || '').trim()
-                };
-            },
-            preDeny: () => ({ delta: 1, note: '' })
+                if (!note) {
+                    Swal.showValidationMessage('Scrivi il motivo dell\'aggiustamento');
+                    return false;
+                }
+                return { delta: delta, note: note };
+            }
         }).then(result => {
-            if (!result.isConfirmed && !result.isDenied) return;
-            const payload = result.value || { delta: 1, note: '' };
-            applyTempoDaysDelta(id, t, payload.delta, payload.note);
+            if (!result.isConfirmed || !result.value) return;
+            const delta = result.value.delta;
+            const note = result.value.note;
+            applyTempoDaysDelta(id, delta, note);
         });
     });
 }
 
-function applyTempoDaysDelta(id, t, delta, note) {
-    const newDays = Math.max(1, (Number(t.days) || 1) + delta);
-    const endDate = computeTempoEndDate(t.startDate, newDays);
-    const expired = tempoIsExpired(endDate);
-    const stamp = formatDateTime(new Date().toISOString()) || new Date().toLocaleString('it-IT');
+/** Rilegge il doc da Firestore, applica delta e salva notes + history col motivo */
+function applyTempoDaysDelta(id, delta, note) {
     const reason = (note && String(note).trim()) ? String(note).trim() : 'aggiustamento durata';
-    const line = '[' + stamp + '] ' + (delta > 0 ? '+' : '') + delta + ' g. → totale ' + newDays + ' gg: ' + reason;
-    const prevNotes = t.notes ? String(t.notes).trim() : '';
-    const update = {
-        days: newDays,
-        endDate,
-        status: expired ? 'terminato' : 'attivo',
-        notes: prevNotes ? (prevNotes + '\n' + line) : line
-    };
-    const hist = Array.isArray(t.history) ? t.history.slice() : [];
-    hist.push({
-        at: new Date().toISOString(),
-        delta: delta,
-        daysAfter: newDays,
-        reason: reason
-    });
-    update.history = hist;
-    if (expired && t.status !== 'terminato') {
-        update.completedAt = new Date().toISOString();
-    }
-    if (!expired) {
-        update.completedAt = null;
-    }
-    db.collection('tempi').doc(id).update(update).then(() => {
-        const msg = delta > 0
-            ? ('Durata aumentata di ' + delta + ' g. → ' + newDays + ' giorni totali')
-            : ('Durata ridotta di ' + Math.abs(delta) + ' g. → ' + newDays + ' giorni totali');
-        showToast(msg);
+    db.collection('tempi').doc(id).get().then(doc => {
+        if (!doc.exists) {
+            showToast('Tempo non trovato');
+            return;
+        }
+        const t = doc.data();
+        const newDays = Math.max(1, (Number(t.days) || 1) + delta);
+        const endDate = computeTempoEndDate(t.startDate, newDays);
+        const expired = tempoIsExpired(endDate);
+        const stamp = formatDateTime(new Date().toISOString()) || new Date().toLocaleString('it-IT');
+        const line = '[' + stamp + '] ' + (delta > 0 ? '+' : '') + delta + ' g. (totale ' + newDays + ' gg) — Motivo: ' + reason;
+        const prevNotes = t.notes ? String(t.notes).trim() : '';
+        const newNotes = prevNotes ? (prevNotes + '\n' + line) : line;
+
+        const entry = {
+            at: new Date().toISOString(),
+            delta: delta,
+            daysAfter: newDays,
+            reason: reason
+        };
+        const hist = Array.isArray(t.history) ? t.history.slice() : [];
+        hist.push(entry);
+
+        const update = {
+            days: newDays,
+            endDate: endDate,
+            status: expired ? 'terminato' : 'attivo',
+            notes: newNotes,
+            history: hist,
+            lastAdjustReason: reason,
+            lastAdjustAt: entry.at,
+            lastAdjustDelta: delta
+        };
+        if (expired && t.status !== 'terminato') {
+            update.completedAt = new Date().toISOString();
+        }
+
+        return db.collection('tempi').doc(id).update(update).then(() => {
+            showToast((delta > 0 ? '+' : '') + delta + ' g. · ' + reason);
+        });
     }).catch(err => {
-        console.error(err);
-        showToast('Errore salvataggio aggiustamento');
+        console.error('applyTempoDaysDelta', err);
+        showToast('Errore salvataggio: ' + (err && err.message ? err.message : 'sconosciuto'));
     });
 }
-
 
 let _tempiUnsub = null;
 
@@ -5848,7 +5902,7 @@ function loadTempi() {
                     </p>
                     ${statusBadge}
                     ${readyLine}
-                    ${t.notes ? `<p class="tempo-notes-preview">${String(t.notes).slice(0, 80).replace(/</g, '&lt;')}${String(t.notes).length > 80 ? '…' : ''}</p>` : ''}
+                    ${t.lastAdjustReason ? `<p class="tempo-notes-preview" style="color:#fbbf24;"><b>Ultimo aggiustamento:</b> ${(t.lastAdjustDelta > 0 ? '+' : '') + (t.lastAdjustDelta || '')} g. — ${String(t.lastAdjustReason).replace(/</g, '&lt;')}</p>` : (t.notes ? `<p class="tempo-notes-preview">${String(t.notes).slice(0, 80).replace(/</g, '&lt;')}${String(t.notes).length > 80 ? '…' : ''}</p>` : '')}
                     <div class="action-buttons action-buttons-icons">
                         <button class="btn-icon-only" onclick="openTempoDetails('${t.id}')" title="Dettagli e note">
                             <i class="fa-solid fa-eye"></i>
