@@ -69,7 +69,7 @@ const listFilters = {
     media: '',
     commands: '',
     admin: '',
-    players: { text: '', grado: 'all' },
+    players: { text: '', grado: 'all', ferale: 'all' },
     rito: { text: '', tipo: 'all' },
     tempi: { text: '', status: 'attivo', tipo: 'all' }
 };
@@ -169,10 +169,19 @@ function buildPlayersFilterBarHtml(insideFolder) {
         const isActive = f.grado === g.key;
         const cls = isActive ? 'filter-chip active' : 'filter-chip';
         const keyAttr = g.key === '' ? '__none__' : g.key;
-        return `<button type="button" class="${cls}" onclick="onPlayersGradoFilter('${keyAttr}')">${g.label}</button>`;
+        return `<button type="button" class="${cls}" data-filter-group="grado" onclick="onPlayersGradoFilter('${keyAttr}')">${g.label}</button>`;
+    }).join('');
+    const feraleChips = [
+        { key: 'all', label: 'Tutti' },
+        { key: 'yes', label: '🦇 Ferale' },
+        { key: 'no', label: 'Non Ferale' }
+    ].map(g => {
+        const isActive = (f.ferale || 'all') === g.key;
+        const cls = isActive ? 'filter-chip active' : 'filter-chip';
+        return `<button type="button" class="${cls}" data-filter-group="ferale" onclick="onPlayersFeraleFilter('${g.key}')">${g.label}</button>`;
     }).join('');
     const hint = insideFolder
-        ? 'Cerca per nome o note · filtra per grado'
+        ? 'Cerca per nome o note · filtra per grado / ferale'
         : 'Cerca cartella per nome';
     return `
         <div class="section-filter-bar" style="grid-column: 1 / -1;" data-filter-bar="players">
@@ -185,7 +194,15 @@ function buildPlayersFilterBarHtml(insideFolder) {
                     oninput="onSectionSearch('players', this.value)">
                 ${hasVal ? `<button type="button" class="filter-clear-btn" onclick="clearSectionSearch('players')" title="Pulisci ricerca">×</button>` : ''}
             </div>
-            ${insideFolder ? `<div class="section-filter-chips">${chips}</div>` : ''}
+            ${insideFolder ? `
+            <div class="section-filter-chips">
+                <span class="filter-chips-label">Grado</span>
+                ${chips}
+            </div>
+            <div class="section-filter-chips">
+                <span class="filter-chips-label">Ferale</span>
+                ${feraleChips}
+            </div>` : ''}
         </div>`;
 }
 
@@ -236,15 +253,29 @@ function clearSectionSearch(sectionKey) {
 function onPlayersGradoFilter(key) {
     const grado = key === '__none__' ? '' : key;
     listFilters.players.grado = grado;
-    // Aggiorna stato visuale chips
+    // Aggiorna stato visuale solo chip grado
     const bar = document.querySelector('[data-filter-bar="players"]');
     if (bar) {
-        bar.querySelectorAll('.filter-chip').forEach(btn => {
+        bar.querySelectorAll('.filter-chip[data-filter-group="grado"]').forEach(btn => {
             const onclick = btn.getAttribute('onclick') || '';
-            const m = onclick.match(/onPlayersGradoFilter\\('([^']+)'\\)/);
+            const m = onclick.match(/onPlayersGradoFilter\('([^']+)'\)/);
             const k = m ? m[1] : '';
             const mapped = k === '__none__' ? '' : k;
             btn.classList.toggle('active', mapped === grado);
+        });
+    }
+    applyListFilter('players');
+}
+
+function onPlayersFeraleFilter(key) {
+    listFilters.players.ferale = key || 'all';
+    const bar = document.querySelector('[data-filter-bar="players"]');
+    if (bar) {
+        bar.querySelectorAll('.filter-chip[data-filter-group="ferale"]').forEach(btn => {
+            const onclick = btn.getAttribute('onclick') || '';
+            const m = onclick.match(/onPlayersFeraleFilter\('([^']+)'\)/);
+            const k = m ? m[1] : '';
+            btn.classList.toggle('active', k === listFilters.players.ferale);
         });
     }
     applyListFilter('players');
@@ -273,6 +304,7 @@ function applyListFilter(sectionKey) {
 
     let query = '';
     let gradoFilter = null;
+    let feraleFilter = null;
     let tipoFilter = null;
     let statusFilter = null;
     let tempoTipoFilter = null;
@@ -280,7 +312,10 @@ function applyListFilter(sectionKey) {
         query = listFilters[sectionKey];
     } else if (listFilters[sectionKey]) {
         query = listFilters[sectionKey].text || '';
-        if (sectionKey === 'players') gradoFilter = listFilters[sectionKey].grado;
+        if (sectionKey === 'players') {
+            gradoFilter = listFilters[sectionKey].grado;
+            feraleFilter = listFilters[sectionKey].ferale;
+        }
         if (sectionKey === 'rito') tipoFilter = listFilters[sectionKey].tipo;
         if (sectionKey === 'tempi') {
             statusFilter = listFilters[sectionKey].status;
@@ -300,6 +335,10 @@ function applyListFilter(sectionKey) {
             const ng = normalizeGradoKey(g);
             // gradoFilter '' = senza grado
             show = (ng === gradoFilter);
+        }
+        if (show && feraleFilter != null && feraleFilter !== 'all') {
+            const isFerale = el.getAttribute('data-ferale') === '1';
+            show = (feraleFilter === 'yes') ? isFerale : !isFerale;
         }
         if (show && tipoFilter != null && tipoFilter !== 'all') {
             const t = el.getAttribute('data-exit-type') || '';
@@ -1733,7 +1772,7 @@ function loadPlayers() {
 
                         const filterText = [p.name, p.notes, p.grado, (p.quests || []).join(' '), p.ferale ? 'ferale' : ''].filter(Boolean).join(' ');
                         container.innerHTML += `
-                            <div class="${cardClass}" data-filter-text="${escapeAttr(filterText)}" data-grado="${escapeAttr(p.grado || '')}">
+                            <div class="${cardClass}" data-filter-text="${escapeAttr(filterText)}" data-grado="${escapeAttr(p.grado || '')}" data-ferale="${p.ferale ? '1' : '0'}">
                                 <h3>${p.name}</h3>
                                 ${gradoBadge}
                                 ${feraleBadge}
