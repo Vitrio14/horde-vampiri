@@ -1218,6 +1218,75 @@ footer {
     margin-bottom: 8px;
 }
 
+/* Badge uscita compatti (non escono dalla card) */
+.exit-badge-stack {
+    display: flex;
+    flex-direction: column;
+    align-items: flex-start;
+    gap: 6px;
+    max-width: 100%;
+    margin: 4px 0 8px;
+    min-width: 0;
+}
+.exit-type-badge {
+    max-width: 100% !important;
+    width: auto !important;
+    box-sizing: border-box;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    padding: 3px 8px !important;
+    font-size: 0.62rem !important;
+    margin: 0 !important;
+    letter-spacing: 0.6px !important;
+}
+.exit-meta-row {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 4px 6px;
+    max-width: 100%;
+    align-items: center;
+}
+.exit-meta-chip {
+    display: inline-flex;
+    align-items: center;
+    gap: 4px;
+    padding: 2px 7px;
+    font-size: 0.65rem;
+    font-weight: 600;
+    letter-spacing: 0.2px;
+    border-radius: 4px;
+    border: 1px solid rgba(255,255,255,0.1);
+    background: rgba(0,0,0,0.35);
+    color: #c4c4c4;
+    white-space: nowrap;
+    max-width: 100%;
+    font-family: 'Quicksand', sans-serif;
+    text-transform: none;
+}
+.exit-meta-chip i {
+    font-size: 0.7em;
+    opacity: 0.9;
+}
+.exit-meta-date {
+    color: #d1d5db;
+    border-color: rgba(197, 160, 89, 0.25);
+}
+.exit-meta-caccia {
+    color: #fbbf24;
+    border-color: rgba(251, 191, 36, 0.35);
+    background: rgba(251, 191, 36, 0.1);
+}
+.exit-meta-solo {
+    color: #9ca3af;
+    border-color: rgba(156, 163, 175, 0.3);
+}
+.exit-meta-mem {
+    color: #f87171;
+    border-color: rgba(248, 113, 113, 0.35);
+    background: rgba(239, 68, 68, 0.1);
+}
+
 .status.memoria-status {
     background: rgba(239, 68, 68, 0.12);
     color: #f87171;

@@ -1654,16 +1654,33 @@ function loadPlayers() {
                         const isExit = !!exitType;
                         const cardClass = isExit ? exitCardClass(exitType) : 'card';
                         let exitBadge = '';
-                        if (exitType === 'rito') {
+                        if (exitType === 'rito' || exitType === 'uscita_ospitato' || exitType === 'reietto') {
                             const d = p.exitDate || p.ritoDate;
-                            exitBadge = `<div class="status rito-status" title="Ha lasciato la dinastia"><i class="fa-solid fa-skull"></i> Rito della Carne${d ? ' · ' + new Date(d).toLocaleDateString('it-IT') : ''}${p.memoriaCancellata ? ' · 🧠×' : ''}</div>`;
-                        } else if (exitType === 'uscita_ospitato') {
-                            const d = p.exitDate;
-                            exitBadge = `<div class="status uscita-status" title="Uscita ospitato"><i class="fa-solid fa-door-open"></i> Uscita Ospitato${d ? ' · ' + new Date(d).toLocaleDateString('it-IT') : ''}${p.memoriaCancellata ? ' · 🧠×' : ''}</div>`;
-                        } else if (exitType === 'reietto') {
-                            const d = p.exitDate;
-                            const cacciaLabel = p.cacciaAperta ? ' · 🎯 Caccia aperta' : ' · 🌫️ Allontanato';
-                            exitBadge = `<div class="status reietto-status" title="Reietto"><i class="fa-solid fa-user-slash"></i> Reietto${d ? ' · ' + new Date(d).toLocaleDateString('it-IT') : ''}${cacciaLabel}${p.memoriaCancellata ? ' · 🧠×' : ''}</div>`;
+                            const dateLabel = d
+                                ? new Date(d).toLocaleDateString('it-IT', { day: '2-digit', month: '2-digit', year: 'numeric' })
+                                : '—';
+                            let badgeClass = 'rito-status';
+                            let badgeLabel = '💀 Rito della Carne';
+                            let extraMeta = '';
+                            if (exitType === 'uscita_ospitato') {
+                                badgeClass = 'uscita-status';
+                                badgeLabel = '🚪 Uscita Ospitato';
+                            } else if (exitType === 'reietto') {
+                                badgeClass = 'reietto-status';
+                                badgeLabel = '🩸 Reietto';
+                                extraMeta = p.cacciaAperta
+                                    ? '<span class="exit-meta-chip exit-meta-caccia">🎯 Caccia</span>'
+                                    : '<span class="exit-meta-chip exit-meta-solo">🌫️ Solo</span>';
+                            }
+                            exitBadge = `
+                                <div class="exit-badge-stack">
+                                    <div class="status ${badgeClass} exit-type-badge">${badgeLabel}</div>
+                                    <div class="exit-meta-row">
+                                        <span class="exit-meta-chip exit-meta-date"><i class="fa-regular fa-calendar"></i> ${dateLabel}</span>
+                                        ${extraMeta}
+                                        ${p.memoriaCancellata ? '<span class="exit-meta-chip exit-meta-mem">🧠×</span>' : ''}
+                                    </div>
+                                </div>`;
                         }
                         if (p.exitNotes) {
                             const safeNotes = String(p.exitNotes).replace(/</g, '&lt;');
@@ -2495,21 +2512,30 @@ function loadRitoPlayers() {
             const exitType = p._exitType;
             const d = p.exitDate || p.ritoDate;
             const dateLabel = d
-                ? new Date(d).toLocaleDateString('it-IT', { day: '2-digit', month: 'short', year: 'numeric' })
+                ? new Date(d).toLocaleDateString('it-IT', { day: '2-digit', month: '2-digit', year: 'numeric' })
                 : '—';
             let badgeClass = 'rito-status';
-            let badgeText = `💀 Rito della Carne · ${dateLabel}`;
+            let badgeLabel = '💀 Rito della Carne';
+            let extraMeta = '';
             if (exitType === 'uscita_ospitato') {
                 badgeClass = 'uscita-status';
-                badgeText = `🚪 Uscita Ospitato · ${dateLabel}`;
+                badgeLabel = '🚪 Uscita Ospitato';
             } else if (exitType === 'reietto') {
                 badgeClass = 'reietto-status';
-                const cacciaPart = p.cacciaAperta ? '🎯 Caccia aperta' : '🌫️ Allontanato';
-                badgeText = `🩸 Reietto · ${dateLabel} · ${cacciaPart}`;
+                badgeLabel = '🩸 Reietto';
+                extraMeta = p.cacciaAperta
+                    ? '<span class="exit-meta-chip exit-meta-caccia">🎯 Caccia</span>'
+                    : '<span class="exit-meta-chip exit-meta-solo">🌫️ Solo</span>';
             }
-            const memBadge = p.memoriaCancellata
-                ? `<div class="status memoria-status">🧠× Memoria cancellata</div>`
-                : '';
+            const exitBadgesHtml = `
+                <div class="exit-badge-stack">
+                    <div class="status ${badgeClass} exit-type-badge">${badgeLabel}</div>
+                    <div class="exit-meta-row">
+                        <span class="exit-meta-chip exit-meta-date"><i class="fa-regular fa-calendar"></i> ${dateLabel}</span>
+                        ${extraMeta}
+                        ${p.memoriaCancellata ? '<span class="exit-meta-chip exit-meta-mem">🧠×</span>' : ''}
+                    </div>
+                </div>`;
             const notesHtml = p.exitNotes
                 ? `<p class="exit-notes-preview"><i class="fa-solid fa-note-sticky"></i> ${String(p.exitNotes).replace(/</g,'&lt;')}</p>`
                 : '';
@@ -2520,13 +2546,12 @@ function loadRitoPlayers() {
                 ? `<div class="status grado-status grado-${String(p.grado).toLowerCase()}">${p.grado}</div>`
                 : '';
 
-            const ritoFilterText = [p.name, p.notes, p.exitNotes, p.grado, badgeText, exitType === 'reietto' ? (p.cacciaAperta ? 'caccia' : 'allontanato') : ''].filter(Boolean).join(' ');
+            const ritoFilterText = [p.name, p.notes, p.exitNotes, p.grado, badgeLabel, dateLabel, exitType === 'reietto' ? (p.cacciaAperta ? 'caccia' : 'allontanato') : ''].filter(Boolean).join(' ');
             container.innerHTML += `
                 <div class="${cardClass}" data-filter-text="${escapeAttr(ritoFilterText)}" data-exit-type="${escapeAttr(exitType)}">
                     <h3>${p.name}</h3>
                     ${gradoBadgeRito}
-                    <div class="status ${badgeClass}">${badgeText}</div>
-                    ${memBadge}
+                    ${exitBadgesHtml}
                     ${notesHtml}
                     <p>${p.notes || 'Nessuna nota'}</p>
                     <div style="margin-top:10px;">
