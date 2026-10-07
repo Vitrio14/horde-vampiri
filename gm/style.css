@@ -1620,3 +1620,144 @@ span.exit-type-badge {
         font-size: 0.65rem !important;
     }
 }
+
+
+/* ========== TEMPI & SCADENZE ========== */
+.card-tempo {
+    border-color: rgba(56, 189, 248, 0.35) !important;
+}
+.card-tempo:hover {
+    border-color: rgba(56, 189, 248, 0.6) !important;
+}
+.card-tempo-oggi {
+    border-color: rgba(251, 191, 36, 0.55) !important;
+    box-shadow: 0 8px 32px rgba(0, 0, 0, 0.9), 0 0 20px rgba(251, 191, 36, 0.15) !important;
+}
+.card-tempo-terminato {
+    border-color: rgba(46, 204, 113, 0.4) !important;
+    opacity: 0.92;
+}
+.card-tempo-terminato h3 {
+    color: #86efac !important;
+}
+.status.tempo-status-attivo {
+    background: rgba(56, 189, 248, 0.12);
+    color: #38bdf8;
+    border-color: #38bdf8;
+    box-shadow: inset 5px 0 15px rgba(56, 189, 248, 0.15);
+}
+.status.tempo-status-oggi {
+    background: rgba(251, 191, 36, 0.15);
+    color: #fbbf24;
+    border-color: #f59e0b;
+    box-shadow: inset 5px 0 15px rgba(251, 191, 36, 0.2);
+}
+.status.tempo-status-terminato {
+    background: rgba(46, 204, 113, 0.12);
+    color: #2ecc71;
+    border-color: #2ecc71;
+    box-shadow: inset 5px 0 15px rgba(46, 204, 113, 0.2);
+}
+.tempo-ready-msg {
+    color: #fbbf24 !important;
+    font-weight: 600 !important;
+    font-size: 0.82rem !important;
+    margin: 4px 0 10px !important;
+    line-height: 1.4 !important;
+}
+.tempo-notes-preview {
+    font-size: 0.8rem !important;
+    color: #9ca3af !important;
+    font-style: italic;
+    margin: 4px 0 8px !important;
+    line-height: 1.35 !important;
+}
+.btn-tempo-done {
+    border-color: rgba(46, 204, 113, 0.5) !important;
+    color: #2ecc71 !important;
+    padding: 8px 10px !important;
+    font-size: 0.7rem !important;
+    flex: 0 0 auto !important;
+}
+.btn-tempo-done:hover {
+    border-color: #2ecc71 !important;
+    color: #fff !important;
+}
+.btn-tempo-done::before {
+    background: linear-gradient(90deg, #059669, #2ecc71) !important;
+}
+.btn-tempo-reopen {
+    border-color: rgba(56, 189, 248, 0.45) !important;
+    color: #38bdf8 !important;
+    padding: 8px 10px !important;
+    font-size: 0.7rem !important;
+    flex: 0 0 auto !important;
+}
+.btn-tempo-reopen:hover {
+    border-color: #38bdf8 !important;
+    color: #fff !important;
+}
+.btn-tempo-reopen::before {
+    background: linear-gradient(90deg, #0284c7, #38bdf8) !important;
+}
+
+
+/* ========== PUNIZIONI + ADJUST TEMPO ========== */
+.btn-punizioni {
+    background: transparent !important;
+    border: 1px solid rgba(248, 113, 113, 0.45) !important;
+    color: #f87171 !important;
+    padding: 8px 12px !important;
+    font-size: 1rem !important;
+    min-width: auto !important;
+    flex: 0 0 auto !important;
+}
+.btn-punizioni:hover {
+    border-color: #f87171 !important;
+    box-shadow: 0 0 12px rgba(248, 113, 113, 0.35) !important;
+    color: #fff !important;
+}
+.btn-punizioni::before {
+    background: linear-gradient(90deg, #991b1b, #ef4444) !important;
+}
+.status.punizione-status-attiva {
+    background: rgba(239, 68, 68, 0.14);
+    color: #f87171;
+    border-color: #ef4444;
+    box-shadow: inset 5px 0 15px rgba(239, 68, 68, 0.18);
+}
+.tempo-punizione-flag {
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+    margin: 0 0 10px 0;
+    padding: 4px 10px;
+    font-size: 0.68rem;
+    font-weight: 700;
+    letter-spacing: 0.4px;
+    text-transform: uppercase;
+    color: #fecaca;
+    background: rgba(239, 68, 68, 0.18);
+    border: 1px solid rgba(248, 113, 113, 0.45);
+    border-radius: 4px;
+    font-family: 'Quicksand', sans-serif;
+}
+.card-tempo-punito {
+    border-color: rgba(248, 113, 113, 0.5) !important;
+    box-shadow: 0 8px 32px rgba(0, 0, 0, 0.9), 0 0 18px rgba(239, 68, 68, 0.12) !important;
+}
+.btn-tempo-adjust {
+    border-color: rgba(167, 139, 250, 0.5) !important;
+    color: #a78bfa !important;
+    padding: 8px 10px !important;
+    font-size: 0.7rem !important;
+    flex: 0 0 auto !important;
+    white-space: nowrap;
+}
+.btn-tempo-adjust:hover {
+    border-color: #a78bfa !important;
+    color: #fff !important;
+}
+.btn-tempo-adjust::before {
+    background: linear-gradient(90deg, #6d28d9, #a78bfa) !important;
+}

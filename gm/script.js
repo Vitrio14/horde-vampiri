@@ -70,7 +70,8 @@ const listFilters = {
     commands: '',
     admin: '',
     players: { text: '', grado: 'all' },
-    rito: { text: '', tipo: 'all' }
+    rito: { text: '', tipo: 'all' },
+    tempi: { text: '', status: 'all' }
 };
 
 const SECTION_LIST_IDS = {
@@ -81,7 +82,8 @@ const SECTION_LIST_IDS = {
     commands: 'commands-list',
     admin: 'global-links',
     players: 'players-list',
-    rito: 'rito-list'
+    rito: 'rito-list',
+    tempi: 'tempi-list'
 };
 
 /** Normalizza grado: Adulta/Adulto → Adulto, Neonata/Neonato → Neonato */
@@ -272,12 +274,14 @@ function applyListFilter(sectionKey) {
     let query = '';
     let gradoFilter = null;
     let tipoFilter = null;
+    let statusFilter = null;
     if (typeof listFilters[sectionKey] === 'string') {
         query = listFilters[sectionKey];
     } else if (listFilters[sectionKey]) {
         query = listFilters[sectionKey].text || '';
         if (sectionKey === 'players') gradoFilter = listFilters[sectionKey].grado;
         if (sectionKey === 'rito') tipoFilter = listFilters[sectionKey].tipo;
+        if (sectionKey === 'tempi') statusFilter = listFilters[sectionKey].status;
     }
 
     let visible = 0;
@@ -296,6 +300,10 @@ function applyListFilter(sectionKey) {
         if (show && tipoFilter != null && tipoFilter !== 'all') {
             const t = el.getAttribute('data-exit-type') || '';
             show = (t === tipoFilter);
+        }
+        if (show && statusFilter != null && statusFilter !== 'all') {
+            const st = el.getAttribute('data-tempo-status') || '';
+            show = (st === statusFilter);
         }
 
         el.style.display = show ? '' : 'none';
@@ -360,6 +368,7 @@ function login() {
             loadGlobalLinks();
             loadPlayers();
             loadRitoPlayers();
+            loadTempi();
             loadFrammentiEvents();
             loadFrammenti();
             updateWeekRangeHints();
@@ -1616,6 +1625,7 @@ function addPlayer() {
 }
 
 function loadPlayers() {
+    if (typeof ensurePunizioniListener === 'function') ensurePunizioniListener();
     const container = document.getElementById('players-list');
 
     db.collection('folders').where('type', '==', 'players').onSnapshot(foldersSnapshot => {
@@ -1690,12 +1700,16 @@ function loadPlayers() {
                         const gradoBadge = p.grado
                             ? `<div class="status grado-status grado-${String(p.grado).toLowerCase()}">${p.grado}</div>`
                             : '';
+                        const punBadge = (typeof playerHasActivePunizione === 'function' && playerHasActivePunizione(p.id, p.name))
+                            ? '<div class="tempo-punizione-flag">⚖️ Punizione attiva</div>'
+                            : '';
 
                         const filterText = [p.name, p.notes, p.grado, (p.quests || []).join(' ')].filter(Boolean).join(' ');
                         container.innerHTML += `
                             <div class="${cardClass}" data-filter-text="${escapeAttr(filterText)}" data-grado="${escapeAttr(p.grado || '')}">
                                 <h3>${p.name}</h3>
                                 ${gradoBadge}
+                                ${punBadge}
                                 ${exitBadge}
                                 <p>${p.notes || 'Nessuna nota'}</p>
                                 <div style="margin-top:10px;">
@@ -1714,6 +1728,13 @@ function loadPlayers() {
                                         title="Resoconto Frammenti"
                                     >
                                         🔮
+                                    </button>
+                                    <button
+                                        class="btn-punizioni"
+                                        onclick="openPlayerPunizioniModal('${p.id}', '${(p.name || '').replace(/'/g, "\\'")}')"
+                                        title="Punizioni"
+                                    >
+                                        ⚖️
                                     </button>
                                     <button
                                         class="btn-move-player"
@@ -2560,6 +2581,7 @@ function loadRitoPlayers() {
                     <div class="action-buttons action-buttons-icons">
                         <button class="edit-btn" onclick="openPlayerModal('${p.id}')">Apri</button>
                         <button class="btn-frammenti" onclick="openPlayerFrammentiModal('${p.id}', '${safeName}')" title="Resoconto Frammenti">🔮</button>
+                        <button class="btn-punizioni" onclick="openPlayerPunizioniModal('${p.id}', '${safeName}')" title="Punizioni">⚖️</button>
                         <button class="btn-move-player" onclick="movePlayerToFolder('${p.id}')" title="Sposta cartella">📂</button>
                         <button class="edit-btn" style="border-color:#a78bfa;color:#a78bfa;" onclick="undoPlayerExit('${p.id}', '${safeName}')" title="Annulla uscita">↩</button>
                         <button class="delete-btn btn-icon-only" onclick="confirmDelete('players', '${p.id}', loadRitoPlayers)" title="Elimina">🗑️</button>
@@ -4784,6 +4806,856 @@ function openPlayerFrammentiModal(playerId, playerName, initialFilter) {
 
 
 
+
+/* ========== PUNIZIONI ========== */
+
+const PUNIZIONE_TIPI = [
+    { key: 'sigillo_ombra', label: 'Sigillo Ombra' },
+    { key: 'libera', label: 'Punizione libera' }
+];
+
+/** Cache: playerName (lower) / playerId → true se ha punizione attiva */
+let _punizioniActiveByPlayer = {};
+let _punizioniUnsub = null;
+let _punizioniAll = [];
+let _tempiItemsCache = [];
+
+function punizioneIsExpired(endIso) {
+    if (!endIso) return false;
+    return tempoIsExpired(endIso);
+}
+
+function syncExpiredPunizioni(items) {
+    const updates = [];
+    items.forEach(p => {
+        if (p.status === 'conclusa') return;
+        if (p.endDate && punizioneIsExpired(p.endDate)) {
+            updates.push(
+                db.collection('punizioni').doc(p.id).update({
+                    status: 'conclusa',
+                    completedAt: new Date().toISOString()
+                })
+            );
+        }
+    });
+    if (updates.length) {
+        Promise.all(updates).catch(err => console.warn('syncExpiredPunizioni', err));
+    }
+}
+
+function rebuildPunizioniActiveMap(items) {
+    const map = {};
+    items.forEach(p => {
+        let st = p.status || 'attiva';
+        if (st !== 'conclusa' && p.endDate && punizioneIsExpired(p.endDate)) st = 'conclusa';
+        if (st === 'conclusa') return;
+        if (p.playerId) map['id:' + p.playerId] = true;
+        if (p.playerName) map['name:' + String(p.playerName).trim().toLowerCase()] = true;
+    });
+    _punizioniActiveByPlayer = map;
+}
+
+function playerHasActivePunizione(playerId, playerName) {
+    if (playerId && _punizioniActiveByPlayer['id:' + playerId]) return true;
+    if (playerName && _punizioniActiveByPlayer['name:' + String(playerName).trim().toLowerCase()]) return true;
+    return false;
+}
+
+function ensurePunizioniListener() {
+    if (_punizioniUnsub) return;
+    _punizioniUnsub = db.collection('punizioni').onSnapshot(snapshot => {
+        const items = [];
+        snapshot.forEach(doc => items.push({ id: doc.id, ...doc.data() }));
+        _punizioniAll = items;
+        syncExpiredPunizioni(items);
+        rebuildPunizioniActiveMap(items);
+        if (typeof renderTempiListFromCache === 'function') {
+            try { renderTempiListFromCache(); } catch (e) {}
+        }
+    });
+}
+
+function openPlayerPunizioniModal(playerId, playerName) {
+    ensurePunizioniListener();
+    db.collection('punizioni').get().then(snapshot => {
+        const items = [];
+        snapshot.forEach(doc => {
+            const p = doc.data();
+            if (p.playerId === playerId || p.playerName === playerName) {
+                items.push({ id: doc.id, ...p });
+            }
+        });
+        items.forEach(p => {
+            if (p.status !== 'conclusa' && p.endDate && punizioneIsExpired(p.endDate)) {
+                p.status = 'conclusa';
+            }
+        });
+        items.sort((a, b) => {
+            const sa = a.status === 'conclusa' ? 1 : 0;
+            const sb = b.status === 'conclusa' ? 1 : 0;
+            if (sa !== sb) return sa - sb;
+            return String(b.startDate || b.createdAt || '').localeCompare(String(a.startDate || a.createdAt || ''));
+        });
+
+        const attive = items.filter(p => p.status !== 'conclusa');
+        const passate = items.filter(p => p.status === 'conclusa');
+
+        function rowHtml(p) {
+            const tipoLabel = p.tipo === 'sigillo_ombra'
+                ? '🌑 Sigillo Ombra'
+                : ('⚖️ ' + (p.tipoLabel || p.label || 'Punizione libera'));
+            const st = p.status === 'conclusa'
+                ? '<span class="status tempo-status-terminato" style="margin:0;">Conclusa</span>'
+                : '<span class="status punizione-status-attiva" style="margin:0;">Attiva</span>';
+            const daysLine = p.days
+                ? (formatNumber(p.days) + ' gg · ' + formatTempoDate(p.startDate) + ' → ' + formatTempoDate(p.endDate))
+                : (p.endDate
+                    ? (formatTempoDate(p.startDate) + ' → ' + formatTempoDate(p.endDate))
+                    : (formatTempoDate(p.startDate) + ' · senza scadenza fissa'));
+            const motiv = p.motivazione ? ('<br><small style="color:#f87171;"><b>Motivo:</b> ' + String(p.motivazione).replace(/</g, '&lt;') + '</small>') : '';
+            const notes = p.notes ? ('<br><small style="color:#9ca3af;">' + String(p.notes).replace(/</g, '&lt;') + '</small>') : '';
+            const safeP = String(playerName || '').replace(/'/g, "\\'");
+            const actions = p.status !== 'conclusa'
+                ? ('<button type="button" onclick="closePunizione(\'' + p.id + '\', \'' + playerId + '\', \'' + safeP + '\')" style="flex-shrink:0;padding:6px 10px;font-size:0.65rem;border:1px solid #2ecc71;color:#2ecc71;background:transparent;cursor:pointer;">Concludi</button>'
+                   + '<button type="button" onclick="deletePunizione(\'' + p.id + '\', \'' + playerId + '\', \'' + safeP + '\')" style="flex-shrink:0;padding:6px 10px;font-size:0.65rem;border:1px dashed #e74c3c;color:#e74c3c;background:transparent;cursor:pointer;">Elimina</button>')
+                : ('<button type="button" onclick="deletePunizione(\'' + p.id + '\', \'' + playerId + '\', \'' + safeP + '\')" style="flex-shrink:0;padding:6px 10px;font-size:0.65rem;border:1px dashed #e74c3c;color:#e74c3c;background:transparent;cursor:pointer;">Elimina</button>');
+            return '<li style="margin-bottom:10px;padding-bottom:8px;border-bottom:1px dashed rgba(255,255,255,0.06);display:flex;justify-content:space-between;gap:10px;align-items:flex-start;">'
+                + '<div><b>' + tipoLabel + '</b> ' + st
+                + '<br><small style="color:#a78bfa;">' + daysLine + '</small>'
+                + motiv + notes + '</div>'
+                + '<div style="display:flex;flex-direction:column;gap:4px;">' + actions + '</div></li>';
+        }
+
+        let listHtml = '';
+        if (items.length === 0) {
+            listHtml = '<p style="color:#9ca3af;font-size:0.9rem;">Nessuna punizione registrata per questo player.</p>';
+        } else {
+            if (attive.length) {
+                listHtml += '<p style="color:#f87171;font-weight:600;margin:0 0 8px;">Attive (' + attive.length + ')</p><ul style="list-style:none;padding:0;margin:0 0 16px;">' + attive.map(rowHtml).join('') + '</ul>';
+            }
+            if (passate.length) {
+                listHtml += '<p style="color:#9ca3af;font-weight:600;margin:0 0 8px;">Passate (' + passate.length + ')</p><ul style="list-style:none;padding:0;margin:0;" class="frammenti-recap-scroll">' + passate.map(rowHtml).join('') + '</ul>';
+            }
+        }
+
+        Swal.fire({
+            title: '⚖️ Punizioni — ' + playerName,
+            width: 620,
+            background: '#131a25',
+            showCancelButton: true,
+            confirmButtonText: '+ Nuova punizione',
+            cancelButtonText: 'Chiudi',
+            html: '<div style="text-align:left;max-height:60vh;overflow-y:auto;">' + listHtml + '</div>'
+        }).then(result => {
+            if (result.isConfirmed) {
+                addPunizione(playerId, playerName);
+            }
+        });
+    });
+}
+
+function addPunizione(playerId, playerName) {
+    const startVal = new Date().toISOString().slice(0, 10);
+    Swal.fire({
+        title: 'Nuova punizione — ' + playerName,
+        html: `
+            <label style="display:block;text-align:left;margin:8px 0 4px 4px;color:#a0a0a0;font-size:13px;font-weight:600;">Tipo</label>
+            <select id="pun-tipo" class="swal2-select" onchange="document.getElementById('pun-libera-wrap').style.display=this.value==='libera'?'block':'none'">
+                <option value="sigillo_ombra">🌑 Sigillo Ombra</option>
+                <option value="libera">⚖️ Punizione libera (scrivi tu)</option>
+            </select>
+            <div id="pun-libera-wrap" style="display:none;">
+                <label style="display:block;text-align:left;margin:8px 0 4px 4px;color:#a0a0a0;font-size:13px;font-weight:600;">Nome / tipo punizione</label>
+                <input id="pun-label" class="swal2-input" placeholder="Es. Esilio temporaneo, Mulatto...">
+            </div>
+            <label style="display:block;text-align:left;margin:8px 0 4px 4px;color:#a0a0a0;font-size:13px;font-weight:600;">Motivazione</label>
+            <textarea id="pun-motivo" class="swal2-textarea" placeholder="Perché viene applicata..."></textarea>
+            <label style="display:block;text-align:left;margin:8px 0 4px 4px;color:#a0a0a0;font-size:13px;font-weight:600;">Durata (giorni) — lascia vuoto se senza scadenza</label>
+            <input id="pun-days" type="number" min="1" class="swal2-input" placeholder="Es. 7 (opzionale)">
+            <label style="display:block;text-align:left;margin:8px 0 4px 4px;color:#a0a0a0;font-size:13px;font-weight:600;">Data inizio</label>
+            <input id="pun-start" type="date" class="swal2-input" value="${startVal}">
+            <label style="display:block;text-align:left;margin:8px 0 4px 4px;color:#a0a0a0;font-size:13px;font-weight:600;">Note aggiuntive (opz.)</label>
+            <input id="pun-notes" class="swal2-input" placeholder="Dettagli RP, condizioni...">
+        `,
+        confirmButtonText: 'Applica punizione',
+        showCancelButton: true,
+        cancelButtonText: 'Annulla',
+        background: '#131a25',
+        preConfirm: () => {
+            const tipo = document.getElementById('pun-tipo').value;
+            const motivazione = (document.getElementById('pun-motivo').value || '').trim();
+            if (!motivazione) {
+                Swal.showValidationMessage('Inserisci la motivazione');
+                return false;
+            }
+            let tipoLabel = 'Sigillo Ombra';
+            if (tipo === 'libera') {
+                tipoLabel = (document.getElementById('pun-label').value || '').trim();
+                if (!tipoLabel) {
+                    Swal.showValidationMessage('Scrivi il nome della punizione libera');
+                    return false;
+                }
+            }
+            const daysRaw = document.getElementById('pun-days').value;
+            const days = daysRaw ? parseInt(daysRaw, 10) : null;
+            if (daysRaw && (!days || days < 1)) {
+                Swal.showValidationMessage('Durata non valida');
+                return false;
+            }
+            const startStr = document.getElementById('pun-start').value;
+            if (!startStr) {
+                Swal.showValidationMessage('Data inizio obbligatoria');
+                return false;
+            }
+            const startDate = new Date(startStr + 'T00:00:00');
+            let endDate = null;
+            if (days) endDate = computeTempoEndDate(startDate.toISOString(), days);
+            const notes = (document.getElementById('pun-notes').value || '').trim();
+            let status = 'attiva';
+            if (endDate && punizioneIsExpired(endDate)) status = 'conclusa';
+            return {
+                playerId, playerName, tipo, tipoLabel, motivazione,
+                days: days || null,
+                startDate: startDate.toISOString(),
+                endDate,
+                notes,
+                status,
+                createdAt: new Date().toISOString()
+            };
+        }
+    }).then(result => {
+        if (!result.isConfirmed || !result.value) {
+            openPlayerPunizioniModal(playerId, playerName);
+            return;
+        }
+        const data = result.value;
+        if (data.status === 'conclusa') data.completedAt = new Date().toISOString();
+        db.collection('punizioni').add(data).then(() => {
+            showToast('Punizione registrata');
+            openPlayerPunizioniModal(playerId, playerName);
+        });
+    });
+}
+
+function closePunizione(id, playerId, playerName) {
+    db.collection('punizioni').doc(id).update({
+        status: 'conclusa',
+        completedAt: new Date().toISOString()
+    }).then(() => {
+        showToast('Punizione conclusa');
+        openPlayerPunizioniModal(playerId, playerName);
+    });
+}
+
+function deletePunizione(id, playerId, playerName) {
+    Swal.fire({
+        title: 'Eliminare punizione?',
+        text: 'Azione irreversibile.',
+        icon: 'warning',
+        showCancelButton: true,
+        confirmButtonText: 'Elimina',
+        cancelButtonText: 'Annulla',
+        confirmButtonColor: '#ef4444',
+        background: '#131a25'
+    }).then(result => {
+        if (!result.isConfirmed) {
+            openPlayerPunizioniModal(playerId, playerName);
+            return;
+        }
+        db.collection('punizioni').doc(id).delete().then(() => {
+            showToast('Punizione eliminata');
+            openPlayerPunizioniModal(playerId, playerName);
+        });
+    });
+}
+
+
+/* ========== TEMPI & SCADENZE ========== */
+
+const TEMPO_TIPI = [
+    { key: 'neonato_adulto', label: 'Periodo Neonato → Adulto', ready: 'Periodo da Neonato terminato — pronto per Rito Adulto' },
+    { key: 'forma_ferale', label: 'Forma Ferale', ready: 'Periodo Forma Ferale terminato — pronto per Rito Ferale' },
+    { key: 'custom', label: 'Personalizzato', ready: 'Periodo terminato' }
+];
+
+function tempoTipoMeta(key) {
+    return TEMPO_TIPI.find(t => t.key === key) || TEMPO_TIPI[2];
+}
+
+/** Fine giornata locale di endDate (ISO o date-only) */
+function tempoEndOfDay(isoOrDate) {
+    if (!isoOrDate) return null;
+    const d = new Date(isoOrDate);
+    if (isNaN(d.getTime())) return null;
+    d.setHours(23, 59, 59, 999);
+    return d;
+}
+
+/** Giorni rimanenti (0 = scade oggi, negativo = scaduto). Calcolo su date calendariali. */
+function tempoDaysRemaining(endIso) {
+    const end = tempoEndOfDay(endIso);
+    if (!end) return null;
+    const now = new Date();
+    const today = new Date(now.getFullYear(), now.getMonth(), now.getDate());
+    const endDay = new Date(end.getFullYear(), end.getMonth(), end.getDate());
+    const ms = endDay.getTime() - today.getTime();
+    return Math.round(ms / (24 * 60 * 60 * 1000));
+}
+
+function tempoIsExpired(endIso) {
+    const rem = tempoDaysRemaining(endIso);
+    return rem != null && rem < 0;
+}
+
+function tempoReadyMessage(t) {
+    const meta = tempoTipoMeta(t.tipo);
+    if (t.tipo === 'custom') {
+        const label = (t.tipoLabel || t.customLabel || 'Personalizzato').trim();
+        return 'Periodo terminato: ' + label + (t.readyNote ? ' — ' + t.readyNote : '');
+    }
+    return meta.ready;
+}
+
+function buildTempiFilterBarHtml() {
+    const f = listFilters.tempi || { text: '', status: 'all' };
+    const val = escapeAttr(f.text || '');
+    const hasVal = !!(f.text && String(f.text).trim());
+    const statuses = [
+        { key: 'all', label: 'Tutti' },
+        { key: 'attivo', label: 'Attivi' },
+        { key: 'terminato', label: 'Terminati' }
+    ];
+    const chips = statuses.map(s => {
+        const isActive = f.status === s.key;
+        return `<button type="button" class="filter-chip ${isActive ? 'active' : ''}" onclick="onTempiStatusFilter('${s.key}')">${s.label}</button>`;
+    }).join('');
+    return `
+        <div class="section-filter-bar" style="grid-column: 1 / -1;" data-filter-bar="tempi">
+            <div class="section-filter-search">
+                <i class="fa-solid fa-magnifying-glass"></i>
+                <input type="search" id="filter-input-tempi"
+                    placeholder="Cerca per player, tipo o note..."
+                    value="${val}"
+                    autocomplete="off"
+                    oninput="onSectionSearch('tempi', this.value)">
+                ${hasVal ? `<button type="button" class="filter-clear-btn" onclick="clearSectionSearch('tempi')" title="Pulisci ricerca">×</button>` : ''}
+            </div>
+            <div class="section-filter-chips">${chips}</div>
+        </div>`;
+}
+
+function onTempiStatusFilter(key) {
+    listFilters.tempi.status = key;
+    const bar = document.querySelector('[data-filter-bar="tempi"]');
+    if (bar) {
+        bar.querySelectorAll('.filter-chip').forEach(btn => {
+            const onclick = btn.getAttribute('onclick') || '';
+            const m = onclick.match(/onTempiStatusFilter\\('([^']+)'\\)/);
+            const k = m ? m[1] : '';
+            btn.classList.toggle('active', k === key);
+        });
+    }
+    applyListFilter('tempi');
+}
+
+/** Calcola endDate da start + giorni (giorno intero inclusivo: 5 giorni = scade a fine del 5° giorno) */
+function computeTempoEndDate(startIso, days) {
+    const start = new Date(startIso);
+    if (isNaN(start.getTime())) return null;
+    const d = Number(days) || 0;
+    // Giorno 1 = giorno di inizio; dopo d giorni completi scade a fine giornata del giorno (start + d - 1)
+    // Es: inizio 1 gen, 5 giorni → scade fine 5 gen
+    const end = new Date(start.getFullYear(), start.getMonth(), start.getDate());
+    end.setDate(end.getDate() + Math.max(0, d - 1));
+    end.setHours(23, 59, 59, 999);
+    return end.toISOString();
+}
+
+function formatTempoDate(iso) {
+    if (!iso) return '—';
+    try {
+        const d = new Date(iso);
+        if (isNaN(d.getTime())) return '—';
+        return d.toLocaleDateString('it-IT', { day: '2-digit', month: '2-digit', year: 'numeric' });
+    } catch (e) {
+        return '—';
+    }
+}
+
+/** Aggiorna in batch i tempi scaduti a status terminato */
+function syncExpiredTempi(items) {
+    const updates = [];
+    items.forEach(t => {
+        if (t.status === 'terminato') return;
+        if (tempoIsExpired(t.endDate)) {
+            updates.push(
+                db.collection('tempi').doc(t.id).update({
+                    status: 'terminato',
+                    completedAt: new Date().toISOString()
+                })
+            );
+        }
+    });
+    if (updates.length) {
+        Promise.all(updates).catch(err => console.warn('syncExpiredTempi', err));
+    }
+}
+
+function addTempo(editId = null, existing = null) {
+    db.collection('players').get().then(snapshot => {
+        const playersList = [];
+        snapshot.forEach(doc => {
+            const p = doc.data();
+            // Solo player attivi (non usciti)
+            if (resolveExitType(p)) return;
+            playersList.push({ id: doc.id, name: p.name || '', grado: p.grado || '' });
+        });
+        sortAlpha(playersList, 'name');
+
+        let playerOptions = '<option value="">— Seleziona player —</option>';
+        playersList.forEach(p => {
+            const sel = (existing && (existing.playerId === p.id || existing.playerName === p.name)) ? 'selected' : '';
+            const gradoTag = p.grado ? ` (${p.grado})` : '';
+            playerOptions += `<option value="${p.id}" data-name="${escapeAttr(p.name)}" ${sel}>${p.name}${gradoTag}</option>`;
+        });
+
+        const isEdit = !!editId;
+        const tipoVal = existing ? (existing.tipo || 'neonato_adulto') : 'neonato_adulto';
+        const daysVal = existing ? (existing.days != null ? existing.days : 5) : 5;
+        const notesVal = existing ? (existing.notes || '') : '';
+        const customLabelVal = existing ? (existing.tipoLabel || existing.customLabel || '') : '';
+        const readyNoteVal = existing ? (existing.readyNote || '') : '';
+        let startVal = '';
+        if (existing && existing.startDate) {
+            const sd = new Date(existing.startDate);
+            if (!isNaN(sd.getTime())) {
+                startVal = sd.toISOString().slice(0, 10);
+            }
+        } else {
+            startVal = new Date().toISOString().slice(0, 10);
+        }
+
+        const tipoOptions = TEMPO_TIPI.map(t =>
+            `<option value="${t.key}" ${tipoVal === t.key ? 'selected' : ''}>${t.label}</option>`
+        ).join('');
+
+        Swal.fire({
+            title: isEdit ? 'Modifica Tempo' : 'Nuovo Tempo',
+            html: `
+                <label style="display:block;text-align:left;margin:8px 0 4px 4px;color:#a0a0a0;font-size:13px;font-weight:600;">Player</label>
+                <select id="tempo-player" class="swal2-select">${playerOptions}</select>
+
+                <label style="display:block;text-align:left;margin:8px 0 4px 4px;color:#a0a0a0;font-size:13px;font-weight:600;">Tipo periodo</label>
+                <select id="tempo-tipo" class="swal2-select" onchange="document.getElementById('tempo-custom-wrap').style.display=this.value==='custom'?'block':'none'">
+                    ${tipoOptions}
+                </select>
+
+                <div id="tempo-custom-wrap" style="display:${tipoVal === 'custom' ? 'block' : 'none'};">
+                    <label style="display:block;text-align:left;margin:8px 0 4px 4px;color:#a0a0a0;font-size:13px;font-weight:600;">Etichetta personalizzata</label>
+                    <input id="tempo-custom-label" class="swal2-input" placeholder="Es. Periodo prova, Caccia..." value="${escapeAttr(customLabelVal)}">
+                    <label style="display:block;text-align:left;margin:8px 0 4px 4px;color:#a0a0a0;font-size:13px;font-weight:600;">Messaggio a scadenza (opz.)</label>
+                    <input id="tempo-ready-note" class="swal2-input" placeholder="Es. pronto per rito X" value="${escapeAttr(readyNoteVal)}">
+                </div>
+
+                <label style="display:block;text-align:left;margin:8px 0 4px 4px;color:#a0a0a0;font-size:13px;font-weight:600;">Durata (giorni)</label>
+                <input id="tempo-days" type="number" min="1" max="3650" class="swal2-input" placeholder="Giorni" value="${daysVal}">
+
+                <label style="display:block;text-align:left;margin:8px 0 4px 4px;color:#a0a0a0;font-size:13px;font-weight:600;">Data inizio</label>
+                <input id="tempo-start" type="date" class="swal2-input" value="${startVal}">
+
+                <label style="display:block;text-align:left;margin:8px 0 4px 4px;color:#a0a0a0;font-size:13px;font-weight:600;">Note</label>
+                <textarea id="tempo-notes" class="swal2-textarea" placeholder="Note, dettagli, contesto...">${notesVal.replace(/</g, '&lt;')}</textarea>
+            `,
+            confirmButtonText: isEdit ? 'Salva modifiche' : 'Crea Tempo',
+            background: '#131a25',
+            preConfirm: () => {
+                const sel = document.getElementById('tempo-player');
+                const playerId = sel.value;
+                if (!playerId) {
+                    Swal.showValidationMessage('Seleziona un player');
+                    return false;
+                }
+                const opt = sel.options[sel.selectedIndex];
+                const playerName = opt.getAttribute('data-name') || opt.textContent.replace(/\s*\(.*\)\s*$/, '').trim();
+                const tipo = document.getElementById('tempo-tipo').value;
+                const days = parseInt(document.getElementById('tempo-days').value, 10);
+                if (!days || days < 1) {
+                    Swal.showValidationMessage('Inserisci un numero di giorni valido (≥ 1)');
+                    return false;
+                }
+                const startStr = document.getElementById('tempo-start').value;
+                if (!startStr) {
+                    Swal.showValidationMessage('Inserisci la data di inizio');
+                    return false;
+                }
+                const startDate = new Date(startStr + 'T00:00:00');
+                if (isNaN(startDate.getTime())) {
+                    Swal.showValidationMessage('Data inizio non valida');
+                    return false;
+                }
+                let tipoLabel = tempoTipoMeta(tipo).label;
+                let readyNote = '';
+                if (tipo === 'custom') {
+                    tipoLabel = (document.getElementById('tempo-custom-label').value || '').trim() || 'Personalizzato';
+                    readyNote = (document.getElementById('tempo-ready-note').value || '').trim();
+                }
+                const notes = (document.getElementById('tempo-notes').value || '').trim();
+                const endDate = computeTempoEndDate(startDate.toISOString(), days);
+                const expired = tempoIsExpired(endDate);
+                return {
+                    playerId,
+                    playerName,
+                    tipo,
+                    tipoLabel,
+                    readyNote,
+                    days,
+                    startDate: startDate.toISOString(),
+                    endDate,
+                    notes,
+                    status: expired ? 'terminato' : 'attivo'
+                };
+            }
+        }).then(result => {
+            if (!result.isConfirmed || !result.value) return;
+            const data = result.value;
+            if (isEdit) {
+                if (data.status === 'terminato' && existing && existing.status !== 'terminato') {
+                    data.completedAt = new Date().toISOString();
+                }
+                db.collection('tempi').doc(editId).update(data).then(() => {
+                    showToast('Tempo aggiornato');
+                });
+            } else {
+                data.createdAt = new Date().toISOString();
+                if (data.status === 'terminato') data.completedAt = new Date().toISOString();
+                db.collection('tempi').add(data).then(() => {
+                    showToast('Tempo creato' + (data.status === 'terminato' ? ' (già scaduto)' : ''));
+                });
+            }
+        });
+    });
+}
+
+function editTempo(id) {
+    db.collection('tempi').doc(id).get().then(doc => {
+        if (!doc.exists) return;
+        addTempo(id, doc.data());
+    });
+}
+
+function openTempoDetails(id) {
+    db.collection('tempi').doc(id).get().then(doc => {
+        if (!doc.exists) {
+            Swal.fire({ icon: 'info', title: 'Tempo', text: 'Elemento non trovato.', background: '#131a25' });
+            return;
+        }
+        const t = { id: doc.id, ...doc.data() };
+        // Sync locale se scaduto
+        let status = t.status || 'attivo';
+        if (status !== 'terminato' && tempoIsExpired(t.endDate)) {
+            status = 'terminato';
+            db.collection('tempi').doc(id).update({ status: 'terminato', completedAt: new Date().toISOString() });
+        }
+        const rem = tempoDaysRemaining(t.endDate);
+        const meta = tempoTipoMeta(t.tipo);
+        const tipoDisplay = t.tipo === 'custom'
+            ? (t.tipoLabel || t.customLabel || 'Personalizzato')
+            : meta.label;
+        let countdownHtml;
+        if (status === 'terminato' || (rem != null && rem < 0)) {
+            countdownHtml = `<div class="status tempo-status-terminato" style="margin:10px 0;">✓ TERMINATO</div>
+                <p style="color:#fbbf24;font-weight:600;margin:8px 0;">${tempoReadyMessage(t)}</p>`;
+        } else if (rem === 0) {
+            countdownHtml = `<div class="status tempo-status-oggi" style="margin:10px 0;">Scade oggi</div>`;
+        } else {
+            countdownHtml = `<div class="status tempo-status-attivo" style="margin:10px 0;">${rem} giorn${rem === 1 ? 'o' : 'i'} rimanenti</div>`;
+        }
+
+        Swal.fire({
+            title: '⏱ ' + (t.playerName || 'Tempo'),
+            width: 560,
+            background: '#131a25',
+            confirmButtonText: 'Chiudi',
+            html: `
+                <div style="text-align:left;">
+                    <p><b>Player:</b> ${t.playerName || '—'}</p>
+                    <p><b>Tipo:</b> ${tipoDisplay}</p>
+                    <p><b>Durata:</b> ${formatNumber(t.days || 0)} giorni</p>
+                    <p><b>Inizio:</b> ${formatTempoDate(t.startDate)}</p>
+                    <p><b>Fine:</b> ${formatTempoDate(t.endDate)}</p>
+                    ${countdownHtml}
+                    ${t.notes ? `<div style="margin-top:14px;padding:12px;background:rgba(0,0,0,0.35);border-left:3px solid #c5a059;border-radius:0 8px 0 8px;">
+                        <p style="margin:0 0 6px;color:#c5a059;font-size:0.75rem;font-weight:700;text-transform:uppercase;letter-spacing:1px;">Note</p>
+                        <p style="margin:0;white-space:pre-wrap;line-height:1.5;">${String(t.notes).replace(/</g, '&lt;')}</p>
+                    </div>` : '<p style="color:#9ca3af;font-size:0.85rem;margin-top:12px;">Nessuna nota</p>'}
+                    ${t.createdAt ? `<p style="margin-top:14px;font-size:0.75rem;color:#6b7280;">Creato: ${formatDateTime(t.createdAt)}</p>` : ''}
+                    ${t.completedAt ? `<p style="font-size:0.75rem;color:#6b7280;">Completato: ${formatDateTime(t.completedAt)}</p>` : ''}
+                </div>
+            `
+        });
+    });
+}
+
+function markTempoTerminato(id) {
+    Swal.fire({
+        title: 'Segnare come terminato?',
+        text: 'Lo stato passerà a Terminato anche se i giorni non sono ancora scaduti.',
+        icon: 'question',
+        showCancelButton: true,
+        confirmButtonText: 'Sì, termina',
+        cancelButtonText: 'Annulla',
+        background: '#131a25'
+    }).then(result => {
+        if (!result.isConfirmed) return;
+        db.collection('tempi').doc(id).update({
+            status: 'terminato',
+            completedAt: new Date().toISOString()
+        }).then(() => showToast('Tempo segnato come terminato'));
+    });
+}
+
+function reopenTempo(id) {
+    db.collection('tempi').doc(id).get().then(doc => {
+        if (!doc.exists) return;
+        const t = doc.data();
+        if (tempoIsExpired(t.endDate)) {
+            Swal.fire({
+                icon: 'warning',
+                title: 'Periodo già scaduto',
+                text: 'La data di fine è già passata. Modifica la durata o la data inizio per riaprirlo.',
+                background: '#131a25'
+            });
+            return;
+        }
+        db.collection('tempi').doc(id).update({
+            status: 'attivo',
+            completedAt: null
+        }).then(() => showToast('Tempo riaperto'));
+    });
+}
+
+
+/** Aumenta o diminuisce i giorni di un tempo (violazioni, bonus, ecc.) */
+function adjustTempoDays(id) {
+    db.collection('tempi').doc(id).get().then(doc => {
+        if (!doc.exists) return;
+        const t = doc.data();
+        const rem = tempoDaysRemaining(t.endDate);
+        const remLabel = rem == null ? '—' : (rem < 0 ? 'scaduto' : (rem + ' g. rim.'));
+
+        Swal.fire({
+            title: '⏱ Aggiusta durata',
+            html: `
+                <p style="text-align:left;color:#a0a0a0;font-size:0.9rem;margin-bottom:12px;">
+                    <b>${t.playerName || '—'}</b> · attualmente <b>${formatNumber(t.days || 0)}</b> giorni
+                    (${formatTempoDate(t.startDate)} → ${formatTempoDate(t.endDate)}) · ${remLabel}
+                </p>
+                <label style="display:block;text-align:left;margin:8px 0 4px 4px;color:#a0a0a0;font-size:13px;font-weight:600;">
+                    Giorni da aggiungere (+) o togliere (−)
+                </label>
+                <input id="tempo-delta" type="number" class="swal2-input" placeholder="Es. +2 oppure -1" value="1">
+                <label style="display:block;text-align:left;margin:8px 0 4px 4px;color:#a0a0a0;font-size:13px;font-weight:600;">
+                    Motivo (opzionale, va nelle note)
+                </label>
+                <input id="tempo-delta-note" class="swal2-input" placeholder="Es. violazione RP, bonus, ecc.">
+            `,
+            showDenyButton: true,
+            showCancelButton: true,
+            confirmButtonText: 'Applica',
+            denyButtonText: '+1 giorno',
+            cancelButtonText: 'Annulla',
+            background: '#131a25',
+            preConfirm: () => {
+                const delta = parseInt(document.getElementById('tempo-delta').value, 10);
+                if (isNaN(delta) || delta === 0) {
+                    Swal.showValidationMessage('Inserisci un numero diverso da zero');
+                    return false;
+                }
+                return {
+                    delta,
+                    note: (document.getElementById('tempo-delta-note').value || '').trim()
+                };
+            },
+            preDeny: () => ({ delta: 1, note: '' })
+        }).then(result => {
+            if (!result.isConfirmed && !result.isDenied) return;
+            const payload = result.value || { delta: 1, note: '' };
+            applyTempoDaysDelta(id, t, payload.delta, payload.note);
+        });
+    });
+}
+
+function applyTempoDaysDelta(id, t, delta, note) {
+    const newDays = Math.max(1, (Number(t.days) || 1) + delta);
+    const endDate = computeTempoEndDate(t.startDate, newDays);
+    const expired = tempoIsExpired(endDate);
+    const update = {
+        days: newDays,
+        endDate,
+        status: expired ? 'terminato' : 'attivo'
+    };
+    if (expired && t.status !== 'terminato') {
+        update.completedAt = new Date().toISOString();
+    }
+    if (!expired && t.status === 'terminato') {
+        update.completedAt = null;
+    }
+    if (note) {
+        const stamp = formatDateTime(new Date().toISOString()) || '';
+        const line = '[' + stamp + '] ' + (delta > 0 ? '+' : '') + delta + ' g.: ' + note;
+        update.notes = (t.notes ? String(t.notes).trim() + '\n' : '') + line;
+    }
+    db.collection('tempi').doc(id).update(update).then(() => {
+        const msg = delta > 0
+            ? ('Durata aumentata di ' + delta + ' g. → ' + newDays + ' giorni totali')
+            : ('Durata ridotta di ' + Math.abs(delta) + ' g. → ' + newDays + ' giorni totali');
+        showToast(msg);
+    });
+}
+
+
+let _tempiUnsub = null;
+
+
+function renderTempiListFromCache() {
+    const container = document.getElementById('tempi-list');
+    if (!container || !_tempiItemsCache) return;
+    container.querySelectorAll('.card[data-tempo-status]').forEach(card => {
+        const h3 = card.querySelector('h3');
+        if (!h3) return;
+        const name = h3.textContent.trim();
+        const hasPun = playerHasActivePunizione(null, name);
+        let flag = card.querySelector('.tempo-punizione-flag');
+        if (hasPun) {
+            card.classList.add('card-tempo-punito');
+            if (!flag) {
+                flag = document.createElement('div');
+                flag.className = 'tempo-punizione-flag';
+                flag.title = 'Punizione attiva';
+                flag.textContent = '⚖️ Punizione attiva';
+                h3.insertAdjacentElement('afterend', flag);
+            }
+        } else {
+            card.classList.remove('card-tempo-punito');
+            if (flag) flag.remove();
+        }
+    });
+}
+
+
+function loadTempi() {
+    const container = document.getElementById('tempi-list');
+    if (!container) return;
+
+    if (_tempiUnsub) {
+        try { _tempiUnsub(); } catch (e) {}
+        _tempiUnsub = null;
+    }
+
+    ensurePunizioniListener();
+    _tempiUnsub = db.collection('tempi').onSnapshot(snapshot => {
+        const items = [];
+        snapshot.forEach(doc => items.push({ id: doc.id, ...doc.data() }));
+        _tempiItemsCache = items;
+        syncExpiredTempi(items);
+
+        // Applica status locale se già scaduto (anche prima del write)
+        items.forEach(t => {
+            if (t.status !== 'terminato' && tempoIsExpired(t.endDate)) {
+                t.status = 'terminato';
+            }
+        });
+
+        // Ordina: prima attivi (per giorni rimanenti crescenti), poi terminati (per endDate desc)
+        items.sort((a, b) => {
+            const sa = a.status === 'terminato' ? 1 : 0;
+            const sb = b.status === 'terminato' ? 1 : 0;
+            if (sa !== sb) return sa - sb;
+            if (sa === 0) {
+                const ra = tempoDaysRemaining(a.endDate);
+                const rb = tempoDaysRemaining(b.endDate);
+                return (ra == null ? 9999 : ra) - (rb == null ? 9999 : rb);
+            }
+            return String(b.endDate || '').localeCompare(String(a.endDate || ''));
+        });
+
+        container.innerHTML = '';
+        container.innerHTML += buildTempiFilterBarHtml();
+
+        if (items.length === 0) {
+            container.innerHTML += `<p style="grid-column:1/-1;color:var(--text-dim);padding:16px;">Nessun tempo registrato. Usa «+ Nuovo Tempo» e scegli un player dalla lista Giocatori.</p>`;
+            return;
+        }
+
+        items.forEach(t => {
+            const status = t.status || 'attivo';
+            const rem = tempoDaysRemaining(t.endDate);
+            const meta = tempoTipoMeta(t.tipo);
+            const tipoDisplay = t.tipo === 'custom'
+                ? (t.tipoLabel || t.customLabel || 'Personalizzato')
+                : meta.label;
+
+            let statusBadge;
+            let cardExtraClass = 'card-tempo';
+            let readyLine = '';
+            if (status === 'terminato') {
+                statusBadge = `<div class="status tempo-status-terminato">✓ Terminato</div>`;
+                cardExtraClass += ' card-tempo-terminato';
+                readyLine = `<p class="tempo-ready-msg">${tempoReadyMessage(t)}</p>`;
+            } else if (rem === 0) {
+                statusBadge = `<div class="status tempo-status-oggi">Scade oggi</div>`;
+                cardExtraClass += ' card-tempo-oggi';
+            } else {
+                statusBadge = `<div class="status tempo-status-attivo">${rem} g. rimanenti</div>`;
+            }
+
+            const filterText = [t.playerName, tipoDisplay, t.notes, t.tipoLabel, status].filter(Boolean).join(' ');
+            const safeName = (t.playerName || '').replace(/'/g, "\\'");
+
+            const hasPun = playerHasActivePunizione(t.playerId, t.playerName);
+            const punFlag = hasPun
+                ? '<div class="tempo-punizione-flag" title="Punizione attiva">⚖️ Punizione attiva</div>'
+                : '';
+            if (hasPun) cardExtraClass += ' card-tempo-punito';
+
+            container.innerHTML += `
+                <div class="card ${cardExtraClass}" data-filter-text="${escapeAttr(filterText)}" data-tempo-status="${escapeAttr(status)}">
+                    <h3>${t.playerName || '—'}</h3>
+                    ${punFlag}
+                    <p style="margin-bottom:4px;"><b>Tipo:</b> ${tipoDisplay}</p>
+                    <p style="margin-bottom:4px;font-size:0.8rem;color:var(--text-dim);">
+                        ${formatTempoDate(t.startDate)} → ${formatTempoDate(t.endDate)}
+                        · ${formatNumber(t.days || 0)} gg
+                    </p>
+                    ${statusBadge}
+                    ${readyLine}
+                    ${t.notes ? `<p class="tempo-notes-preview">${String(t.notes).slice(0, 80).replace(/</g, '&lt;')}${String(t.notes).length > 80 ? '…' : ''}</p>` : ''}
+                    <div class="action-buttons action-buttons-icons">
+                        <button class="btn-icon-only" onclick="openTempoDetails('${t.id}')" title="Dettagli e note">
+                            <i class="fa-solid fa-eye"></i>
+                        </button>
+                        <button class="btn-tempo-adjust" onclick="adjustTempoDays('${t.id}')" title="Aumenta o riduci giorni">
+                            ± gg
+                        </button>
+                        <button class="edit-btn" onclick="editTempo('${t.id}')" title="Modifica">
+                            Modifica
+                        </button>
+                        ${status !== 'terminato'
+                            ? `<button class="btn-tempo-done" onclick="markTempoTerminato('${t.id}')" title="Segna terminato">Fine</button>`
+                            : `<button class="btn-tempo-reopen" onclick="reopenTempo('${t.id}')" title="Riapri">Riapri</button>`
+                        }
+                        <button class="delete-btn btn-icon-only" onclick="confirmDelete('tempi', '${t.id}', loadTempi)" title="Elimina">
+                            🗑️
+                        </button>
+                    </div>
+                </div>
+            `;
+        });
+        applyListFilter('tempi');
+    });
+}
+
+
 auth.onAuthStateChanged(user => {
 
     if (user && user.email === 'gm.vampiri@horde.it') {
@@ -4802,6 +5674,7 @@ auth.onAuthStateChanged(user => {
         loadGlobalLinks();
         loadPlayers();
         loadRitoPlayers();
+        loadTempi();
         loadFrammentiEvents();
         loadFrammenti();
         updateWeekRangeHints();

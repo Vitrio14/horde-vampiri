@@ -243,6 +243,7 @@
 
         <button onclick="showSection('quests')">Quest</button>
         <button onclick="showSection('players')">Giocatori</button>
+        <button onclick="showSection('tempi')">Tempi</button>
         <button onclick="showSection('rito')">Uscite & Riti</button>
         <button onclick="showSection('frammenti')">Frammenti</button>
         <button onclick="showSection('docs')">Documenti</button>
@@ -284,6 +285,23 @@
             </div>
 
             <div id="players-list" class="grid grid-compact"></div>
+
+        </section>
+
+        <section id="tempi" class="panel">
+
+            <div class="topbar">
+                <h1>Tempi & Scadenze</h1>
+                <div style="display: flex; gap: 10px;">
+                    <button onclick="addTempo()">+ Nuovo Tempo</button>
+                </div>
+            </div>
+
+            <p style="color:var(--text-dim);font-size:0.85rem;margin:-10px 0 18px;">
+                Timer in giorni per periodi (es. Neonato → Adulto, Forma Ferale). Alla scadenza lo stato passa a <b>Terminato</b> e indica che è pronto per il rito corrispondente. Usa 👁 per note e dettagli.
+            </p>
+
+            <div id="tempi-list" class="grid grid-compact"></div>
 
         </section>
 
