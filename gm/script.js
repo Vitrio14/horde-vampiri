@@ -60,7 +60,6 @@ function formatDateTime(iso) {
     }
 }
 
-
 /* ========== FILTRI LISTE (ricerca + grado player) ========== */
 const listFilters = {
     quests: '',
@@ -406,7 +405,6 @@ function applyListFilter(sectionKey) {
 
 function login() {
 
-
     const email = document.getElementById('email').value;
     const password = document.getElementById('password').value;
 
@@ -685,7 +683,7 @@ function loadQuests() {
                         container.innerHTML += `
                             <div class="card" id="${cardId}" data-filter-text="${escapeAttr(qFilterText)}">
                                 <h3>${q.title}</h3>
-                                
+
                                 <div class="quest-steps-box">
                                     <ul style="list-style: none; padding: 0;">
                                         ${stepsHTML}
@@ -871,14 +869,14 @@ function loadDocs() {
                         container.innerHTML += `
                             <div class="card" id="${cardId}" data-filter-text="${escapeAttr(d.title || '')}">
                                 <h3>${d.title}</h3>
-                                <button 
+                                <button
                                     class="open-doc-btn"
                                     data-open-src="${cardId}"
                                     style="margin-bottom:8px;width:100%;"
                                 >
                                     <i class="fa-solid fa-file"></i> Apri Documento
                                 </button>
-                                <button 
+                                <button
                                     class="delete-btn"
                                     onclick="deleteDoc('${d.id}')"
                                 >
@@ -1233,11 +1231,11 @@ function loadMedia() {
 document.addEventListener('contextmenu', event => event.preventDefault());
 
 document.onkeydown = function(e) {
-    if (e.keyCode == 123) return false; 
-    if (e.ctrlKey && e.shiftKey && e.keyCode == 'I'.charCodeAt(0)) return false; 
-    if (e.ctrlKey && e.shiftKey && e.keyCode == 'C'.charCodeAt(0)) return false; 
-    if (e.ctrlKey && e.shiftKey && e.keyCode == 'J'.charCodeAt(0)) return false; 
-    if (e.ctrlKey && e.keyCode == 'U'.charCodeAt(0)) return false; 
+    if (e.keyCode == 123) return false;
+    if (e.ctrlKey && e.shiftKey && e.keyCode == 'I'.charCodeAt(0)) return false;
+    if (e.ctrlKey && e.shiftKey && e.keyCode == 'C'.charCodeAt(0)) return false;
+    if (e.ctrlKey && e.shiftKey && e.keyCode == 'J'.charCodeAt(0)) return false;
+    if (e.ctrlKey && e.keyCode == 'U'.charCodeAt(0)) return false;
 };
 
 setInterval(function() {
@@ -1634,7 +1632,6 @@ function showToast(text) {
 }
 
 /* PLAYERS */
-
 
 /* ========== GENITORI / FIGLI ========== */
 /** Restituisce array di parentIds normalizzato */
@@ -2135,7 +2132,6 @@ function openPlayerModal(playerId) {
                 allPlayersSnap.forEach(doc => allPlayers.push({ id: doc.id, ...doc.data() }));
                 const currentParentIds = getParentIds(player);
                 const parentOptions = buildParentSelectOptions(allPlayers, currentParentIds, playerId);
-
 
                 let questOptions = '';
                 const questList = [];
@@ -2864,7 +2860,6 @@ function loadRitoPlayers() {
         applyListFilter('rito');
     });
 }
-
 
 /* ========== FRAMMENTI ========== */
 
@@ -4217,7 +4212,6 @@ function addFrammentoForEvent(eventId) {
     });
 }
 
-
 function addFrammento() {
     Promise.all([
         db.collection('players').get(),
@@ -5076,9 +5070,6 @@ function openPlayerFrammentiModal(playerId, playerName, initialFilter) {
     });
 }
 
-
-
-
 /* ========== PUNIZIONI ========== */
 
 const PUNIZIONE_TIPI = [
@@ -5373,7 +5364,6 @@ function addPunizione(playerId, playerName) {
     });
 }
 
-
 function editPunizione(id, playerId, playerName) {
     db.collection('punizioni').doc(id).get().then(doc => {
         if (!doc.exists) return;
@@ -5517,7 +5507,6 @@ function deletePunizione(id, playerId, playerName) {
         });
     });
 }
-
 
 /* ========== TEMPI & SCADENZE ========== */
 
@@ -5967,7 +5956,6 @@ function reopenTempo(id) {
     });
 }
 
-
 /** Aumenta o diminuisce i giorni di un tempo (violazioni, bonus, ecc.) */
 function adjustTempoDays(id) {
     db.collection('tempi').doc(id).get().then(doc => {
@@ -6106,7 +6094,6 @@ function applyTempoDaysDelta(id, delta, note) {
     });
 }
 
-
 /** Promuove grado player da Neonato/Neonata ad Adulto (da card Tempo terminato). */
 function promotePlayerFromTempo(playerId, playerName) {
     if (!playerId) {
@@ -6172,7 +6159,6 @@ function activateFeraleFromTempo(playerId, playerName) {
     });
 }
 
-
 /** Archivia un tempo (non cancella: resta in Archiviati). */
 function archiveTempo(id) {
     Swal.fire({
@@ -6213,7 +6199,6 @@ function unarchiveTempo(id) {
 
 let _tempiUnsub = null;
 
-
 function renderTempiListFromCache() {
     const container = document.getElementById('tempi-list');
     if (!container || !_tempiItemsCache) return;
@@ -6240,7 +6225,6 @@ function renderTempiListFromCache() {
         }
     });
 }
-
 
 function loadTempi() {
     const container = document.getElementById('tempi-list');
@@ -6411,8 +6395,6 @@ function loadTempi() {
         applyListFilter('tempi');
     });
 }
-
-
 
 auth.onAuthStateChanged(user => {
 
