@@ -2124,20 +2124,3 @@ footer:hover strong { color: var(--blood-red); }
     .rango-count-label { font-size: 0.52rem; }
     .rango-count-num { font-size: 0.9rem; }
 }
-
-
-/* ===== Performance inventario / immagini ===== */
-.inv-box, #item-images-grid > div {
-    contain: layout style paint;
-}
-.inv-img, #item-images-grid img {
-    content-visibility: auto;
-    max-width: 100%;
-    height: auto;
-}
-.inv-grid-container, #item-images-grid {
-    contain: layout style;
-}
-.section:not(.active) {
-    content-visibility: hidden;
-}
