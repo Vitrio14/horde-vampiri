@@ -850,7 +850,7 @@ window.registraVenditaMateriali = async () => {
         const foto = (fotoEl && fotoEl.value) ? fotoEl.value : "#";
 
         const now = new Date();
-        await addDoc(collection(db, "vendite_materiali"), {
+        const matEntry = {
             vampiro: nome,
             materiale: cfg.nome,
             tipoMaterialeId: tipoId,
@@ -868,7 +868,10 @@ window.registraVenditaMateriali = async () => {
             dataStr: now.toLocaleDateString('it-IT'),
             ora: now.toLocaleTimeString('it-IT'),
             settimanaEtichetta: getWeekYearKey(now)
-        });
+        };
+        await addDoc(collection(db, "vendite_materiali"), matEntry);
+        venditeMateriali = [matEntry, ...venditeMateriali];
+        forceRefreshAfterWrite('materiali');
 
         vampireToast("Vendita registrata correttamente.", "success");
         if (qtyEl) qtyEl.value = "";
@@ -1345,10 +1348,15 @@ window.movimentoSaldo = async () => {
     if(nuovoSaldo < 0) return vampireToast("Saldo insufficiente!", "error");
     const now = new Date();
     await setDoc(doc(db, "config", "saldo"), { valore: nuovoSaldo }, { merge: true });
-    await addDoc(collection(db, "saldo_logs"), {
-        utente: nome, tipo: azione, qty: importo, motivo, timestamp: Date.now(), 
+    const logEntry = {
+        utente: nome, tipo: azione, qty: importo, motivo, timestamp: Date.now(),
         dataStr: now.toLocaleDateString('it-IT'), ora: now.toLocaleTimeString('it-IT')
-    });
+    };
+    await addDoc(collection(db, "saldo_logs"), logEntry);
+    // Aggiornamento ottimistico: UI subito, senza attendere idle del listener
+    saldoGlobale = nuovoSaldo;
+    saldoLogs = [logEntry, ...saldoLogs].slice(0, 80);
+    forceRefreshAfterWrite('saldo');
     vampireToast(`Operazione di ${azione} completata.`, "success");
     document.getElementById('saldo-importo').value = ""; document.getElementById('saldo-motivo').value = "";
 };
@@ -1370,102 +1378,138 @@ window.renderSaldoLogs = () => {
 
 function popolaFiltroSettimane() {
     const filter = document.getElementById('calc-period-filter');
-    if(!filter) return;
+    if (!filter) return;
     const valCorrente = filter.value;
-    const settimaneUniche = [...new Set([
-        ...vendite.map(v => v.settimanaEtichetta),
-        ...venditeMateriali.map(m => m.settimanaEtichetta)
-    ])].filter(Boolean).sort().reverse();
-    
-    let options = `<option value="current">Settimana Corrente</option><option value="all">Totale Storico</option>`;
-    settimaneUniche.forEach(s => {
+    const currentWeek = getWeekYearKey(new Date());
+    // Unione leggera senza allocare array intermedi enormi
+    const set = new Set();
+    for (let i = 0; i < vendite.length; i++) {
+        const k = vendite[i].settimanaEtichetta;
+        if (k) set.add(k);
+    }
+    for (let i = 0; i < venditeMateriali.length; i++) {
+        const k = venditeMateriali[i].settimanaEtichetta;
+        if (k) set.add(k);
+    }
+    // Settimane passate (esclude la corrente: già coperta da "Settimana Corrente")
+    const settimanePassate = [...set].filter(s => s !== currentWeek).sort().reverse();
+
+    let options = `<option value="current">Settimana Corrente</option>`;
+    settimanePassate.forEach(s => {
         const range = getWeekRangeLabel(s);
-        options += `<option value="${s}">Settimana: ${range}</option>`;
+        options += `<option value="${s}">${range} (${s})</option>`;
     });
+    options += `<option value="all">Totale Storico</option>`;
     filter.innerHTML = options;
-    filter.value = valCorrente;
+    // Ripristina selezione se ancora valida, altrimenti corrente
+    if (valCorrente && [...filter.options].some(o => o.value === valCorrente)) {
+        filter.value = valCorrente;
+    } else {
+        filter.value = 'current';
+    }
 }
 
 window.eseguiCalcolo = () => {
     let nomeInput = (currentUser && !currentUser.isAdmin) ? currentUser.nome : document.getElementById('calc-search-name').value;
     const periodo = document.getElementById('calc-period-filter').value;
-    if(!nomeInput) return vampireToast("Seleziona un vampiro per il calcolo.", "error");
-    
+    if (!nomeInput) return vampireToast("Seleziona un vampiro per il calcolo.", "error");
+
     const resBox = document.getElementById('calc-result');
-    let filtratiCarbonio = [];
-    let filtratiMateriali = [];
+    const weekKey = (periodo === 'current') ? getWeekYearKey(new Date()) : (periodo === 'all' ? null : periodo);
 
-    if(periodo === "all") {
-        filtratiCarbonio = vendite.filter(v => v.nome === nomeInput);
-        filtratiMateriali = venditeMateriali.filter(m => m.vampiro === nomeInput);
-    } else if(periodo === "current") {
-        const currentWeek = getWeekYearKey(new Date());
-        filtratiCarbonio = vendite.filter(v => v.settimanaEtichetta === currentWeek && v.nome === nomeInput);
-        filtratiMateriali = venditeMateriali.filter(m => m.settimanaEtichetta === currentWeek && m.vampiro === nomeInput);
-    } else {
-        filtratiCarbonio = vendite.filter(v => v.settimanaEtichetta === periodo && v.nome === nomeInput);
-        filtratiMateriali = venditeMateriali.filter(m => m.settimanaEtichetta === periodo && m.vampiro === nomeInput);
+    // Un solo passaggio: filtra + aggrega (niente reduce multipli)
+    const filtratiCarbonio = [];
+    let totQtyVendite = 0, totCrVendite = 0, totProVendite = 0, totDinVendite = 0, totEkVendite = 0;
+    for (let i = 0; i < vendite.length; i++) {
+        const v = vendite[i];
+        if (v.nome !== nomeInput) continue;
+        if (weekKey && v.settimanaEtichetta !== weekKey) continue;
+        filtratiCarbonio.push(v);
+        const tot = v.totale || 0;
+        totQtyVendite += v.qty || 0;
+        totCrVendite += tot;
+        totProVendite += (v.propria != null ? v.propria : tot * 0.4);
+        totDinVendite += (v.dinastia != null ? v.dinastia : tot * 0.6);
+        totEkVendite += calcEkatonFromRecord(v);
     }
 
-    if(filtratiCarbonio.length === 0 && filtratiMateriali.length === 0) { 
-        resBox.style.display = "none"; 
-        return vampireToast("Nessun record trovato per i parametri scelti.", "error"); 
+    const filtratiMateriali = [];
+    let totQtyMat = 0, totCrMat = 0, totVampMat = 0, totDinMat = 0, totEkMat = 0;
+    for (let i = 0; i < venditeMateriali.length; i++) {
+        const m = venditeMateriali[i];
+        if (m.vampiro !== nomeInput) continue;
+        if (weekKey && m.settimanaEtichetta !== weekKey) continue;
+        filtratiMateriali.push(m);
+        totQtyMat += m.qty || 0;
+        totCrMat += m.prezzoTot || 0;
+        totVampMat += m.vPro || 0;
+        totDinMat += m.vDin || 0;
+        totEkMat += calcEkatonFromRecord({
+            ekaton: m.ekaton,
+            dinastia: m.vDin,
+            vDin: m.vDin,
+            pEkaton: m.pEkaton
+        });
     }
-    
-    // Calcoli Vendite (collection vendite) — usa valori salvati sul record
-    const totQtyVendite = filtratiCarbonio.reduce((a, b) => a + (b.qty || 0), 0);
-    const totCrVendite = filtratiCarbonio.reduce((a, b) => a + (b.totale || 0), 0);
-    const totProVendite = filtratiCarbonio.reduce((a, b) => a + (b.propria != null ? b.propria : (b.totale || 0) * 0.4), 0);
-    const totDinVendite = filtratiCarbonio.reduce((a, b) => a + (b.dinastia != null ? b.dinastia : (b.totale || 0) * 0.6), 0);
-    const totEkVendite = filtratiCarbonio.reduce((a, b) => a + calcEkatonFromRecord(b), 0);
-    
-    // Calcoli Materiali (collection vendite_materiali)
-    const totQtyMat = filtratiMateriali.reduce((a, b) => a + (b.qty || 0), 0);
-    const totCrMat = filtratiMateriali.reduce((a, b) => a + (b.prezzoTot || 0), 0);
-    const totVampMat = filtratiMateriali.reduce((a, b) => a + (b.vPro || 0), 0);
-    const totDinMat = filtratiMateriali.reduce((a, b) => a + (b.vDin || 0), 0);
-    const totEkMat = filtratiMateriali.reduce((a, b) => a + calcEkatonFromRecord({
-        ekaton: b.ekaton,
-        dinastia: b.vDin,
-        vDin: b.vDin,
-        pEkaton: b.pEkaton
-    }), 0);
+
+    if (filtratiCarbonio.length === 0 && filtratiMateriali.length === 0) {
+        resBox.style.display = "none";
+        return vampireToast("Nessun record trovato per i parametri scelti.", "error");
+    }
 
     document.getElementById('calc-res-nome').innerText = nomeInput.toUpperCase();
-    
-    if(document.getElementById('calc-res-qty')) document.getElementById('calc-res-qty').innerText = fmt(totQtyVendite);
-    if(document.getElementById('calc-res-tot')) document.getElementById('calc-res-tot').innerText = fmt(totCrVendite) + " cr";
-    if(document.getElementById('calc-res-vamp')) document.getElementById('calc-res-vamp').innerText = fmt(totProVendite) + " cr";
-    if(document.getElementById('calc-res-din')) document.getElementById('calc-res-din').innerText = fmt(totDinVendite) + " cr";
-    if(document.getElementById('calc-res-ekaton')) document.getElementById('calc-res-ekaton').innerText = fmt(totEkVendite) + " cr";
-    if(document.getElementById('calc-res-count')) document.getElementById('calc-res-count').innerText = filtratiCarbonio.length;
-    
-    if(document.getElementById('calc-res-mat-qty')) document.getElementById('calc-res-mat-qty').innerText = fmt(totQtyMat);
-    if(document.getElementById('calc-res-mat-tot')) document.getElementById('calc-res-mat-tot').innerText = fmt(totCrMat) + " cr";
-    if(document.getElementById('calc-res-mat-vamp')) document.getElementById('calc-res-mat-vamp').innerText = fmt(totVampMat) + " cr";
-    if(document.getElementById('calc-res-mat-din')) document.getElementById('calc-res-mat-din').innerText = fmt(totDinMat) + " cr";
-    if(document.getElementById('calc-res-mat-ekaton')) document.getElementById('calc-res-mat-ekaton').innerText = fmt(totEkMat) + " cr";
-    if(document.getElementById('calc-res-mat-count')) document.getElementById('calc-res-mat-count').innerText = filtratiMateriali.length;
 
-    const listaHtmlVendite = filtratiCarbonio.sort((a,b) => b.timestamp - a.timestamp).map(v => `
-        <div style="border-bottom: 1px solid #222; padding: 5px 0; display: flex; justify-content: space-between;">
+    const elQty = document.getElementById('calc-res-qty');
+    if (elQty) elQty.innerText = fmt(totQtyVendite);
+    const elTot = document.getElementById('calc-res-tot');
+    if (elTot) elTot.innerText = fmt(totCrVendite) + " cr";
+    const elPro = document.getElementById('calc-res-vamp');
+    if (elPro) elPro.innerText = fmt(totProVendite) + " cr";
+    const elDin = document.getElementById('calc-res-din');
+    if (elDin) elDin.innerText = fmt(totDinVendite) + " cr";
+    const elEk = document.getElementById('calc-res-ekaton');
+    if (elEk) elEk.innerText = fmt(totEkVendite) + " cr";
+    const elCnt = document.getElementById('calc-res-count');
+    if (elCnt) elCnt.innerText = filtratiCarbonio.length;
+
+    const elMQty = document.getElementById('calc-res-mat-qty');
+    if (elMQty) elMQty.innerText = fmt(totQtyMat);
+    const elMTot = document.getElementById('calc-res-mat-tot');
+    if (elMTot) elMTot.innerText = fmt(totCrMat) + " cr";
+    const elMPro = document.getElementById('calc-res-mat-vamp');
+    if (elMPro) elMPro.innerText = fmt(totVampMat) + " cr";
+    const elMDin = document.getElementById('calc-res-mat-din');
+    if (elMDin) elMDin.innerText = fmt(totDinMat) + " cr";
+    const elMEk = document.getElementById('calc-res-mat-ekaton');
+    if (elMEk) elMEk.innerText = fmt(totEkMat) + " cr";
+    const elMCnt = document.getElementById('calc-res-mat-count');
+    if (elMCnt) elMCnt.innerText = filtratiMateriali.length;
+
+    filtratiCarbonio.sort((a, b) => (b.timestamp || 0) - (a.timestamp || 0));
+    filtratiMateriali.sort((a, b) => (b.timestamp || 0) - (a.timestamp || 0));
+
+    let listaHtmlVendite = '';
+    for (let i = 0; i < filtratiCarbonio.length; i++) {
+        const v = filtratiCarbonio[i];
+        listaHtmlVendite += `<div style="border-bottom: 1px solid #222; padding: 5px 0; display: flex; justify-content: space-between;">
             <span>[VEND] ${v.materiale || '—'} · ${v.dataStr || ''} (${v.ora || ''})</span>
             <span style="color: var(--gold-dim);">${v.qty || 0}x - ${fmt(v.totale || 0)} cr</span>
-        </div>
-    `).join('');
-    
-    const listaHtmlMateriali = filtratiMateriali.sort((a,b) => b.timestamp - a.timestamp).map(m => `
-        <div style="border-bottom: 1px solid #222; padding: 5px 0; display: flex; justify-content: space-between;">
+        </div>`;
+    }
+    let listaHtmlMateriali = '';
+    for (let i = 0; i < filtratiMateriali.length; i++) {
+        const m = filtratiMateriali[i];
+        listaHtmlMateriali += `<div style="border-bottom: 1px solid #222; padding: 5px 0; display: flex; justify-content: space-between;">
             <span>[MAT] ${m.materiale || 'Materiale'} · ${m.dataStr || ''} (${m.ora || ''})</span>
             <span style="color: var(--gold-dim);">${m.qty || 0}x - ${fmt(m.prezzoTot || 0)} cr</span>
-        </div>
-    `).join('');
+        </div>`;
+    }
 
-    document.getElementById('calc-res-lista-dettaglio').innerHTML = 
-        (listaHtmlVendite ? "<strong>Dettaglio Vendite:</strong>" + listaHtmlVendite : "") + 
+    document.getElementById('calc-res-lista-dettaglio').innerHTML =
+        (listaHtmlVendite ? "<strong>Dettaglio Vendite:</strong>" + listaHtmlVendite : "") +
         (listaHtmlMateriali ? "<br><strong>Dettaglio Vendita Materiali:</strong>" + listaHtmlMateriali : "");
 
-    resBox.style.display = "block"; 
+    resBox.style.display = "block";
     vampireToast("Resoconto generato con successo.", "success");
 };
 
@@ -1499,7 +1543,7 @@ window.registraVendita = async () => {
     const ekaton = dinastia * (percEkaton / 100);
 
     const now = new Date();
-    await addDoc(collection(db, "vendite"), {
+    const vendEntry = {
         nome,
         materiale: cfg.nome || "Carbonio",
         tipoMaterialeId: tipoId || null,
@@ -1518,7 +1562,10 @@ window.registraVendita = async () => {
         dataStr: now.toLocaleDateString('it-IT'),
         ora: now.toLocaleTimeString('it-IT'),
         settimanaEtichetta: getWeekYearKey(now)
-    });
+    };
+    await addDoc(collection(db, "vendite"), vendEntry);
+    vendite = [vendEntry, ...vendite];
+    forceRefreshAfterWrite('vendite');
     vampireToast("Vendita sigillata nel registro.", "success");
     document.getElementById('vamp-qty').value = "";
     document.getElementById('vamp-note').value = "";
@@ -1650,10 +1697,16 @@ window.openInvQuickAction = async (itemID) => {
         if (newQty < 0) return vampireToast("Scorte insufficienti nel deposito.", "error");
         const now = new Date();
         await updateDoc(doc(db, "inventario", itemID), { qty: newQty });
-        await addDoc(collection(db, "logs"), {
+        const logEntry = {
             utente, tipo: action, item: itemID, qty, motivo, timestamp: Date.now(),
             dataStr: now.toLocaleDateString('it-IT'), ora: now.toLocaleTimeString('it-IT')
-        });
+        };
+        await addDoc(collection(db, "logs"), logEntry);
+        // Ottimistico: qty + log subito in memoria e in UI
+        const idx = inventarioDati.findIndex(i => i.id === itemID);
+        if (idx >= 0) inventarioDati[idx] = { ...inventarioDati[idx], qty: newQty };
+        logs = [logEntry, ...logs].slice(0, 80);
+        forceRefreshAfterWrite('inventario');
         vampireToast(`Oggetto ${action === 'prendi' ? 'prelevato' : 'depositato'} con successo.`, "success");
     }
 };
@@ -1675,7 +1728,10 @@ window.renderLogs = () => {
 
 window.adminUpdateSaldo = async () => {
     const v = parseInt(document.getElementById('admin-saldo-val').value);
+    if (isNaN(v)) return vampireToast("Valore non valido.", "error");
     await setDoc(doc(db, "config", "saldo"), { valore: v }, { merge: true });
+    saldoGlobale = v;
+    forceRefreshAfterWrite('saldo');
     vampireToast("Saldo globale aggiornato manualmente.", "success");
 };
 
@@ -1985,21 +2041,72 @@ function isSectionActive(id) {
 function isAdminVisible() {
     return document.getElementById('admin-content')?.style.display === 'block';
 }
-/** Esegue lavoro UI senza bloccare il thread principale */
-function scheduleUI(fn, delay = 0) {
+/**
+ * Esegue lavoro UI senza bloccare il thread principale.
+ * @param {Function} fn
+ * @param {number|{delay?:number, priority?:'high'|'normal'}} [opts]
+ *  - priority 'high' (default per aggiornamenti log/sezione attiva): requestAnimationFrame / setTimeout(0)
+ *  - priority 'normal' (render pesanti): requestIdleCallback con timeout breve
+ */
+function scheduleUI(fn, opts = 0) {
+    let delay = 0;
+    let priority = 'high';
+    if (typeof opts === 'number') {
+        delay = opts;
+        priority = opts > 0 ? 'normal' : 'high';
+    } else if (opts && typeof opts === 'object') {
+        delay = opts.delay || 0;
+        priority = opts.priority || 'high';
+    }
     const run = () => {
         try { fn(); } catch (e) { console.error(e); }
     };
-    if (delay > 0) {
-        setTimeout(() => {
-            if (typeof requestIdleCallback === 'function') requestIdleCallback(run, { timeout: 600 });
-            else run();
-        }, delay);
-    } else if (typeof requestIdleCallback === 'function') {
-        requestIdleCallback(run, { timeout: 400 });
-    } else {
-        setTimeout(run, 0);
-    }
+    const start = () => {
+        if (priority === 'normal' && typeof requestIdleCallback === 'function') {
+            requestIdleCallback(run, { timeout: 250 });
+        } else if (typeof requestAnimationFrame === 'function') {
+            requestAnimationFrame(() => { try { fn(); } catch (e) { console.error(e); } });
+        } else {
+            setTimeout(run, 0);
+        }
+    };
+    if (delay > 0) setTimeout(start, delay);
+    else start();
+}
+
+/** Forza refresh immediato di log/liste della sezione attiva (dopo scrittura locale) */
+function forceRefreshAfterWrite(kind) {
+    scheduleUI(() => {
+        if (kind === 'saldo' || kind === 'all') {
+            if (isSectionActive('saldo')) window.renderSaldoLogs?.();
+            if (isAdminVisible()) window.renderAdminSaldoLogs?.();
+            const el = document.getElementById('tot-saldo-globale');
+            if (el) el.innerText = fmt(saldoGlobale) + ' cr';
+        }
+        if (kind === 'inventario' || kind === 'all') {
+            if (isSectionActive('inventario')) {
+                window.renderInventario?.();
+                window.renderLogs?.();
+                window.popolaSelectOggetti?.();
+            }
+            if (isAdminVisible()) {
+                window.renderAdminTable?.();
+                window.renderAdminLogs?.();
+            }
+        }
+        if (kind === 'vendite' || kind === 'all') {
+            if (isSectionActive('vendite')) window.renderVendite?.();
+            if (isSectionActive('generale')) renderClassifiche?.();
+            aggiornaStats?.();
+            popolaFiltroSettimane?.();
+        }
+        if (kind === 'materiali' || kind === 'all') {
+            if (isSectionActive('materiali')) window.renderMateriali?.();
+            if (isSectionActive('generale')) renderClassifiche?.();
+            aggiornaStats?.();
+            popolaFiltroSettimane?.();
+        }
+    }, { priority: 'high' });
 }
 
 /** Render della sola sezione attualmente aperta (evita lag all'avvio) */
@@ -2034,6 +2141,7 @@ window.refreshActiveSectionUI = () => {
             break;
         case 'inventario':
             window.renderInventario?.();
+            window.renderLogs?.();
             window.popolaSelectOggetti?.();
             break;
         case 'dungeon':
@@ -2049,6 +2157,7 @@ window.refreshActiveSectionUI = () => {
             }
             break;
         case 'calcolo':
+            popolaFiltroSettimane?.();
             break;
         case 'gestione':
             break;
@@ -2105,10 +2214,11 @@ function startFirestoreListeners() {
     onSnapshot(doc(db, "config", "saldo"), (docSnap) => {
         if (docSnap.exists()) { saldoGlobale = docSnap.data().valore; }
         else { saldoGlobale = 0; setDoc(doc(db, "config", "saldo"), { valore: 0 }); }
+        // Aggiornamento immediato (no idle): numero saldo sempre coerente
         const el = document.getElementById('tot-saldo-globale');
         if (el) el.innerText = fmt(saldoGlobale) + " cr";
         const adm = document.getElementById('admin-saldo-val');
-        if (adm) adm.value = saldoGlobale;
+        if (adm && document.activeElement !== adm) adm.value = saldoGlobale;
     });
 
     onSnapshot(query(collection(db, "comunicazioni"), orderBy("timestamp", "desc")), (snap) => {
@@ -2124,25 +2234,27 @@ function startFirestoreListeners() {
     setTimeout(() => {
         onSnapshot(collection(db, "vendite"), (snapshot) => {
             vendite = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
+            const hot = isSectionActive('vendite') || isSectionActive('generale') || isSectionActive('calcolo');
             scheduleUI(() => {
-                if (isSectionActive('vendite') || isSectionActive('generale') || isSectionActive('calcolo')) {
+                popolaFiltroSettimane?.();
+                if (hot) {
                     if (isSectionActive('vendite')) window.renderVendite?.();
                     if (isSectionActive('generale')) renderClassifiche?.();
                     aggiornaStats?.();
-                    popolaFiltroSettimane?.();
                 } else {
-                    // aggiorna solo numeri se elementi esistono
                     aggiornaStats?.();
                 }
                 if (isAdminVisible()) window.renderArchivioGestione?.();
-            });
+            }, { priority: hot ? 'high' : 'normal' });
         });
 
         onSnapshot(collection(db, "vendite_materiali"), (snapshot) => {
             venditeMateriali = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
+            const hot = isSectionActive('materiali') || isSectionActive('generale') || isSectionActive('calcolo');
             scheduleUI(() => {
                 popolaFiltroMateriali?.();
-                if (isSectionActive('materiali') || isSectionActive('generale')) {
+                popolaFiltroSettimane?.();
+                if (hot) {
                     if (isSectionActive('materiali')) window.renderMateriali?.();
                     if (isSectionActive('generale')) renderClassifiche?.();
                     aggiornaStats?.();
@@ -2150,18 +2262,20 @@ function startFirestoreListeners() {
                     aggiornaStats?.();
                 }
                 if (isAdminVisible()) window.renderAdminMateriali?.();
-            });
+            }, { priority: hot ? 'high' : 'normal' });
         });
 
         onSnapshot(collection(db, "inventario"), (snapshot) => {
             inventarioDati = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
+            const prio = (isSectionActive('inventario') || isAdminVisible()) ? 'high' : 'normal';
             scheduleUI(() => {
                 if (isSectionActive('inventario')) {
                     window.renderInventario?.();
+                    window.renderLogs?.();
                     window.popolaSelectOggetti?.();
                 }
                 if (isAdminVisible()) window.renderAdminTable?.();
-            });
+            }, { priority: prio });
         });
     }, 80);
 
@@ -2183,21 +2297,40 @@ function startFirestoreListeners() {
             });
         });
 
-        onSnapshot(query(collection(db, "logs"), orderBy("timestamp", "desc"), limit(50)), (snapshot) => {
+        const applyLogsSnap = (snapshot) => {
             logs = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
+            // Ordina in client se manca timestamp su qualche doc
+            logs.sort((a, b) => (b.timestamp || 0) - (a.timestamp || 0));
             scheduleUI(() => {
                 if (isSectionActive('inventario')) window.renderLogs?.();
                 if (isAdminVisible()) window.renderAdminLogs?.();
-            });
-        });
+            }, { priority: 'high' });
+        };
+        onSnapshot(
+            query(collection(db, "logs"), orderBy("timestamp", "desc"), limit(80)),
+            applyLogsSnap,
+            (err) => {
+                console.warn('[logs] orderBy fallito, fallback senza orderBy:', err?.code || err);
+                onSnapshot(query(collection(db, "logs"), limit(80)), applyLogsSnap);
+            }
+        );
 
-        onSnapshot(query(collection(db, "saldo_logs"), orderBy("timestamp", "desc"), limit(50)), (snapshot) => {
+        const applySaldoLogsSnap = (snapshot) => {
             saldoLogs = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
+            saldoLogs.sort((a, b) => (b.timestamp || 0) - (a.timestamp || 0));
             scheduleUI(() => {
                 if (isSectionActive('saldo')) window.renderSaldoLogs?.();
                 if (isAdminVisible()) window.renderAdminSaldoLogs?.();
-            });
-        });
+            }, { priority: 'high' });
+        };
+        onSnapshot(
+            query(collection(db, "saldo_logs"), orderBy("timestamp", "desc"), limit(80)),
+            applySaldoLogsSnap,
+            (err) => {
+                console.warn('[saldo_logs] orderBy fallito, fallback senza orderBy:', err?.code || err);
+                onSnapshot(query(collection(db, "saldo_logs"), limit(80)), applySaldoLogsSnap);
+            }
+        );
 
         // Albero: solo dati in memoria finché non apri la tab
         onSnapshot(collection(db, "albero_genealogico"), (snapshot) => {
