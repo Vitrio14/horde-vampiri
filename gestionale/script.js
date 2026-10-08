@@ -591,22 +591,23 @@ window.caricaMembroPerEdit = (nome) => {
 
 function contaGradiMembri() {
     // Contatori solo sui membri ATTIVI (non archiviati)
+    // Unificati M/F: Ekaton | Mentori | Adulti | Neonati
     const keys = [
-        { label: 'Originario', match: ['originario'] },
-        { label: 'Originaria', match: ['originaria'] },
-        { label: 'Mentore', match: ['mentore'] },
-        { label: 'Adulta', match: ['adulta'] },
-        { label: 'Adulto', match: ['adulto', 'adulti'] },
-        { label: 'Neonata', match: ['neonata'] },
-        { label: 'Neonato', match: ['neonato'] }
+        { label: 'Ekaton', match: ['ekaton', 'originario', 'originaria'] },
+        { label: 'Mentori', match: ['mentore', 'mentori'] },
+        { label: 'Adulti', match: ['adulto', 'adulta', 'adulti'] },
+        { label: 'Neonati', match: ['neonato', 'neonata', 'neonati'] }
     ];
     const counts = {};
     keys.forEach(k => { counts[k.label] = 0; });
     membriAttivi().forEach(v => {
         const g = (v.grado || '').toLowerCase().trim();
-        keys.forEach(k => {
-            if (k.match.includes(g)) counts[k.label]++;
-        });
+        for (const k of keys) {
+            if (k.match.includes(g)) {
+                counts[k.label]++;
+                break; // un solo bucket per membro
+            }
+        }
     });
     return keys.map(k => ({ label: k.label, count: counts[k.label] }));
 }
@@ -633,16 +634,21 @@ function htmlContatoreArchiviati() {
 
 function renderVampiriLists() {
     // Ordine gradi: Originario → Originaria → Mentore → Adulto → Adulta → Neonato → Neonata
+    // Ordine gradi: Ekaton → Mentore → Adulto/a → Neonato/a (M/F stesso livello)
     const ordineGradi = {
+        'ekaton': 1,
         'originario': 1,
-        'originaria': 2,
-        'mentore': 3,
-        'adulto': 4,
-        'adulta': 5,
-        'neonato': 6,
-        'neonata': 7,
-        'anziano': 8, // legacy
-        'anziana': 9
+        'originaria': 1,
+        'mentore': 2,
+        'mentori': 2,
+        'adulto': 3,
+        'adulta': 3,
+        'adulti': 3,
+        'neonato': 4,
+        'neonata': 4,
+        'neonati': 4,
+        'anziano': 5, // legacy
+        'anziana': 5
     };
     listaVampiri.sort((a, b) => {
         const ga = ordineGradi[(a.grado || "").toLowerCase().trim()] || 99;
