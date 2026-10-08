@@ -1635,6 +1635,112 @@ function showToast(text) {
 
 /* PLAYERS */
 
+
+/* ========== GENITORI / FIGLI ========== */
+/** Restituisce array di parentIds normalizzato */
+function getParentIds(player) {
+    if (!player) return [];
+    if (Array.isArray(player.parentIds)) {
+        return player.parentIds.filter(Boolean).map(String);
+    }
+    if (player.parentId) return [String(player.parentId)];
+    return [];
+}
+
+/** Costruisce mappa id → player da uno snapshot o lista */
+function buildPlayersMapFromItems(items) {
+    const map = {};
+    (items || []).forEach(p => {
+        if (p && p.id) map[p.id] = p;
+    });
+    return map;
+}
+
+/** HTML badge genitori sulla card */
+function formatParentsBadgeHtml(parentIds, playersMap) {
+    if (!parentIds || !parentIds.length) return '';
+    const names = parentIds.map(id => {
+        const p = playersMap[id];
+        return p ? (p.name || id) : id;
+    });
+    const label = names.join(', ');
+    return `<div class="status parent-status" title="Genitori: ${escapeAttr(label)}">🧬 Genitori: ${escapeAttr(label)}</div>`;
+}
+
+/** HTML badge figli (count cliccabile) sulla card del genitore */
+function formatChildrenBadgeHtml(parentId, parentName, childrenList) {
+    if (!childrenList || !childrenList.length) return '';
+    const n = childrenList.length;
+    const safeId = String(parentId).replace(/'/g, "\\'");
+    const safeName = String(parentName || '').replace(/\\/g, '\\\\').replace(/'/g, "\\'");
+    return `<button type="button" class="status children-status children-count-btn" onclick="event.stopPropagation(); showPlayerChildren('${safeId}', '${safeName}')" title="Clicca per vedere i figli">👶 Figli: ${n}</button>`;
+}
+
+/** Popup lista figli di un player */
+function showPlayerChildren(parentId, parentName) {
+    db.collection('players').get().then(snap => {
+        const children = [];
+        snap.forEach(doc => {
+            const d = doc.data();
+            const pids = getParentIds(d);
+            if (pids.includes(parentId)) {
+                children.push({ id: doc.id, ...d });
+            }
+        });
+        sortAlpha(children, 'name');
+        if (!children.length) {
+            Swal.fire({
+                icon: 'info',
+                title: 'Figli di ' + (parentName || 'player'),
+                text: 'Nessun figlio collegato.',
+                background: '#131a25'
+            });
+            return;
+        }
+        const rows = children.map(c => {
+            const grado = c.grado ? ` <span style="color:#9ca3af;">(${escapeAttr(c.grado)})</span>` : '';
+            const exit = resolveExitType(c);
+            let exitTag = '';
+            if (exit === 'rito') exitTag = ' <span style="color:#a78bfa;">· Rito</span>';
+            else if (exit === 'uscita_ospitato') exitTag = ' <span style="color:#38bdf8;">· Uscita</span>';
+            else if (exit === 'reietto') exitTag = ' <span style="color:#f97316;">· Reietto</span>';
+            return `<li style="padding:8px 0;border-bottom:1px dashed rgba(255,255,255,0.08);">
+                <b style="color:#c5a059;">${escapeAttr(c.name || '—')}</b>${grado}${exitTag}
+            </li>`;
+        }).join('');
+        Swal.fire({
+            title: '👶 Figli di ' + (parentName || 'player'),
+            html: `<p style="text-align:left;color:#9ca3af;margin-bottom:10px;">${children.length} collegat${children.length === 1 ? 'o' : 'i'}</p>
+                <ul style="list-style:none;padding:0;margin:0;text-align:left;max-height:320px;overflow-y:auto;">${rows}</ul>`,
+            background: '#131a25',
+            confirmButtonText: 'Chiudi',
+            width: 480
+        });
+    }).catch(err => {
+        console.error(err);
+        showToast('Errore caricamento figli');
+    });
+}
+
+/** Options multi-select genitori (esclude selfId) */
+function buildParentSelectOptions(allPlayers, selectedIds, selfId) {
+    const sel = new Set((selectedIds || []).map(String));
+    const list = (allPlayers || []).filter(p => p.id !== selfId);
+    sortAlpha(list, 'name');
+    let html = '';
+    list.forEach(p => {
+        const selected = sel.has(p.id) ? 'selected' : '';
+        const gradoTag = p.grado ? ` (${p.grado})` : '';
+        const exit = resolveExitType(p);
+        let exitTag = '';
+        if (exit === 'rito') exitTag = ' [Rito]';
+        else if (exit === 'uscita_ospitato') exitTag = ' [Uscita]';
+        else if (exit === 'reietto') exitTag = ' [Reietto]';
+        html += `<option value="${p.id}" ${selected}>${escapeAttr(p.name || p.id)}${escapeAttr(gradoTag)}${exitTag}</option>`;
+    });
+    return html;
+}
+
 function addPlayer() {
     if (!currentPlayersFolder) {
         Swal.fire({
@@ -1646,59 +1752,79 @@ function addPlayer() {
         return;
     }
 
-    Swal.fire({
-        title: 'Nuovo Player',
-        html: `
-            <input
-                id="player-name"
-                class="swal2-input"
-                placeholder="Nome Player"
-            >
-            <label style="display:block; text-align:left; margin: 8px 0 4px 4px; color: #a0a0a0; font-size:13px; font-weight:600;">
-                Grado / Status
-            </label>
-            <select id="player-grado" class="swal2-select">
-                <option value="">— Nessuno —</option>
-                <option value="Ekaton">Ekaton</option>
-                <option value="Mentore">Mentore</option>
-                <option value="Adulta">Adulta</option>
-                <option value="Adulto">Adulto</option>
-                <option value="Neonata">Neonata</option>
-                <option value="Neonato">Neonato</option>
-                <option value="Ospite">Ospite</option>
-            </select>
-            <textarea
-                id="player-notes"
-                class="swal2-textarea"
-                placeholder="Note Player"
-            ></textarea>
-        `,
-        confirmButtonText: 'Crea Player',
-        background: '#131a25',
-        preConfirm: () => {
-            const name = document.getElementById('player-name').value;
-            if (!name || !name.trim()) {
-                Swal.showValidationMessage('Inserisci un nome');
-                return false;
+    db.collection('players').get().then(playersSnap => {
+        const allPlayers = [];
+        playersSnap.forEach(doc => allPlayers.push({ id: doc.id, ...doc.data() }));
+        const parentOptions = buildParentSelectOptions(allPlayers, [], null);
+
+        Swal.fire({
+            title: 'Nuovo Player',
+            html: `
+                <input
+                    id="player-name"
+                    class="swal2-input"
+                    placeholder="Nome Player"
+                >
+                <label style="display:block; text-align:left; margin: 8px 0 4px 4px; color: #a0a0a0; font-size:13px; font-weight:600;">
+                    Grado / Status
+                </label>
+                <select id="player-grado" class="swal2-select">
+                    <option value="">— Nessuno —</option>
+                    <option value="Ekaton">Ekaton</option>
+                    <option value="Mentore">Mentore</option>
+                    <option value="Adulta">Adulta</option>
+                    <option value="Adulto">Adulto</option>
+                    <option value="Neonata">Neonata</option>
+                    <option value="Neonato">Neonato</option>
+                    <option value="Ospite">Ospite</option>
+                </select>
+                <label style="display:block; text-align:left; margin: 8px 0 4px 4px; color: #a0a0a0; font-size:13px; font-weight:600;">
+                    Genitori (uno o più, Ctrl/Cmd+click)
+                </label>
+                <select id="player-parents" class="swal2-select" multiple style="height:140px;">
+                    ${parentOptions}
+                </select>
+                <p style="font-size:12px;color:#6b7280;text-align:left;margin:-4px 0 8px 4px;">Tieni premuto Ctrl (Windows) o Cmd (Mac) per selezionare più genitori.</p>
+                <textarea
+                    id="player-notes"
+                    class="swal2-textarea"
+                    placeholder="Note Player"
+                ></textarea>
+            `,
+            confirmButtonText: 'Crea Player',
+            background: '#131a25',
+            width: 560,
+            preConfirm: () => {
+                const name = document.getElementById('player-name').value;
+                if (!name || !name.trim()) {
+                    Swal.showValidationMessage('Inserisci un nome');
+                    return false;
+                }
+                const parentSel = document.getElementById('player-parents');
+                const parentIds = parentSel
+                    ? Array.from(parentSel.selectedOptions).map(o => o.value).filter(Boolean)
+                    : [];
+                return {
+                    name: name.trim(),
+                    notes: document.getElementById('player-notes').value,
+                    grado: document.getElementById('player-grado').value || '',
+                    parentIds
+                };
             }
-            return {
-                name: name.trim(),
-                notes: document.getElementById('player-notes').value,
-                grado: document.getElementById('player-grado').value || ''
-            };
-        }
-    }).then((result) => {
-        if (result.isConfirmed) {
-            db.collection('players').add({
-                name: result.value.name,
-                notes: result.value.notes,
-                grado: result.value.grado,
-                quests: [],
-                folderId: currentPlayersFolder.id
-            }).then(() => {
-                showToast('Player creato');
-            });
-        }
+        }).then((result) => {
+            if (result.isConfirmed) {
+                db.collection('players').add({
+                    name: result.value.name,
+                    notes: result.value.notes,
+                    grado: result.value.grado,
+                    parentIds: result.value.parentIds || [],
+                    quests: [],
+                    folderId: currentPlayersFolder.id
+                }).then(() => {
+                    showToast('Player creato');
+                });
+            }
+        });
     });
 }
 
@@ -1720,14 +1846,25 @@ function loadPlayers() {
                 container.innerHTML += buildPlayersFilterBarHtml(true);
 
                 const playerItems = [];
+                const allPlayersForFamily = [];
                 playersSnapshot.forEach(doc => {
-                    const p = doc.data();
+                    const p = { id: doc.id, ...doc.data() };
+                    allPlayersForFamily.push(p);
                     // Esclusi da Giocatori: rito / uscita ospitato / reietto → solo in "Uscite & Riti"
                     const exitType = resolveExitType(p);
                     if (exitType) return;
                     if (p.folderId === currentPlayersFolder.id) {
-                        playerItems.push({ id: doc.id, ...p });
+                        playerItems.push(p);
                     }
+                });
+                const playersMapFamily = buildPlayersMapFromItems(allPlayersForFamily);
+                // Figli per ogni id: chi ha questo id in parentIds
+                const childrenByParent = {};
+                allPlayersForFamily.forEach(ch => {
+                    getParentIds(ch).forEach(pid => {
+                        if (!childrenByParent[pid]) childrenByParent[pid] = [];
+                        childrenByParent[pid].push(ch);
+                    });
                 });
                 sortAlpha(playerItems, 'name').forEach(p => {
                         let activeQuestsHTML = '';
@@ -1785,13 +1922,21 @@ function loadPlayers() {
                             ? '<div class="status ferale-status">🦇 Ferale</div>'
                             : '';
 
-                        const filterText = [p.name, p.notes, p.grado, (p.quests || []).join(' '), p.ferale ? 'ferale' : ''].filter(Boolean).join(' ');
+                        const pParentIds = getParentIds(p);
+                        const parentsBadge = formatParentsBadgeHtml(pParentIds, playersMapFamily);
+                        const myChildren = childrenByParent[p.id] || [];
+                        const childrenBadge = formatChildrenBadgeHtml(p.id, p.name, myChildren);
+                        const parentNamesForFilter = pParentIds.map(id => (playersMapFamily[id] && playersMapFamily[id].name) || '').join(' ');
+                        const childNamesForFilter = myChildren.map(c => c.name || '').join(' ');
+                        const filterText = [p.name, p.notes, p.grado, (p.quests || []).join(' '), p.ferale ? 'ferale' : '', parentNamesForFilter, childNamesForFilter, 'genitori', 'figli'].filter(Boolean).join(' ');
                         container.innerHTML += `
                             <div class="${cardClass}" data-filter-text="${escapeAttr(filterText)}" data-grado="${escapeAttr(p.grado || '')}" data-ferale="${p.ferale ? '1' : '0'}">
                                 <h3>${p.name}</h3>
                                 ${gradoBadge}
                                 ${feraleBadge}
                                 ${punBadge}
+                                ${parentsBadge}
+                                ${childrenBadge}
                                 ${exitBadge}
                                 <p>${p.notes || 'Nessuna nota'}</p>
                                 <div style="margin-top:10px;">
@@ -1982,7 +2127,15 @@ function openPlayerModal(playerId) {
             const exitType = resolveExitType(player);
             const isExit = !!exitType;
 
-            db.collection('quests').get().then(snapshot => {
+            Promise.all([
+                db.collection('quests').get(),
+                db.collection('players').get()
+            ]).then(([snapshot, allPlayersSnap]) => {
+                const allPlayers = [];
+                allPlayersSnap.forEach(doc => allPlayers.push({ id: doc.id, ...doc.data() }));
+                const currentParentIds = getParentIds(player);
+                const parentOptions = buildParentSelectOptions(allPlayers, currentParentIds, playerId);
+
 
                 let questOptions = '';
                 const questList = [];
@@ -2074,6 +2227,14 @@ function openPlayerModal(playerId) {
                             ${gradoOptions}
                         </select>
 
+                        <label style="display:block; text-align:left; margin: 8px 0 4px 4px; color: #a0a0a0; font-size:13px; font-weight:600;">
+                            Genitori (uno o più, Ctrl/Cmd+click)
+                        </label>
+                        <select id="player-parents-edit" class="swal2-select" multiple style="height:140px;">
+                            ${parentOptions}
+                        </select>
+                        <p style="font-size:12px;color:#6b7280;text-align:left;margin:-4px 0 8px 4px;">Tieni premuto Ctrl (Windows) o Cmd (Mac) per selezionare più genitori. Lascia vuoto se non ha genitori collegati.</p>
+
                         <textarea
                             id="player-notes-edit"
                             class="swal2-textarea"
@@ -2136,10 +2297,15 @@ function openPlayerModal(playerId) {
                             Array.from(
                                 document.getElementById('player-quests').selectedOptions
                             ).map(option => option.value);
+                        const parentSel = document.getElementById('player-parents-edit');
+                        const parentIds = parentSel
+                            ? Array.from(parentSel.selectedOptions).map(o => o.value).filter(Boolean)
+                            : [];
                         return {
                             notes: document.getElementById('player-notes-edit').value,
                             quests: selectedQuests,
-                            grado: document.getElementById('player-grado-edit').value || ''
+                            grado: document.getElementById('player-grado-edit').value || '',
+                            parentIds
                         };
                     }
                 }).then((result) => {
@@ -2149,7 +2315,8 @@ function openPlayerModal(playerId) {
                             .update({
                                 notes: result.value.notes,
                                 quests: result.value.quests,
-                                grado: result.value.grado
+                                grado: result.value.grado,
+                                parentIds: result.value.parentIds || []
                             })
                             .then(() => {
                                 showToast('Player aggiornato');
@@ -2592,10 +2759,20 @@ function loadRitoPlayers() {
 
     db.collection('players').onSnapshot(playersSnapshot => {
         const items = [];
+        const allPlayersForFamily = [];
         playersSnapshot.forEach(doc => {
-            const p = doc.data();
+            const p = { id: doc.id, ...doc.data() };
+            allPlayersForFamily.push(p);
             const exitType = resolveExitType(p);
-            if (exitType) items.push({ id: doc.id, ...p, _exitType: exitType });
+            if (exitType) items.push({ ...p, _exitType: exitType });
+        });
+        const playersMapFamily = buildPlayersMapFromItems(allPlayersForFamily);
+        const childrenByParent = {};
+        allPlayersForFamily.forEach(ch => {
+            getParentIds(ch).forEach(pid => {
+                if (!childrenByParent[pid]) childrenByParent[pid] = [];
+                childrenByParent[pid].push(ch);
+            });
         });
         sortAlpha(items, 'name');
         container.innerHTML = '';
@@ -2656,11 +2833,17 @@ function loadRitoPlayers() {
                 ? `<div class="status grado-status grado-${String(p.grado).toLowerCase()}">${p.grado}</div>`
                 : '';
 
-            const ritoFilterText = [p.name, p.notes, p.exitNotes, p.grado, badgeLabel, dateLabel, exitType === 'reietto' ? (p.cacciaAperta ? 'caccia' : 'allontanato') : ''].filter(Boolean).join(' ');
+            const pParentIds = getParentIds(p);
+            const parentsBadge = formatParentsBadgeHtml(pParentIds, playersMapFamily);
+            const myChildren = childrenByParent[p.id] || [];
+            const childrenBadge = formatChildrenBadgeHtml(p.id, p.name, myChildren);
+            const ritoFilterText = [p.name, p.notes, p.exitNotes, p.grado, badgeLabel, dateLabel, exitType === 'reietto' ? (p.cacciaAperta ? 'caccia' : 'allontanato') : '', pParentIds.map(id => (playersMapFamily[id] && playersMapFamily[id].name) || '').join(' ')].filter(Boolean).join(' ');
             container.innerHTML += `
                 <div class="${cardClass}" data-filter-text="${escapeAttr(ritoFilterText)}" data-exit-type="${escapeAttr(exitType)}">
                     <h3>${p.name}</h3>
                     ${gradoBadgeRito}
+                    ${parentsBadge}
+                    ${childrenBadge}
                     ${exitBadgesHtml}
                     ${notesHtml}
                     <p>${p.notes || 'Nessuna nota'}</p>
