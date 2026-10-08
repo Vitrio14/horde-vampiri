@@ -1610,8 +1610,8 @@ window.renderInventario = () => {
                 .map(i => `
                     <div class="inv-box" onclick="window.openInvQuickAction('${i.id}')">
                         <span class="inv-qty-badge" style="background: var(--gold-accent); color: #000;">${fmt(i.qty)}</span>
-                        <img class="inv-img" src="${i.foto || 'https://via.placeholder.com/100/121212/8b0000?text=?'}" loading="lazy" decoding="async" width="100" height="100"
-                             onerror="this.onerror=null;this.src='https://via.placeholder.com/100/121212/8b0000?text=?'">
+                        <img class="inv-img" src="${i.foto || 'https://via.placeholder.com/100/121212/8b0000?text=?'}" 
+                             onerror="this.src='https://via.placeholder.com/100/121212/8b0000?text=?'">
                         <span class="inv-name">${i.id}</span>
                     </div>`).join('');
         }
@@ -2048,10 +2048,7 @@ function isAdminVisible() {
  *  - priority 'high' (default per aggiornamenti log/sezione attiva): requestAnimationFrame / setTimeout(0)
  *  - priority 'normal' (render pesanti): requestIdleCallback con timeout breve
  */
-let _uiQueue = [];
-let _uiScheduled = false;
 function scheduleUI(fn, opts = 0) {
-    if (typeof fn !== 'function') return;
     let delay = 0;
     let priority = 'high';
     if (typeof opts === 'number') {
@@ -2061,35 +2058,20 @@ function scheduleUI(fn, opts = 0) {
         delay = opts.delay || 0;
         priority = opts.priority || 'high';
     }
-    // High priority: run ASAP (writes / active section)
-    if (priority === 'high' && delay === 0) {
-        if (typeof requestAnimationFrame === 'function') {
+    const run = () => {
+        try { fn(); } catch (e) { console.error(e); }
+    };
+    const start = () => {
+        if (priority === 'normal' && typeof requestIdleCallback === 'function') {
+            requestIdleCallback(run, { timeout: 250 });
+        } else if (typeof requestAnimationFrame === 'function') {
             requestAnimationFrame(() => { try { fn(); } catch (e) { console.error(e); } });
         } else {
-            setTimeout(() => { try { fn(); } catch (e) { console.error(e); } }, 0);
+            setTimeout(run, 0);
         }
-        return;
-    }
-    // Normal / delayed: debounce batch to avoid snapshot storms
-    _uiQueue.push(fn);
-    if (_uiScheduled) return;
-    _uiScheduled = true;
-    const wait = delay > 0 ? delay : 40;
-    setTimeout(() => {
-        const batch = _uiQueue.slice();
-        _uiQueue = [];
-        _uiScheduled = false;
-        const run = () => {
-            const seen = new Set();
-            batch.forEach(f => {
-                if (seen.has(f)) return;
-                seen.add(f);
-                try { f(); } catch (e) { console.error(e); }
-            });
-        };
-        if (typeof requestIdleCallback === 'function') requestIdleCallback(run, { timeout: 400 });
-        else run();
-    }, wait);
+    };
+    if (delay > 0) setTimeout(start, delay);
+    else start();
 }
 
 /** Forza refresh immediato di log/liste della sezione attiva (dopo scrittura locale) */
@@ -2383,60 +2365,8 @@ function startFirestoreListeners() {
 
 
 
-// --- LIBRERIA IMMAGINI (compressione + ottimizzazione) ---
+// --- LIBRERIA IMMAGINI PNG (Firestore base64, multi-upload, no Storage) ---
 const MAX_ITEM_IMAGE_BYTES = 400 * 1024;
-const ITEM_IMAGE_MAX_SIDE = 256;
-const ITEM_IMAGE_JPEG_QUALITY = 0.72;
-const ITEM_IMAGE_SKIP_IF_UNDER = 45 * 1024;
-
-function compressImageSource(source, maxSide, quality) {
-    maxSide = maxSide || ITEM_IMAGE_MAX_SIDE;
-    quality = quality == null ? ITEM_IMAGE_JPEG_QUALITY : quality;
-    return new Promise(function (resolve, reject) {
-        const img = new Image();
-        let objectUrl = null;
-        img.onload = function () {
-            try {
-                if (objectUrl) URL.revokeObjectURL(objectUrl);
-                const w = img.naturalWidth || img.width;
-                const h = img.naturalHeight || img.height;
-                if (!w || !h) { reject(new Error('Dimensioni immagine non valide')); return; }
-                let scale = 1;
-                if (w > maxSide || h > maxSide) scale = maxSide / Math.max(w, h);
-                const nw = Math.max(1, Math.round(w * scale));
-                const nh = Math.max(1, Math.round(h * scale));
-                const canvas = document.createElement('canvas');
-                canvas.width = nw; canvas.height = nh;
-                const ctx = canvas.getContext('2d');
-                ctx.fillStyle = '#121212';
-                ctx.fillRect(0, 0, nw, nh);
-                ctx.drawImage(img, 0, 0, nw, nh);
-                const dataUrl = canvas.toDataURL('image/jpeg', quality);
-                const b64 = dataUrl.indexOf(',') >= 0 ? dataUrl.split(',')[1] : dataUrl;
-                const sizeApprox = Math.round((b64.length * 3) / 4);
-                resolve({ dataUrl, sizeApprox, width: nw, height: nh });
-            } catch (e) {
-                if (objectUrl) URL.revokeObjectURL(objectUrl);
-                reject(e);
-            }
-        };
-        img.onerror = function () {
-            if (objectUrl) URL.revokeObjectURL(objectUrl);
-            reject(new Error('Impossibile caricare immagine'));
-        };
-        if (typeof source === 'string') img.src = source;
-        else if (source && (source instanceof Blob || source instanceof File)) {
-            objectUrl = URL.createObjectURL(source);
-            img.src = objectUrl;
-        } else reject(new Error('Sorgente immagine non supportata'));
-    });
-}
-
-function estimateDataUrlBytes(dataUrl) {
-    if (!dataUrl || typeof dataUrl !== 'string') return 0;
-    const b64 = dataUrl.indexOf(',') >= 0 ? dataUrl.split(',')[1] : dataUrl;
-    return Math.round((b64.length * 3) / 4);
-}
 
 window.renderItemImageSelects = function() {
     const sel = document.getElementById('admin-item-foto');
@@ -2457,15 +2387,12 @@ window.renderItemImagesLibrary = function() {
     }
     const sorted = [...itemImagesLib].sort((a, b) => (b.createdAt || 0) - (a.createdAt || 0));
     grid.innerHTML = sorted.map(img => {
-        const name = (img.fileName || 'file.jpg').replace(/</g, '&lt;');
-        const bytes = img.size || estimateDataUrlBytes(img.dataUrl);
-        const kb = bytes ? Math.round(bytes / 1024) + ' KB' : '';
+        const name = (img.fileName || 'file.png').replace(/</g, '&lt;');
         return `<div style="position:relative; background:rgba(0,0,0,0.5); border:1px solid #333; border-radius:4px; overflow:hidden; text-align:center;">
             <div style="height:72px; display:flex; align-items:center; justify-content:center; padding:6px;">
-                <img src="${img.dataUrl || ''}" alt="" loading="lazy" decoding="async" style="max-height:100%; max-width:100%; object-fit:contain;">
+                <img src="${img.dataUrl || ''}" alt="" style="max-height:100%; max-width:100%; object-fit:contain;">
             </div>
             <div style="padding:6px; border-top:1px solid #333; font-size:0.6rem; color:var(--gold-accent); word-break:break-all;">${name}</div>
-            ${kb ? `<div style="font-size:0.55rem; color:#888; padding:0 6px 4px;">${kb}</div>` : ''}
             <button type="button" class="btn-delete" style="position:absolute; top:4px; right:4px; padding:2px 6px;" onclick="window.deleteItemImage('${img.id}', '${name.replace(/'/g, "\\'")}')">X</button>
         </div>`;
     }).join('');
@@ -2490,20 +2417,185 @@ window.deleteItemImage = async function(id, name) {
     }
 };
 
+function readFileAsDataURL(file) {
+    return new Promise((resolve, reject) => {
+        const reader = new FileReader();
+        reader.onload = () => resolve(reader.result);
+        reader.onerror = () => reject(new Error('Lettura fallita: ' + file.name));
+        reader.readAsDataURL(file);
+    });
+}
+
+/** Stima byte binari da data URL base64 */
+function dataUrlBinarySize(dataUrl) {
+    if (!dataUrl || typeof dataUrl !== 'string') return 0;
+    const i = dataUrl.indexOf(',');
+    const b64 = i >= 0 ? dataUrl.slice(i + 1) : dataUrl;
+    // padding base64
+    const pad = (b64.endsWith('==') ? 2 : b64.endsWith('=') ? 1 : 0);
+    return Math.max(0, Math.floor((b64.length * 3) / 4) - pad);
+}
+
+/**
+ * Comprimi un'immagine (File o dataURL) sotto maxBytes ridimensionando su canvas.
+ * Restituisce { dataUrl, size, width, height, scaled }.
+ */
+async function compressImageToMaxBytes(source, maxBytes = MAX_ITEM_IMAGE_BYTES) {
+    let bitmap;
+    if (typeof source === 'string' && source.startsWith('data:')) {
+        const res = await fetch(source);
+        const blob = await res.blob();
+        bitmap = await createImageBitmap(blob);
+    } else if (source instanceof Blob || source instanceof File) {
+        bitmap = await createImageBitmap(source);
+    } else {
+        throw new Error('Sorgente immagine non valida');
+    }
+
+    const canvas = document.createElement('canvas');
+    const ctx = canvas.getContext('2d', { alpha: true });
+    let scale = 1;
+    let dataUrl = '';
+    let size = Infinity;
+    const maxW = 512; // cap lato lungo per inventario
+    const startScale = Math.min(1, maxW / Math.max(bitmap.width, bitmap.height, 1));
+    scale = startScale;
+
+    for (let attempt = 0; attempt < 12; attempt++) {
+        const w = Math.max(1, Math.round(bitmap.width * scale));
+        const h = Math.max(1, Math.round(bitmap.height * scale));
+        canvas.width = w;
+        canvas.height = h;
+        ctx.clearRect(0, 0, w, h);
+        ctx.drawImage(bitmap, 0, 0, w, h);
+        // PNG lossless: solo lo scale riduce peso; se ancora troppo, scala ancora
+        dataUrl = canvas.toDataURL('image/png');
+        size = dataUrlBinarySize(dataUrl);
+        if (size <= maxBytes) {
+            try { bitmap.close?.(); } catch (_) {}
+            return { dataUrl, size, width: w, height: h, scaled: scale < 0.999 };
+        }
+        scale *= 0.82;
+    }
+    try { bitmap.close?.(); } catch (_) {}
+    return { dataUrl, size, width: canvas.width, height: canvas.height, scaled: true };
+}
+
+/**
+ * Ottimizza tutte le immagini già in libreria (item_images) sopra il limite
+ * e aggiorna gli oggetti inventario che usano quelle foto (campo foto / imageFileName).
+ */
+window.ottimizzaImmaginiEsistenti = async function() {
+    try {
+        if (!currentUser || !currentUser.isAdmin) {
+            return vampireToast('Solo il gestore può ottimizzare le immagini.', 'error');
+        }
+        if (!itemImagesLib.length) {
+            return vampireToast('Nessuna immagine in libreria da ottimizzare.', 'info');
+        }
+
+        const statusEl = document.getElementById('item-image-status');
+        const btn = document.getElementById('item-image-optimize-btn');
+        const prevHtml = btn ? btn.innerHTML : '';
+        if (btn) { btn.disabled = true; btn.textContent = 'Ottimizzo...'; }
+        if (statusEl) {
+            statusEl.style.display = 'block';
+            statusEl.textContent = 'Analisi immagini in corso...';
+        }
+
+        const overLimit = itemImagesLib.filter(img => {
+            const s = img.size || dataUrlBinarySize(img.dataUrl);
+            return s > MAX_ITEM_IMAGE_BYTES && img.dataUrl;
+        });
+
+        if (!overLimit.length) {
+            if (btn) { btn.disabled = false; btn.innerHTML = prevHtml || 'Ottimizza immagini esistenti + aggiorna item'; }
+            if (statusEl) statusEl.textContent = 'Tutte le immagini sono già sotto i 400 KB.';
+            return vampireToast('Nessuna immagine da comprimere (già ok).', 'info');
+        }
+
+        let ok = 0, fail = 0, savedBytes = 0;
+        const updatedByFileName = {}; // fileName -> new dataUrl
+        const updatedByOldUrl = {}; // old dataUrl -> new dataUrl
+
+        for (let i = 0; i < overLimit.length; i++) {
+            const img = overLimit[i];
+            const label = img.fileName || img.id;
+            if (btn) btn.textContent = `Ottimizzo ${i + 1}/${overLimit.length}`;
+            if (statusEl) statusEl.textContent = `Comprimo ${i + 1}/${overLimit.length}: ${label}`;
+            try {
+                const before = img.size || dataUrlBinarySize(img.dataUrl);
+                const result = await compressImageToMaxBytes(img.dataUrl, MAX_ITEM_IMAGE_BYTES);
+                if (!result.dataUrl) throw new Error('Compressione vuota');
+                await setDoc(doc(db, 'item_images', img.id), {
+                    dataUrl: result.dataUrl,
+                    size: result.size,
+                    optimizedAt: Date.now(),
+                    width: result.width,
+                    height: result.height
+                }, { merge: true });
+                if (img.fileName) updatedByFileName[img.fileName] = result.dataUrl;
+                if (img.dataUrl) updatedByOldUrl[img.dataUrl] = result.dataUrl;
+                savedBytes += Math.max(0, before - result.size);
+                ok++;
+            } catch (err) {
+                fail++;
+                console.error('[ottimizza]', img.fileName, err);
+            }
+        }
+
+        // Aggiorna item inventario che referenziano le immagini ottimizzate
+        let itemsUpdated = 0;
+        if (ok > 0 && Array.isArray(inventarioDati) && inventarioDati.length) {
+            if (statusEl) statusEl.textContent = 'Aggiorno oggetti inventario...';
+            for (const item of inventarioDati) {
+                const id = item.id || item.nome;
+                if (!id) continue;
+                let newFoto = null;
+                if (item.imageFileName && updatedByFileName[item.imageFileName]) {
+                    newFoto = updatedByFileName[item.imageFileName];
+                } else if (item.foto && updatedByOldUrl[item.foto]) {
+                    newFoto = updatedByOldUrl[item.foto];
+                }
+                if (!newFoto) continue;
+                try {
+                    await setDoc(doc(db, 'inventario', id), { foto: newFoto }, { merge: true });
+                    itemsUpdated++;
+                } catch (err) {
+                    console.error('[ottimizza item]', id, err);
+                }
+            }
+        }
+
+        if (btn) { btn.disabled = false; btn.innerHTML = prevHtml || 'Ottimizza immagini esistenti + aggiorna item'; }
+        const kb = Math.round(savedBytes / 1024);
+        const msg = `Ottimizzate ${ok} immagini (−${kb} KB)${itemsUpdated ? `, ${itemsUpdated} item aggiornati` : ''}${fail ? `, ${fail} errori` : ''}.`;
+        if (statusEl) statusEl.textContent = msg;
+        if (ok > 0) vampireToast(msg, 'success');
+        else vampireToast(fail ? 'Ottimizzazione fallita. Vedi console (F12).' : 'Niente da fare.', fail ? 'error' : 'info');
+    } catch (err) {
+        console.error(err);
+        vampireToast('Errore ottimizzazione: ' + (err.message || err), 'error');
+        const btn = document.getElementById('item-image-optimize-btn');
+        if (btn) { btn.disabled = false; btn.textContent = 'Ottimizza immagini esistenti + aggiorna item'; }
+    }
+};
+
 window.uploadItemImagesFromInput = async function() {
+    console.log('[Vampiri] upload immagini', { isAdmin: currentUser?.isAdmin });
     try {
         if (!currentUser || !currentUser.isAdmin) {
             return vampireToast('Solo il gestore può caricare immagini.', 'error');
         }
         const fileInput = document.getElementById('item-image-file');
         const files = fileInput?.files ? Array.from(fileInput.files) : [];
-        if (!files.length) return vampireToast('Seleziona uno o più file immagine (PNG/JPG).', 'error');
+        if (!files.length) return vampireToast('Seleziona uno o più file PNG.', 'error');
 
         const btn = document.getElementById('item-image-upload-btn');
         const statusEl = document.getElementById('item-image-status');
         const prevHtml = btn ? btn.innerHTML : '';
-        if (btn) { btn.disabled = true; btn.textContent = 'Comprimo...'; }
-        if (statusEl) { statusEl.style.display = 'block'; statusEl.textContent = 'Compressione e caricamento...'; }
+        if (btn) { btn.disabled = true; btn.textContent = 'Carico...'; }
+        if (statusEl) { statusEl.style.display = 'block'; statusEl.textContent = 'Caricamento in corso...'; }
 
         let ok = 0, skip = 0, fail = 0;
         const existing = new Set(itemImagesLib.map(i => (i.fileName || '').toLowerCase()));
@@ -2511,35 +2603,35 @@ window.uploadItemImagesFromInput = async function() {
         for (let i = 0; i < files.length; i++) {
             const file = files[i];
             if (btn) btn.textContent = `${i + 1}/${files.length}`;
-            if (statusEl) statusEl.textContent = `Comprimo ${i + 1}/${files.length}: ${file.name}`;
+            if (statusEl) statusEl.textContent = `Carico ${i + 1}/${files.length}: ${file.name}`;
 
-            const isImg = (file.type && file.type.startsWith('image/')) || /\.(png|jpe?g|webp|gif)$/i.test(file.name);
-            if (!isImg) { skip++; continue; }
-            if (file.size > 8 * 1024 * 1024) {
-                vampireToast(`"${file.name}" troppo grande (max 8 MB).`, 'error');
-                skip++; continue;
-            }
-            const baseName = file.name.replace(/\.(png|jpe?g|webp|gif)$/i, '').replace(/[^\w.\-()+ ]+/g, '_') + '.jpg';
-            if (existing.has(baseName.toLowerCase()) || existing.has(file.name.toLowerCase())) {
+            const isPng = file.type === 'image/png' || /\.png$/i.test(file.name);
+            if (!isPng) { skip++; continue; }
+            const baseName = file.name.replace(/[^\w.\-()+ ]+/g, '_');
+            if (existing.has(baseName.toLowerCase())) {
                 vampireToast(`"${baseName}" già in libreria, saltato.`, 'info');
-                skip++; continue;
+                skip++;
+                continue;
             }
             try {
-                let compressed = await compressImageSource(file, ITEM_IMAGE_MAX_SIDE, ITEM_IMAGE_JPEG_QUALITY);
-                if (compressed.sizeApprox > MAX_ITEM_IMAGE_BYTES) {
-                    compressed = await compressImageSource(file, 192, 0.55);
-                }
-                if (compressed.sizeApprox > MAX_ITEM_IMAGE_BYTES) {
-                    vampireToast(`"${file.name}" ancora troppo grande dopo compressione.`, 'error');
-                    skip++; continue;
+                let dataUrl, size = file.size;
+                if (file.size > MAX_ITEM_IMAGE_BYTES) {
+                    if (statusEl) statusEl.textContent = `Ottimizzo ${file.name} (${Math.round(file.size/1024)} KB)...`;
+                    const compressed = await compressImageToMaxBytes(file, MAX_ITEM_IMAGE_BYTES);
+                    dataUrl = compressed.dataUrl;
+                    size = compressed.size;
+                    if (size > MAX_ITEM_IMAGE_BYTES) {
+                        vampireToast(`"${file.name}" ancora troppo grande dopo compressione (${Math.round(size/1024)} KB).`, 'error');
+                        skip++;
+                        continue;
+                    }
+                } else {
+                    dataUrl = await readFileAsDataURL(file);
                 }
                 await addDoc(collection(db, 'item_images'), {
                     fileName: baseName,
-                    dataUrl: compressed.dataUrl,
-                    size: compressed.sizeApprox,
-                    width: compressed.width,
-                    height: compressed.height,
-                    optimized: true,
+                    dataUrl,
+                    size,
                     createdAt: Date.now()
                 });
                 existing.add(baseName.toLowerCase());
@@ -2557,158 +2649,20 @@ window.uploadItemImagesFromInput = async function() {
         }
 
         if (fileInput) fileInput.value = '';
-        if (btn) { btn.disabled = false; btn.innerHTML = prevHtml || 'Carica e comprimi'; }
+        if (btn) { btn.disabled = false; btn.innerHTML = prevHtml || 'Carica PNG'; }
         if (statusEl) {
             statusEl.textContent = ok > 0
-                ? `Completato: ${ok} caricate (comresse)${skip ? ', ' + skip + ' saltate' : ''}.`
+                ? `Completato: ${ok} caricate${skip ? ', ' + skip + ' saltate' : ''}.`
                 : 'Nessuna immagine nuova caricata.';
         }
-        if (ok > 0) vampireToast(`Caricate ${ok} immagini ottimizzate${skip ? ' (' + skip + ' saltate)' : ''}.`, 'success');
+        if (ok > 0) vampireToast(`Caricate ${ok} immagini${skip ? ' (' + skip + ' saltate)' : ''}.`, 'success');
         else if (skip && !fail) vampireToast('Nessuna nuova immagine (già presenti o non valide).', 'info');
         else if (fail) vampireToast('Caricamento fallito. Vedi console (F12).', 'error');
     } catch (err) {
         console.error(err);
         vampireToast('Errore upload: ' + (err.message || err), 'error');
         const btn = document.getElementById('item-image-upload-btn');
-        if (btn) { btn.disabled = false; btn.textContent = 'Carica e comprimi'; }
-    }
-};
-
-/** Comprime immagini già in libreria e aggiorna inventario collegato */
-window.optimizeExistingItemImages = async function() {
-    const statusEl = document.getElementById('item-image-status');
-    const btn = document.getElementById('item-image-optimize-btn');
-    try {
-        if (statusEl) { statusEl.style.display = 'block'; statusEl.textContent = 'Preparazione ottimizzazione...'; }
-        vampireToast('Avvio ottimizzazione immagini...', 'info');
-
-        if (!currentUser || !currentUser.isAdmin) {
-            vampireToast('Solo il gestore può ottimizzare le immagini.', 'error');
-            if (statusEl) statusEl.textContent = 'Errore: non sei gestore.';
-            return;
-        }
-        if (!auth.currentUser) {
-            vampireToast('Sessione gestore non attiva. Rieffettua il login gestore.', 'error');
-            if (statusEl) statusEl.textContent = 'Errore: auth gestore assente.';
-            return;
-        }
-
-        let list = [...itemImagesLib];
-        if (!list.length) {
-            if (statusEl) statusEl.textContent = 'Carico libreria da Firestore...';
-            const snap = await getDocs(collection(db, 'item_images'));
-            list = snap.docs.map(d => ({ id: d.id, ...d.data() }));
-        }
-        if (!list.length) {
-            vampireToast('Nessuna immagine in libreria.', 'info');
-            if (statusEl) statusEl.textContent = 'Libreria vuota.';
-            return;
-        }
-
-        const conf = await Swal.fire({
-            title: 'Ottimizza immagini?',
-            text: `Comprimerò fino a ${list.length} immagini (max ${ITEM_IMAGE_MAX_SIDE}px JPEG) e aggiornerò l'inventario collegato.`,
-            icon: 'question',
-            showCancelButton: true,
-            confirmButtonColor: '#8b0000',
-            background: '#111',
-            color: '#fff'
-        });
-        if (!conf.isConfirmed) {
-            if (statusEl) statusEl.textContent = 'Annullato.';
-            return;
-        }
-
-        const prevHtml = btn ? btn.innerHTML : '';
-        if (btn) { btn.disabled = true; btn.textContent = 'Ottimizzo...'; }
-
-        let done = 0, skipped = 0, failed = 0, bytesSaved = 0;
-        const mapOldToNew = {};
-        let firstPermError = null;
-
-        for (let i = 0; i < list.length; i++) {
-            const rec = list[i];
-            if (!rec || !rec.dataUrl) { skipped++; continue; }
-            if (statusEl) statusEl.textContent = `Ottimizzo ${i + 1}/${list.length}: ${rec.fileName || rec.id}`;
-            if (btn) btn.textContent = `${i + 1}/${list.length}`;
-
-            const oldSize = rec.size || estimateDataUrlBytes(rec.dataUrl);
-            if (rec.optimized && oldSize > 0 && oldSize < ITEM_IMAGE_SKIP_IF_UNDER) {
-                skipped++; continue;
-            }
-            try {
-                const out = await compressImageSource(rec.dataUrl, ITEM_IMAGE_MAX_SIDE, ITEM_IMAGE_JPEG_QUALITY);
-                if (out.sizeApprox >= oldSize * 0.95 && oldSize < MAX_ITEM_IMAGE_BYTES) {
-                    if (!rec.optimized) {
-                        await setDoc(doc(db, 'item_images', rec.id), { optimized: true, size: oldSize }, { merge: true });
-                    }
-                    skipped++; continue;
-                }
-                const newFileName = (rec.fileName || 'img').replace(/\.(png|jpe?g|webp|gif)$/i, '') + '.jpg';
-                await setDoc(doc(db, 'item_images', rec.id), {
-                    fileName: newFileName,
-                    dataUrl: out.dataUrl,
-                    size: out.sizeApprox,
-                    width: out.width,
-                    height: out.height,
-                    optimized: true,
-                    optimizedAt: Date.now()
-                }, { merge: true });
-                mapOldToNew[rec.dataUrl] = out.dataUrl;
-                mapOldToNew['fn:' + (rec.fileName || '').toLowerCase()] = out.dataUrl;
-                mapOldToNew['fn:' + newFileName.toLowerCase()] = out.dataUrl;
-                bytesSaved += Math.max(0, oldSize - out.sizeApprox);
-                done++;
-            } catch (err) {
-                console.error('optimize image', rec.id, err);
-                failed++;
-                const em = String(err?.code || err?.message || err);
-                if (!firstPermError && em.toLowerCase().includes('permission')) firstPermError = em;
-            }
-            await new Promise(r => setTimeout(r, 20));
-        }
-
-        // Aggiorna inventario (documenti con foto = dataUrl o imageFileName)
-        let invUpdated = 0;
-        try {
-            const invSnap = await getDocs(collection(db, 'inventario'));
-            for (const d of invSnap.docs) {
-                const data = d.data() || {};
-                let newUrl = null;
-                if (data.foto && mapOldToNew[data.foto]) newUrl = mapOldToNew[data.foto];
-                else if (data.imageFileName) {
-                    const fn = String(data.imageFileName).toLowerCase();
-                    if (mapOldToNew['fn:' + fn]) newUrl = mapOldToNew['fn:' + fn];
-                    else {
-                        const base = fn.replace(/\.(png|jpe?g|webp|gif)$/i, '');
-                        if (mapOldToNew['fn:' + base + '.jpg']) newUrl = mapOldToNew['fn:' + base + '.jpg'];
-                        if (mapOldToNew['fn:' + base + '.png']) newUrl = mapOldToNew['fn:' + base + '.png'];
-                    }
-                }
-                if (newUrl) {
-                    const patch = { foto: newUrl };
-                    if (data.imageFileName) {
-                        patch.imageFileName = String(data.imageFileName).replace(/\.(png|jpe?g|webp|gif)$/i, '') + '.jpg';
-                    }
-                    await updateDoc(doc(db, 'inventario', d.id), patch);
-                    invUpdated++;
-                }
-            }
-        } catch (errInv) {
-            console.warn('update inventario after optimize', errInv);
-        }
-
-        if (btn) { btn.disabled = false; btn.innerHTML = prevHtml || 'Ottimizza immagini esistenti + aggiorna item'; }
-        let summary = `Fatto: ${done} ottimizzate, ${skipped} già ok, ${failed} errori. Item aggiornati: ${invUpdated}. Risparmiati ~${Math.round(bytesSaved / 1024)} KB.`;
-        if (firstPermError) summary += ' | PERMESSO NEGATO su item_images.';
-        if (statusEl) statusEl.textContent = summary;
-        if (firstPermError) vampireToast('Permesso negato su item_images. Login gestore obbligatorio.', 'error');
-        else vampireToast(`Ottimizzazione: ${done} img · ~${Math.round(bytesSaved / 1024)} KB · ${invUpdated} item`, failed ? 'error' : 'success');
-    } catch (err) {
-        console.error(err);
-        vampireToast('Errore: ' + (err.message || err), 'error');
-        if (statusEl) statusEl.textContent = 'Errore: ' + (err.message || err);
-        if (btn) { btn.disabled = false; btn.textContent = 'Ottimizza immagini esistenti + aggiorna item'; }
+        if (btn) { btn.disabled = false; btn.textContent = 'Carica PNG'; }
     }
 };
 

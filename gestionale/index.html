@@ -1139,38 +1139,31 @@
                 <div id="admin-view-inventario" class="admin-sub-view" style="display: none;">
                     <button class="btn-indietro" onclick="window.tornaAdminMenu()">🔙 Torna alla Dashboard</button>
 
-                                        <div class="vamp-card">
-                        <h2>🖼 Libreria Immagini Item</h2>
-                        <p style="font-size:0.75rem; color:var(--text-dim); margin-bottom:15px;">
-                            Carica <strong style="color:var(--gold-accent)">PNG/JPG</strong>: vengono
-                            <strong style="color:var(--success-green,#2ecc71)">compresse automaticamente</strong>
-                            (max ~256px, JPEG leggero) per non far lagare il sito. Poi, creando un oggetto, scegli l'immagine per
-                            <strong style="color:var(--gold-accent)">nome file</strong>.
-                        </p>
-                        <div style="display:flex; flex-wrap:wrap; gap:15px; align-items:flex-end; margin-bottom:12px;">
+                    <div class="vamp-card">
+                        <h2>🖼 Libreria Immagini (PNG)</h2>
+                        <p style="font-size:0.75rem; color:var(--text-dim); margin-bottom:15px;">Seleziona una o più PNG. Oltre ~400 KB vengono ottimizzate in automatico. Poi, creando un oggetto, scegli l'immagine per <strong style="color:var(--gold-accent)">nome file</strong>.</p>
+                        <div style="display:flex; flex-wrap:wrap; gap:15px; align-items:flex-end; margin-bottom:15px;">
                             <div class="form-group" style="margin:0; flex:1; min-width:220px;">
-                                <label>File immagine (selezione multipla)</label>
-                                <input type="file" id="item-image-file" accept="image/png,image/jpeg,image/webp,.png,.jpg,.jpeg,.webp" multiple>
+                                <label>File PNG (selezione multipla)</label>
+                                <input type="file" id="item-image-file" accept="image/png,.png" multiple>
                             </div>
                             <button type="button" id="item-image-upload-btn" onclick="window.uploadItemImagesFromInput()" style="width:auto; padding:14px 25px;">
-                                Carica e comprimi
+                                Carica PNG
                             </button>
-                        </div>
-                        <div style="display:flex; flex-wrap:wrap; gap:12px; align-items:center; margin-bottom:12px;">
-                            <button type="button" id="item-image-optimize-btn" onclick="window.optimizeExistingItemImages()" style="width:auto; padding:14px 25px;">
+                            <button type="button" id="item-image-optimize-btn" onclick="window.ottimizzaImmaginiEsistenti()" style="width:auto; padding:14px 25px; border-color:var(--gold-dim); color:var(--gold-dim);">
                                 Ottimizza immagini esistenti + aggiorna item
                             </button>
-                            <span style="font-size:0.7rem; color:var(--text-dim); max-width:360px;">
-                                Riduce le immagini già caricate e riscrive gli oggetti in inventario collegati. Consigliato se il sito lagga.
-                            </span>
                         </div>
+                        <p style="font-size:0.65rem; color:var(--text-dim); margin-bottom:8px; opacity:0.85;">
+                            Se un file supera ~400 KB viene compresso automaticamente al caricamento. Il pulsante «Ottimizza…» comprime le PNG già in libreria e aggiorna gli oggetti inventario collegati.
+                        </p>
                         <p id="item-image-status" style="font-size:0.7rem; color:var(--text-dim); margin-bottom:12px; display:none;"></p>
                         <div id="item-images-grid" style="display:grid; grid-template-columns:repeat(auto-fill, minmax(100px, 1fr)); gap:12px; max-height:220px; overflow-y:auto;">
                             <p style="grid-column:1/-1; font-size:0.75rem; color:#777; font-style:italic;">Nessuna immagine caricata.</p>
                         </div>
                     </div>
 
-<div class="vamp-card">
+                    <div class="vamp-card">
                         <h2>Gestione Inventario</h2>
                         <input type="hidden" id="admin-item-edit-id" value="">
                         <div style="display: grid; grid-template-columns: 1fr 1fr 1fr 1fr auto; gap: 15px; align-items: flex-end; margin-bottom: 12px;">
