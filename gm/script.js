@@ -5675,10 +5675,10 @@ function addTempo(editId = null, existing = null) {
         const existingPlayerId = existing ? (existing.playerId || '') : '';
         const existingPlayerName = existing ? (existing.playerName || '') : '';
 
-        // Player già con un tempo Neonato→Adulto non archiviato (attivo o terminato)
+        // Player già con un tempo non archiviato (attivo O terminato) per ciascun tipo
         const hasNeonatoTempo = new Set();
-        // Player già con un tempo Forma Ferale non archiviato e ancora attivo
-        const hasFeraleTempoAttivo = new Set();
+        const hasFeraleTempo = new Set();
+        const hasCustomTempo = new Set();
         tempiSnap.forEach(doc => {
             const t = doc.data();
             if (t.archived) return;
@@ -5687,10 +5687,13 @@ function addTempo(editId = null, existing = null) {
             if (t.tipo === 'neonato_adulto') {
                 if (pid) hasNeonatoTempo.add(pid);
                 if (pname) hasNeonatoTempo.add('name:' + pname);
-            }
-            if (t.tipo === 'forma_ferale' && (t.status || 'attivo') !== 'terminato') {
-                if (pid) hasFeraleTempoAttivo.add(pid);
-                if (pname) hasFeraleTempoAttivo.add('name:' + pname);
+            } else if (t.tipo === 'forma_ferale') {
+                // Esclude sia attivi sia terminati (non archiviati)
+                if (pid) hasFeraleTempo.add(pid);
+                if (pname) hasFeraleTempo.add('name:' + pname);
+            } else if (t.tipo === 'custom' || !t.tipo) {
+                if (pid) hasCustomTempo.add(pid);
+                if (pname) hasCustomTempo.add('name:' + pname);
             }
         });
 
@@ -5698,11 +5701,14 @@ function addTempo(editId = null, existing = null) {
         if (isEdit && existing) {
             if (existing.playerId) {
                 hasNeonatoTempo.delete(existing.playerId);
-                hasFeraleTempoAttivo.delete(existing.playerId);
+                hasFeraleTempo.delete(existing.playerId);
+                hasCustomTempo.delete(existing.playerId);
             }
             if (existing.playerName) {
-                hasNeonatoTempo.delete('name:' + String(existing.playerName).trim().toLowerCase());
-                hasFeraleTempoAttivo.delete('name:' + String(existing.playerName).trim().toLowerCase());
+                const nk = 'name:' + String(existing.playerName).trim().toLowerCase();
+                hasNeonatoTempo.delete(nk);
+                hasFeraleTempo.delete(nk);
+                hasCustomTempo.delete(nk);
             }
         }
 
@@ -5714,8 +5720,10 @@ function addTempo(editId = null, existing = null) {
             const gradoNorm = normalizeGradoKey(p.grado);
             const isNeonato = gradoNorm === 'Neonato';
             const isFerale = !!p.ferale;
-            const hasNA = hasNeonatoTempo.has(doc.id) || hasNeonatoTempo.has('name:' + String(p.name || '').trim().toLowerCase());
-            const hasFA = hasFeraleTempoAttivo.has(doc.id) || hasFeraleTempoAttivo.has('name:' + String(p.name || '').trim().toLowerCase());
+            const nameKey = 'name:' + String(p.name || '').trim().toLowerCase();
+            const hasNA = hasNeonatoTempo.has(doc.id) || hasNeonatoTempo.has(nameKey);
+            const hasFA = hasFeraleTempo.has(doc.id) || hasFeraleTempo.has(nameKey);
+            const hasCU = hasCustomTempo.has(doc.id) || hasCustomTempo.has(nameKey);
             playersList.push({
                 id: doc.id,
                 name: p.name || '',
@@ -5724,7 +5732,8 @@ function addTempo(editId = null, existing = null) {
                 isNeonato,
                 isFerale,
                 hasNeonatoTempo: hasNA,
-                hasFeraleTempoAttivo: hasFA
+                hasFeraleTempo: hasFA,
+                hasCustomTempo: hasCU
             });
         });
         sortAlpha(playersList, 'name');
@@ -5738,20 +5747,21 @@ function addTempo(editId = null, existing = null) {
                 const isCurrent = isEdit && (existingPlayerId === p.id || existingPlayerName === p.name);
                 let allowed = true;
                 if (tipo === 'neonato_adulto') {
-                    // Solo neonati che non hanno ancora un tempo Neonato→Adulto
+                    // Solo neonati senza tempo Neonato→Adulto (attivo o terminato)
                     allowed = p.isNeonato && !p.hasNeonatoTempo;
                 } else if (tipo === 'forma_ferale') {
-                    // Solo chi NON ha il flag Ferale e non ha già un tempo ferale attivo
-                    allowed = !p.isFerale && !p.hasFeraleTempoAttivo;
+                    // Solo chi NON ha flag Ferale e non ha già un tempo Ferale (attivo o terminato)
+                    allowed = !p.isFerale && !p.hasFeraleTempo;
+                } else if (tipo === 'custom') {
+                    // Solo chi non ha già un tempo Personalizzato (attivo o terminato)
+                    allowed = !p.hasCustomTempo;
                 }
-                // custom: tutti i player attivi
                 if (!allowed && !isCurrent) return;
 
                 const sel = isCurrent ? 'selected' : '';
                 const gradoTag = p.grado ? ` (${p.grado})` : '';
                 const extra = [];
                 if (p.isFerale) extra.push('🦇');
-                if (p.hasNeonatoTempo) extra.push('già NA');
                 const extraTag = extra.length ? ' [' + extra.join(', ') + ']' : '';
                 opts += `<option value="${p.id}" data-name="${escapeAttr(p.name)}" data-grado="${escapeAttr(p.gradoNorm)}" data-ferale="${p.isFerale ? '1' : '0'}" ${sel}>${p.name}${gradoTag}${extraTag}</option>`;
                 count++;
@@ -5760,9 +5770,9 @@ function addTempo(editId = null, existing = null) {
                 if (tipo === 'neonato_adulto') {
                     opts += '<option value="" disabled>Nessun neonato senza tempo Neonato→Adulto</option>';
                 } else if (tipo === 'forma_ferale') {
-                    opts += '<option value="" disabled>Nessun player senza flag Ferale disponibile</option>';
+                    opts += '<option value="" disabled>Nessun player senza tempo Forma Ferale</option>';
                 } else {
-                    opts += '<option value="" disabled>Nessun player disponibile</option>';
+                    opts += '<option value="" disabled>Nessun player senza tempo Personalizzato</option>';
                 }
             }
             return opts;
@@ -5790,9 +5800,9 @@ function addTempo(editId = null, existing = null) {
         const playerOptions = buildPlayerOptions(tipoVal);
 
         const filterHint = {
-            neonato_adulto: 'Solo neonati senza un tempo Neonato→Adulto già registrato.',
-            forma_ferale: 'Solo player senza flag Ferale e senza tempo Ferale attivo.',
-            custom: 'Tutti i player attivi.'
+            neonato_adulto: 'Solo neonati senza un tempo Neonato→Adulto già registrato (attivo o terminato).',
+            forma_ferale: 'Solo player senza flag Ferale e senza tempo Forma Ferale già registrato (attivo o terminato).',
+            custom: 'Solo player senza un tempo Personalizzato già registrato (attivo o terminato).'
         };
 
         Swal.fire({
@@ -5889,8 +5899,14 @@ function addTempo(editId = null, existing = null) {
                             Swal.showValidationMessage('Questo player ha già il flag Ferale');
                             return false;
                         }
-                        if (pMeta.hasFeraleTempoAttivo) {
-                            Swal.showValidationMessage('Questo player ha già un tempo Forma Ferale attivo');
+                        if (pMeta.hasFeraleTempo) {
+                            Swal.showValidationMessage('Questo player ha già un tempo Forma Ferale (attivo o terminato)');
+                            return false;
+                        }
+                    }
+                    if (tipo === 'custom') {
+                        if (pMeta.hasCustomTempo) {
+                            Swal.showValidationMessage('Questo player ha già un tempo Personalizzato');
                             return false;
                         }
                     }
