@@ -5666,24 +5666,108 @@ function syncExpiredTempi(items) {
 }
 
 function addTempo(editId = null, existing = null) {
-    db.collection('players').get().then(snapshot => {
+    // Carica players + tempi in parallelo per filtrare chi può ricevere ogni tipo di periodo
+    Promise.all([
+        db.collection('players').get(),
+        db.collection('tempi').get()
+    ]).then(([playersSnap, tempiSnap]) => {
+        const isEdit = !!editId;
+        const existingPlayerId = existing ? (existing.playerId || '') : '';
+        const existingPlayerName = existing ? (existing.playerName || '') : '';
+
+        // Player già con un tempo Neonato→Adulto non archiviato (attivo o terminato)
+        const hasNeonatoTempo = new Set();
+        // Player già con un tempo Forma Ferale non archiviato e ancora attivo
+        const hasFeraleTempoAttivo = new Set();
+        tempiSnap.forEach(doc => {
+            const t = doc.data();
+            if (t.archived) return;
+            const pid = t.playerId || '';
+            const pname = (t.playerName || '').trim().toLowerCase();
+            if (t.tipo === 'neonato_adulto') {
+                if (pid) hasNeonatoTempo.add(pid);
+                if (pname) hasNeonatoTempo.add('name:' + pname);
+            }
+            if (t.tipo === 'forma_ferale' && (t.status || 'attivo') !== 'terminato') {
+                if (pid) hasFeraleTempoAttivo.add(pid);
+                if (pname) hasFeraleTempoAttivo.add('name:' + pname);
+            }
+        });
+
+        // In modifica: non escludere il player già collegato a questo tempo
+        if (isEdit && existing) {
+            if (existing.playerId) {
+                hasNeonatoTempo.delete(existing.playerId);
+                hasFeraleTempoAttivo.delete(existing.playerId);
+            }
+            if (existing.playerName) {
+                hasNeonatoTempo.delete('name:' + String(existing.playerName).trim().toLowerCase());
+                hasFeraleTempoAttivo.delete('name:' + String(existing.playerName).trim().toLowerCase());
+            }
+        }
+
         const playersList = [];
-        snapshot.forEach(doc => {
+        playersSnap.forEach(doc => {
             const p = doc.data();
             // Solo player attivi (non usciti)
             if (resolveExitType(p)) return;
-            playersList.push({ id: doc.id, name: p.name || '', grado: p.grado || '' });
+            const gradoNorm = normalizeGradoKey(p.grado);
+            const isNeonato = gradoNorm === 'Neonato';
+            const isFerale = !!p.ferale;
+            const hasNA = hasNeonatoTempo.has(doc.id) || hasNeonatoTempo.has('name:' + String(p.name || '').trim().toLowerCase());
+            const hasFA = hasFeraleTempoAttivo.has(doc.id) || hasFeraleTempoAttivo.has('name:' + String(p.name || '').trim().toLowerCase());
+            playersList.push({
+                id: doc.id,
+                name: p.name || '',
+                grado: p.grado || '',
+                gradoNorm,
+                isNeonato,
+                isFerale,
+                hasNeonatoTempo: hasNA,
+                hasFeraleTempoAttivo: hasFA
+            });
         });
         sortAlpha(playersList, 'name');
 
-        let playerOptions = '<option value="">— Seleziona player —</option>';
-        playersList.forEach(p => {
-            const sel = (existing && (existing.playerId === p.id || existing.playerName === p.name)) ? 'selected' : '';
-            const gradoTag = p.grado ? ` (${p.grado})` : '';
-            playerOptions += `<option value="${p.id}" data-name="${escapeAttr(p.name)}" ${sel}>${p.name}${gradoTag}</option>`;
-        });
+        /** Costruisce le <option> filtrate per tipo di periodo */
+        function buildPlayerOptions(tipo) {
+            let opts = '<option value="">— Seleziona player —</option>';
+            let count = 0;
+            playersList.forEach(p => {
+                // In modifica tieni sempre il player già assegnato
+                const isCurrent = isEdit && (existingPlayerId === p.id || existingPlayerName === p.name);
+                let allowed = true;
+                if (tipo === 'neonato_adulto') {
+                    // Solo neonati che non hanno ancora un tempo Neonato→Adulto
+                    allowed = p.isNeonato && !p.hasNeonatoTempo;
+                } else if (tipo === 'forma_ferale') {
+                    // Solo chi NON ha il flag Ferale e non ha già un tempo ferale attivo
+                    allowed = !p.isFerale && !p.hasFeraleTempoAttivo;
+                }
+                // custom: tutti i player attivi
+                if (!allowed && !isCurrent) return;
 
-        const isEdit = !!editId;
+                const sel = isCurrent ? 'selected' : '';
+                const gradoTag = p.grado ? ` (${p.grado})` : '';
+                const extra = [];
+                if (p.isFerale) extra.push('🦇');
+                if (p.hasNeonatoTempo) extra.push('già NA');
+                const extraTag = extra.length ? ' [' + extra.join(', ') + ']' : '';
+                opts += `<option value="${p.id}" data-name="${escapeAttr(p.name)}" data-grado="${escapeAttr(p.gradoNorm)}" data-ferale="${p.isFerale ? '1' : '0'}" ${sel}>${p.name}${gradoTag}${extraTag}</option>`;
+                count++;
+            });
+            if (count === 0) {
+                if (tipo === 'neonato_adulto') {
+                    opts += '<option value="" disabled>Nessun neonato senza tempo Neonato→Adulto</option>';
+                } else if (tipo === 'forma_ferale') {
+                    opts += '<option value="" disabled>Nessun player senza flag Ferale disponibile</option>';
+                } else {
+                    opts += '<option value="" disabled>Nessun player disponibile</option>';
+                }
+            }
+            return opts;
+        }
+
         const tipoVal = existing ? (existing.tipo || 'neonato_adulto') : 'neonato_adulto';
         const daysVal = existing ? (existing.days != null ? existing.days : 5) : 5;
         const notesVal = existing ? (existing.notes || '') : '';
@@ -5703,16 +5787,26 @@ function addTempo(editId = null, existing = null) {
             `<option value="${t.key}" ${tipoVal === t.key ? 'selected' : ''}>${t.label}</option>`
         ).join('');
 
+        const playerOptions = buildPlayerOptions(tipoVal);
+
+        const filterHint = {
+            neonato_adulto: 'Solo neonati senza un tempo Neonato→Adulto già registrato.',
+            forma_ferale: 'Solo player senza flag Ferale e senza tempo Ferale attivo.',
+            custom: 'Tutti i player attivi.'
+        };
+
         Swal.fire({
             title: isEdit ? 'Modifica Tempo' : 'Nuovo Tempo',
             html: `
-                <label style="display:block;text-align:left;margin:8px 0 4px 4px;color:#a0a0a0;font-size:13px;font-weight:600;">Player</label>
-                <select id="tempo-player" class="swal2-select">${playerOptions}</select>
-
                 <label style="display:block;text-align:left;margin:8px 0 4px 4px;color:#a0a0a0;font-size:13px;font-weight:600;">Tipo periodo</label>
-                <select id="tempo-tipo" class="swal2-select" onchange="document.getElementById('tempo-custom-wrap').style.display=this.value==='custom'?'block':'none'">
+                <select id="tempo-tipo" class="swal2-select">
                     ${tipoOptions}
                 </select>
+
+                <p id="tempo-player-hint" style="text-align:left;margin:4px 0 8px 4px;font-size:0.78rem;color:#9ca3af;">${filterHint[tipoVal] || filterHint.custom}</p>
+
+                <label style="display:block;text-align:left;margin:8px 0 4px 4px;color:#a0a0a0;font-size:13px;font-weight:600;">Player</label>
+                <select id="tempo-player" class="swal2-select">${playerOptions}</select>
 
                 <div id="tempo-custom-wrap" style="display:${tipoVal === 'custom' ? 'block' : 'none'};">
                     <label style="display:block;text-align:left;margin:8px 0 4px 4px;color:#a0a0a0;font-size:13px;font-weight:600;">Etichetta personalizzata</label>
@@ -5732,6 +5826,25 @@ function addTempo(editId = null, existing = null) {
             `,
             confirmButtonText: isEdit ? 'Salva modifiche' : 'Crea Tempo',
             background: '#131a25',
+            didOpen: () => {
+                const tipoSel = document.getElementById('tempo-tipo');
+                const playerSel = document.getElementById('tempo-player');
+                const hintEl = document.getElementById('tempo-player-hint');
+                const customWrap = document.getElementById('tempo-custom-wrap');
+                if (!tipoSel || !playerSel) return;
+
+                tipoSel.addEventListener('change', () => {
+                    const tipo = tipoSel.value;
+                    if (customWrap) customWrap.style.display = tipo === 'custom' ? 'block' : 'none';
+                    if (hintEl) hintEl.textContent = filterHint[tipo] || filterHint.custom;
+                    const prev = playerSel.value;
+                    playerSel.innerHTML = buildPlayerOptions(tipo);
+                    // ripristina selezione se ancora presente
+                    if (prev && Array.from(playerSel.options).some(o => o.value === prev)) {
+                        playerSel.value = prev;
+                    }
+                });
+            },
             preConfirm: () => {
                 const sel = document.getElementById('tempo-player');
                 const playerId = sel.value;
@@ -5757,6 +5870,32 @@ function addTempo(editId = null, existing = null) {
                     Swal.showValidationMessage('Data inizio non valida');
                     return false;
                 }
+
+                // Validazione extra lato client
+                const pMeta = playersList.find(x => x.id === playerId);
+                if (pMeta && !isEdit) {
+                    if (tipo === 'neonato_adulto') {
+                        if (!pMeta.isNeonato) {
+                            Swal.showValidationMessage('Il periodo Neonato→Adulto è solo per i Neonati');
+                            return false;
+                        }
+                        if (pMeta.hasNeonatoTempo) {
+                            Swal.showValidationMessage('Questo player ha già un tempo Neonato→Adulto');
+                            return false;
+                        }
+                    }
+                    if (tipo === 'forma_ferale') {
+                        if (pMeta.isFerale) {
+                            Swal.showValidationMessage('Questo player ha già il flag Ferale');
+                            return false;
+                        }
+                        if (pMeta.hasFeraleTempoAttivo) {
+                            Swal.showValidationMessage('Questo player ha già un tempo Forma Ferale attivo');
+                            return false;
+                        }
+                    }
+                }
+
                 let tipoLabel = tempoTipoMeta(tipo).label;
                 let readyNote = '';
                 if (tipo === 'custom') {
@@ -5797,8 +5936,12 @@ function addTempo(editId = null, existing = null) {
                 });
             }
         });
+    }).catch(err => {
+        console.error('addTempo', err);
+        Swal.fire({ icon: 'error', title: 'Errore', text: 'Impossibile caricare player/tempi: ' + (err && err.message ? err.message : 'sconosciuto'), background: '#131a25' });
     });
 }
+
 
 function editTempo(id) {
     db.collection('tempi').doc(id).get().then(doc => {
