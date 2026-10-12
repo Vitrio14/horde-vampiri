@@ -68,7 +68,7 @@ const listFilters = {
     media: '',
     commands: '',
     admin: '',
-    players: { text: '', grado: 'all', ferale: 'all' },
+    players: { text: '', grado: 'all', ferale: 'all', inattivo: 'all', questLibro: 'all' },
     rito: { text: '', tipo: 'all' },
     tempi: { text: '', status: 'attivo', tipo: 'all' },
     abbraccio: { text: '', status: 'all' }
@@ -181,8 +181,26 @@ function buildPlayersFilterBarHtml(insideFolder) {
         const cls = isActive ? 'filter-chip active' : 'filter-chip';
         return `<button type="button" class="${cls}" data-filter-group="ferale" onclick="onPlayersFeraleFilter('${g.key}')">${g.label}</button>`;
     }).join('');
+    const inattivoChips = [
+        { key: 'all', label: 'Tutti' },
+        { key: 'yes', label: '💤 Inattivi' },
+        { key: 'no', label: 'Attivi' }
+    ].map(g => {
+        const isActive = (f.inattivo || 'all') === g.key;
+        const cls = isActive ? 'filter-chip active' : 'filter-chip';
+        return `<button type="button" class="${cls}" data-filter-group="inattivo" onclick="onPlayersInattivoFilter('${g.key}')">${g.label}</button>`;
+    }).join('');
+    const questLibroChips = [
+        { key: 'all', label: 'Tutti' },
+        { key: 'yes', label: '📕 Quest libro' },
+        { key: 'no', label: 'Senza quest libro' }
+    ].map(g => {
+        const isActive = (f.questLibro || 'all') === g.key;
+        const cls = isActive ? 'filter-chip active' : 'filter-chip';
+        return `<button type="button" class="${cls}" data-filter-group="questLibro" onclick="onPlayersQuestLibroFilter('${g.key}')">${g.label}</button>`;
+    }).join('');
     const hint = insideFolder
-        ? 'Cerca per nome o note · filtra per grado / ferale'
+        ? 'Cerca per nome o note · filtra per grado / ferale / inattivo / quest libro'
         : 'Cerca cartella per nome';
     return `
         <div class="section-filter-bar" style="grid-column: 1 / -1;" data-filter-bar="players">
@@ -203,6 +221,14 @@ function buildPlayersFilterBarHtml(insideFolder) {
             <div class="section-filter-chips">
                 <span class="filter-chips-label">Ferale</span>
                 ${feraleChips}
+            </div>
+            <div class="section-filter-chips">
+                <span class="filter-chips-label">Stato</span>
+                ${inattivoChips}
+            </div>
+            <div class="section-filter-chips">
+                <span class="filter-chips-label">Quest libro</span>
+                ${questLibroChips}
             </div>` : ''}
         </div>`;
 }
@@ -282,6 +308,34 @@ function onPlayersFeraleFilter(key) {
     applyListFilter('players');
 }
 
+function onPlayersInattivoFilter(key) {
+    listFilters.players.inattivo = key || 'all';
+    const bar = document.querySelector('[data-filter-bar="players"]');
+    if (bar) {
+        bar.querySelectorAll('.filter-chip[data-filter-group="inattivo"]').forEach(btn => {
+            const onclick = btn.getAttribute('onclick') || '';
+            const m = onclick.match(/onPlayersInattivoFilter\('([^']+)'\)/);
+            const k = m ? m[1] : '';
+            btn.classList.toggle('active', k === listFilters.players.inattivo);
+        });
+    }
+    applyListFilter('players');
+}
+
+function onPlayersQuestLibroFilter(key) {
+    listFilters.players.questLibro = key || 'all';
+    const bar = document.querySelector('[data-filter-bar="players"]');
+    if (bar) {
+        bar.querySelectorAll('.filter-chip[data-filter-group="questLibro"]').forEach(btn => {
+            const onclick = btn.getAttribute('onclick') || '';
+            const m = onclick.match(/onPlayersQuestLibroFilter\('([^']+)'\)/);
+            const k = m ? m[1] : '';
+            btn.classList.toggle('active', k === listFilters.players.questLibro);
+        });
+    }
+    applyListFilter('players');
+}
+
 function onRitoTipoFilter(key) {
     listFilters.rito.tipo = key;
     const bar = document.querySelector('[data-filter-bar="rito"]');
@@ -306,6 +360,8 @@ function applyListFilter(sectionKey) {
     let query = '';
     let gradoFilter = null;
     let feraleFilter = null;
+    let inattivoFilter = null;
+    let questLibroFilter = null;
     let tipoFilter = null;
     let statusFilter = null;
     let tempoTipoFilter = null;
@@ -317,6 +373,8 @@ function applyListFilter(sectionKey) {
         if (sectionKey === 'players') {
             gradoFilter = listFilters[sectionKey].grado;
             feraleFilter = listFilters[sectionKey].ferale;
+            inattivoFilter = listFilters[sectionKey].inattivo;
+            questLibroFilter = listFilters[sectionKey].questLibro;
         }
         if (sectionKey === 'rito') tipoFilter = listFilters[sectionKey].tipo;
         if (sectionKey === 'tempi') {
@@ -344,6 +402,14 @@ function applyListFilter(sectionKey) {
         if (show && feraleFilter != null && feraleFilter !== 'all') {
             const isFerale = el.getAttribute('data-ferale') === '1';
             show = (feraleFilter === 'yes') ? isFerale : !isFerale;
+        }
+        if (show && inattivoFilter != null && inattivoFilter !== 'all') {
+            const isInattivo = el.getAttribute('data-inattivo') === '1';
+            show = (inattivoFilter === 'yes') ? isInattivo : !isInattivo;
+        }
+        if (show && questLibroFilter != null && questLibroFilter !== 'all') {
+            const hasQL = el.getAttribute('data-quest-libro') === '1';
+            show = (questLibroFilter === 'yes') ? hasQL : !hasQL;
         }
         if (show && tipoFilter != null && tipoFilter !== 'all') {
             const t = el.getAttribute('data-exit-type') || '';
@@ -1929,10 +1995,19 @@ function loadPlayers() {
                         const feraleBadge = p.ferale
                             ? '<div class="status ferale-status">🦇 Ferale</div>'
                             : '';
+                        const inattivoBadge = p.inattivo
+                            ? '<div class="status inattivo-status">💤 Inattivo</div>'
+                            : '';
+                        const questLibroBadge = p.questLibro
+                            ? '<div class="status quest-libro-status">📕 Quest libro</div>'
+                            : '';
 
                         const isOspite = normalizeGradoKey(p.grado) === 'Ospite';
                         const abbraccioBtn = isOspite
                             ? `<button class="btn-abbraccio" onclick="startAbbraccioFromOspite('${p.id}', '${(p.name || '').replace(/\\/g, '\\\\').replace(/'/g, "\\'")}')" title="Avvia rituale Abbraccio (fiala)">🩸</button>`
+                            : '';
+                        const questLibroBtn = isOspite
+                            ? `<button class="btn-quest-libro" onclick="togglePlayerQuestLibro('${p.id}')" title="Segna / togli Quest libro">📕</button>`
                             : '';
 
                         const pParentIds = getParentIds(p);
@@ -1941,12 +2016,14 @@ function loadPlayers() {
                         const childrenBadge = formatChildrenBadgeHtml(p.id, p.name, myChildren);
                         const parentNamesForFilter = pParentIds.map(id => (playersMapFamily[id] && playersMapFamily[id].name) || '').join(' ');
                         const childNamesForFilter = myChildren.map(c => c.name || '').join(' ');
-                        const filterText = [p.name, p.notes, p.grado, (p.quests || []).join(' '), p.ferale ? 'ferale' : '', parentNamesForFilter, childNamesForFilter, 'genitori', 'figli'].filter(Boolean).join(' ');
+                        const filterText = [p.name, p.notes, p.grado, (p.quests || []).join(' '), p.ferale ? 'ferale' : '', p.inattivo ? 'inattivo' : '', p.questLibro ? 'quest libro' : '', parentNamesForFilter, childNamesForFilter, 'genitori', 'figli'].filter(Boolean).join(' ');
                         container.innerHTML += `
-                            <div class="${cardClass}" data-filter-text="${escapeAttr(filterText)}" data-grado="${escapeAttr(p.grado || '')}" data-ferale="${p.ferale ? '1' : '0'}">
+                            <div class="${cardClass}" data-filter-text="${escapeAttr(filterText)}" data-grado="${escapeAttr(p.grado || '')}" data-ferale="${p.ferale ? '1' : '0'}" data-inattivo="${p.inattivo ? '1' : '0'}" data-quest-libro="${p.questLibro ? '1' : '0'}">
                                 <h3>${p.name}</h3>
                                 ${gradoBadge}
                                 ${feraleBadge}
+                                ${inattivoBadge}
+                                ${questLibroBadge}
                                 ${punBadge}
                                 ${parentsBadge}
                                 ${childrenBadge}
@@ -1983,6 +2060,14 @@ function loadPlayers() {
                                     >
                                         🦇
                                     </button>
+                                    <button
+                                        class="btn-inattivo"
+                                        onclick="togglePlayerInattivo('${p.id}')"
+                                        title="Attiva/disattiva flag Inattivo"
+                                    >
+                                        💤
+                                    </button>
+                                    ${questLibroBtn}
                                     ${abbraccioBtn}
                                     <button
                                         class="btn-move-player"
@@ -5490,6 +5575,58 @@ function togglePlayerFerale(playerId) {
         db.collection('players').doc(playerId).update({ ferale: !cur }).then(() => {
             showToast(cur ? 'Flag Ferale rimosso' : 'Flag Ferale attivato');
         });
+    });
+}
+
+function togglePlayerInattivo(playerId) {
+    db.collection('players').doc(playerId).get().then(doc => {
+        if (!doc.exists) return;
+        const cur = !!doc.data().inattivo;
+        db.collection('players').doc(playerId).update({ inattivo: !cur }).then(() => {
+            showToast(cur ? 'Flag Inattivo rimosso — player attivo' : 'Flag Inattivo attivato 💤');
+        });
+    });
+}
+
+/** Solo Ospiti: chiede se ha fatto la Quest libro e setta/toglie il flag */
+function togglePlayerQuestLibro(playerId) {
+    db.collection('players').doc(playerId).get().then(doc => {
+        if (!doc.exists) return;
+        const p = doc.data();
+        const cur = !!p.questLibro;
+        const name = p.name || 'Ospite';
+        if (cur) {
+            Swal.fire({
+                title: 'Togliere flag Quest libro?',
+                html: `<p style="text-align:left;"><b>${escapeAttr(name)}</b> ha già il flag <b>📕 Quest libro</b>.</p>
+                       <p style="text-align:left;color:#9ca3af;font-size:0.9rem;">Vuoi rimuoverlo?</p>`,
+                icon: 'question',
+                showCancelButton: true,
+                confirmButtonText: 'Sì, togli flag',
+                cancelButtonText: 'Annulla',
+                background: '#131a25'
+            }).then(r => {
+                if (!r.isConfirmed) return;
+                db.collection('players').doc(playerId).update({ questLibro: false }).then(() => {
+                    showToast('Flag Quest libro rimosso');
+                });
+            });
+        } else {
+            Swal.fire({
+                title: '📕 Quest libro',
+                html: `<p style="text-align:left;">Per <b>${escapeAttr(name)}</b>: ha completato la <b>Quest libro</b>?</p>`,
+                icon: 'question',
+                showCancelButton: true,
+                confirmButtonText: 'Sì, l’ha fatta',
+                cancelButtonText: 'Annulla',
+                background: '#131a25'
+            }).then(r => {
+                if (!r.isConfirmed) return;
+                db.collection('players').doc(playerId).update({ questLibro: true }).then(() => {
+                    showToast(name + ' — Quest libro segnata 📕');
+                });
+            });
+        }
     });
 }
 

@@ -327,3 +327,14 @@ button.status.children-status:hover,button.children-count-btn:hover{background:r
 .btn-abbraccio-done{border-color:rgba(46,204,113,0.5) !important;color:#2ecc71 !important;padding:8px 10px !important;font-size:0.7rem !important;flex:0 0 auto !important;white-space:nowrap}
 .btn-abbraccio-done:hover{border-color:#2ecc71 !important;color:#fff !important}
 .btn-abbraccio-done::before{background:linear-gradient(90deg,#059669,#2ecc71) !important}
+
+
+/* ========== INATTIVO + QUEST LIBRO ========== */
+.btn-inattivo{background:transparent !important;border:1px solid rgba(148,163,184,0.5) !important;color:#94a3b8 !important;padding:8px 12px !important;font-size:1rem !important;min-width:auto !important;flex:0 0 auto !important}
+.btn-inattivo:hover{border-color:#cbd5e1 !important;color:#fff !important;box-shadow:0 0 12px rgba(148,163,184,0.35) !important}
+.btn-inattivo::before{background:linear-gradient(90deg,#475569,#94a3b8) !important}
+.status.inattivo-status{background:rgba(148,163,184,0.12);color:#94a3b8;border-color:#64748b;box-shadow:inset 5px 0 15px rgba(100,116,139,0.18);margin:0 0 8px 0}
+.btn-quest-libro{background:transparent !important;border:1px solid rgba(234,179,8,0.5) !important;color:#fbbf24 !important;padding:8px 12px !important;font-size:1rem !important;min-width:auto !important;flex:0 0 auto !important}
+.btn-quest-libro:hover{border-color:#fbbf24 !important;color:#fff !important;box-shadow:0 0 12px rgba(234,179,8,0.35) !important}
+.btn-quest-libro::before{background:linear-gradient(90deg,#a16207,#eab308) !important}
+.status.quest-libro-status{background:rgba(234,179,8,0.12);color:#fbbf24;border-color:#eab308;box-shadow:inset 5px 0 15px rgba(234,179,8,0.18);margin:0 0 8px 0}
