@@ -307,3 +307,23 @@ input,select,button,textarea{font-size:16px !important}
 .status.children-status,button.status.children-status,button.children-count-btn{background:rgba(52,211,153,0.12) !important;color:#34d399 !important;border:1px solid #10b981 !important;border-left:3px solid #10b981 !important;box-shadow:inset 5px 0 15px rgba(16,185,129,0.15) !important;margin:0 0 8px 0 !important;cursor:pointer !important;font-family:'Cinzel',serif !important;font-size:0.65rem !important;font-weight:800 !important;letter-spacing:0.8px !important;text-transform:uppercase !important;padding:4px 10px !important;width:max-content !important;display:inline-block !important}
 button.status.children-status::before,button.children-count-btn::before{display:none !important}
 button.status.children-status:hover,button.children-count-btn:hover{background:rgba(16,185,129,0.28) !important;color:#fff !important;border-color:#34d399 !important;transform:none !important;box-shadow:0 0 12px rgba(16,185,129,0.35) !important}
+
+
+/* ========== ABBRACCIO ========== */
+.btn-abbraccio{background:transparent !important;border:1px solid rgba(220,38,38,0.5) !important;color:#f87171 !important;padding:8px 12px !important;font-size:1rem !important;min-width:auto !important;flex:0 0 auto !important}
+.btn-abbraccio:hover{border-color:#ef4444 !important;color:#fff !important;box-shadow:0 0 12px rgba(239,68,68,0.4) !important}
+.btn-abbraccio::before{background:linear-gradient(90deg,#7f1d1d,#dc2626) !important}
+.card-abbraccio{border-color:rgba(220,38,38,0.35) !important}
+.card-abbraccio:hover{border-color:rgba(248,113,113,0.55) !important}
+.card-abbraccio-pronto{border-color:rgba(239,68,68,0.55) !important;box-shadow:0 8px 32px rgba(0,0,0,0.9),0 0 20px rgba(220,38,38,0.15) !important}
+.card-abbraccio-concluso{border-color:rgba(46,204,113,0.4) !important;opacity:0.92}
+.card-abbraccio-concluso h3{color:#86efac !important}
+.status.abbraccio-status-corso{background:rgba(251,191,36,0.12);color:#fbbf24;border-color:#f59e0b;box-shadow:inset 5px 0 15px rgba(251,191,36,0.15)}
+.status.abbraccio-status-pronto{background:rgba(239,68,68,0.14);color:#f87171;border-color:#ef4444;box-shadow:inset 5px 0 15px rgba(239,68,68,0.18)}
+.status.abbraccio-status-concluso{background:rgba(46,204,113,0.12);color:#2ecc71;border-color:#2ecc71;box-shadow:inset 5px 0 15px rgba(46,204,113,0.2)}
+.btn-abbraccio-fiala{border-color:rgba(248,113,113,0.5) !important;color:#f87171 !important;padding:8px 10px !important;font-size:0.7rem !important;flex:0 0 auto !important;white-space:nowrap}
+.btn-abbraccio-fiala:hover{border-color:#f87171 !important;color:#fff !important}
+.btn-abbraccio-fiala::before{background:linear-gradient(90deg,#991b1b,#ef4444) !important}
+.btn-abbraccio-done{border-color:rgba(46,204,113,0.5) !important;color:#2ecc71 !important;padding:8px 10px !important;font-size:0.7rem !important;flex:0 0 auto !important;white-space:nowrap}
+.btn-abbraccio-done:hover{border-color:#2ecc71 !important;color:#fff !important}
+.btn-abbraccio-done::before{background:linear-gradient(90deg,#059669,#2ecc71) !important}

@@ -70,7 +70,8 @@ const listFilters = {
     admin: '',
     players: { text: '', grado: 'all', ferale: 'all' },
     rito: { text: '', tipo: 'all' },
-    tempi: { text: '', status: 'attivo', tipo: 'all' }
+    tempi: { text: '', status: 'attivo', tipo: 'all' },
+    abbraccio: { text: '', status: 'all' }
 };
 
 const SECTION_LIST_IDS = {
@@ -82,7 +83,8 @@ const SECTION_LIST_IDS = {
     admin: 'global-links',
     players: 'players-list',
     rito: 'rito-list',
-    tempi: 'tempi-list'
+    tempi: 'tempi-list',
+    abbraccio: 'abbraccio-list'
 };
 
 /** Normalizza grado: Adulta/Adulto → Adulto, Neonata/Neonato → Neonato */
@@ -307,6 +309,7 @@ function applyListFilter(sectionKey) {
     let tipoFilter = null;
     let statusFilter = null;
     let tempoTipoFilter = null;
+    let abbraccioStatusFilter = null;
     if (typeof listFilters[sectionKey] === 'string') {
         query = listFilters[sectionKey];
     } else if (listFilters[sectionKey]) {
@@ -319,6 +322,9 @@ function applyListFilter(sectionKey) {
         if (sectionKey === 'tempi') {
             statusFilter = listFilters[sectionKey].status;
             tempoTipoFilter = listFilters[sectionKey].tipo;
+        }
+        if (sectionKey === 'abbraccio') {
+            abbraccioStatusFilter = listFilters[sectionKey].status;
         }
     }
 
@@ -360,6 +366,10 @@ function applyListFilter(sectionKey) {
         if (show && tempoTipoFilter != null && tempoTipoFilter !== 'all') {
             const tt = el.getAttribute('data-tempo-tipo') || '';
             show = (tt === tempoTipoFilter);
+        }
+        if (show && abbraccioStatusFilter != null && abbraccioStatusFilter !== 'all') {
+            const as = el.getAttribute('data-abbraccio-status') || '';
+            show = (as === abbraccioStatusFilter);
         }
 
         el.style.display = show ? '' : 'none';
@@ -445,6 +455,7 @@ function login() {
             loadPlayers();
             loadRitoPlayers();
             loadTempi();
+            loadAbbracci();
             loadFrammentiEvents();
             loadFrammenti();
             updateWeekRangeHints();
@@ -1919,6 +1930,11 @@ function loadPlayers() {
                             ? '<div class="status ferale-status">🦇 Ferale</div>'
                             : '';
 
+                        const isOspite = normalizeGradoKey(p.grado) === 'Ospite';
+                        const abbraccioBtn = isOspite
+                            ? `<button class="btn-abbraccio" onclick="startAbbraccioFromOspite('${p.id}', '${(p.name || '').replace(/\\/g, '\\\\').replace(/'/g, "\\'")}')" title="Avvia rituale Abbraccio (fiala)">🩸</button>`
+                            : '';
+
                         const pParentIds = getParentIds(p);
                         const parentsBadge = formatParentsBadgeHtml(pParentIds, playersMapFamily);
                         const myChildren = childrenByParent[p.id] || [];
@@ -1967,6 +1983,7 @@ function loadPlayers() {
                                     >
                                         🦇
                                     </button>
+                                    ${abbraccioBtn}
                                     <button
                                         class="btn-move-player"
                                         onclick="movePlayerToFolder('${p.id}')"
@@ -6555,6 +6572,696 @@ function loadTempi() {
     });
 }
 
+
+/* ========== ABBRACCIO (rituale trasformazione vampiro) ========== */
+
+function buildAbbraccioFilterBarHtml() {
+    const f = listFilters.abbraccio || { text: '', status: 'all' };
+    const val = escapeAttr(f.text || '');
+    const hasVal = !!(f.text && String(f.text).trim());
+    const statuses = [
+        { key: 'all', label: 'Tutti' },
+        { key: 'in_corso', label: 'In corso' },
+        { key: 'pronto', label: 'Pronti al rito' },
+        { key: 'concluso', label: 'Conclusi' }
+    ];
+    const chips = statuses.map(s => {
+        const isActive = (f.status || 'all') === s.key;
+        return `<button type="button" class="filter-chip ${isActive ? 'active' : ''}" onclick="onAbbraccioStatusFilter('${s.key}')">${s.label}</button>`;
+    }).join('');
+    return `
+        <div class="section-filter-bar" style="grid-column: 1 / -1;" data-filter-bar="abbraccio">
+            <div class="section-filter-search">
+                <i class="fa-solid fa-magnifying-glass"></i>
+                <input type="search" id="filter-input-abbraccio"
+                    placeholder="Cerca per nome, sire, note..."
+                    value="${val}"
+                    autocomplete="off"
+                    oninput="onSectionSearch('abbraccio', this.value)">
+                ${hasVal ? `<button type="button" class="filter-clear-btn" onclick="clearSectionSearch('abbraccio')" title="Pulisci ricerca">×</button>` : ''}
+            </div>
+            <div class="section-filter-chips">${chips}</div>
+        </div>`;
+}
+
+function onAbbraccioStatusFilter(key) {
+    listFilters.abbraccio.status = key || 'all';
+    const bar = document.querySelector('[data-filter-bar="abbraccio"]');
+    if (bar) {
+        bar.querySelectorAll('.filter-chip').forEach(btn => {
+            const onclick = btn.getAttribute('onclick') || '';
+            const m = onclick.match(/onAbbraccioStatusFilter\('([^']+)'\)/);
+            const k = m ? m[1] : '';
+            btn.classList.toggle('active', k === listFilters.abbraccio.status);
+        });
+    }
+    applyListFilter('abbraccio');
+}
+
+/** Avvia Abbraccio da card Ospite: chiede stato fiala */
+function startAbbraccioFromOspite(playerId, playerName) {
+    db.collection('abbracci')
+        .where('playerId', '==', playerId)
+        .get()
+        .then(snap => {
+            const open = [];
+            snap.forEach(doc => {
+                const d = doc.data();
+                if (d.status !== 'concluso') open.push({ id: doc.id, ...d });
+            });
+            if (open.length) {
+                const a = open[0];
+                const st = a.status === 'pronto' ? 'pronto per il rito' : 'in corso (fiala ancora da recuperare)';
+                Swal.fire({
+                    icon: 'info',
+                    title: 'Abbraccio già registrato',
+                    html: `<p style="text-align:left;"><b>${escapeAttr(playerName || '')}</b> ha già un abbraccio <b>${st}</b>.</p>
+                           <p style="text-align:left;color:#9ca3af;font-size:0.9rem;">Apri la sezione <b>Abbraccio</b> per gestirlo.</p>`,
+                    background: '#131a25',
+                    showCancelButton: true,
+                    confirmButtonText: 'Vai ad Abbraccio',
+                    cancelButtonText: 'Chiudi'
+                }).then(r => {
+                    if (r.isConfirmed) showSection('abbraccio');
+                });
+                return;
+            }
+
+            Swal.fire({
+                title: '🩸 Abbraccio — Fiala',
+                html: `<p style="text-align:left;margin-bottom:12px;">Per <b>${escapeAttr(playerName || 'Ospite')}</b>: ha già recuperato la fiala del sangue, o è ancora in quest e non l’ha presa?</p>`,
+                icon: 'question',
+                background: '#131a25',
+                showDenyButton: true,
+                showCancelButton: true,
+                confirmButtonText: 'Ha la fiala → pronto al rito',
+                denyButtonText: 'Ancora in quest',
+                cancelButtonText: 'Annulla'
+            }).then(result => {
+                if (result.isDismissed) return;
+                const hasFiala = result.isConfirmed;
+                const data = {
+                    playerId: playerId || null,
+                    playerName: playerName || '',
+                    fiala: hasFiala ? 'recuperata' : 'in_quest',
+                    status: hasFiala ? 'pronto' : 'in_corso',
+                    sireId: null,
+                    sireName: '',
+                    parentIds: [],
+                    parentNames: [],
+                    datetime: null,
+                    notes: '',
+                    createdAt: new Date().toISOString(),
+                    completedAt: null,
+                    fromOspite: true
+                };
+                db.collection('abbracci').add(data).then(() => {
+                    showToast(hasFiala
+                        ? (playerName || 'Ospite') + ' ha la fiala — pronto per il rito'
+                        : (playerName || 'Ospite') + ' — fiala ancora in quest');
+                    showSection('abbraccio');
+                }).catch(err => {
+                    Swal.fire({ icon: 'error', title: 'Errore', text: (err && err.message) || 'Salvataggio fallito', background: '#131a25' });
+                });
+            });
+        })
+        .catch(err => {
+            console.error('startAbbraccioFromOspite', err);
+            Swal.fire({ icon: 'error', title: 'Errore', text: (err && err.message) || 'Controllo fallito', background: '#131a25' });
+        });
+}
+
+function markAbbraccioFialaRecuperata(id) {
+    Swal.fire({
+        title: 'Fiala recuperata?',
+        text: 'Lo stato passerà a «Pronto per il rito».',
+        icon: 'question',
+        showCancelButton: true,
+        confirmButtonText: 'Sì, ha la fiala',
+        cancelButtonText: 'Annulla',
+        background: '#131a25'
+    }).then(result => {
+        if (!result.isConfirmed) return;
+        db.collection('abbracci').doc(id).update({
+            fiala: 'recuperata',
+            status: 'pronto'
+        }).then(() => showToast('Fiala recuperata — pronto per il rito'));
+    });
+}
+
+function addAbbraccio(editId = null, existing = null) {
+    const isEdit = !!editId;
+
+    Promise.all([
+        db.collection('players').get(),
+        isEdit ? Promise.resolve(null) : db.collection('abbracci').get()
+    ]).then(([playersSnap, abbracciSnap]) => {
+        const playersList = [];
+        playersSnap.forEach(doc => {
+            const p = { id: doc.id, ...doc.data() };
+            if (resolveExitType(p)) return;
+            playersList.push(p);
+        });
+        sortAlpha(playersList, 'name');
+
+        const sires = playersList.filter(p => normalizeGradoKey(p.grado) !== 'Ospite');
+
+        const busyIds = new Set();
+        if (abbracciSnap) {
+            abbracciSnap.forEach(doc => {
+                const d = doc.data();
+                if (d.status !== 'concluso' && d.playerId) busyIds.add(d.playerId);
+            });
+        }
+
+        let playerOptions = '<option value="">— Nessun player collegato (nome libero sotto) —</option>';
+        playersList.forEach(p => {
+            if (!isEdit && busyIds.has(p.id)) return;
+            if (isEdit && existing && existing.playerId && existing.playerId !== p.id && busyIds.has(p.id)) return;
+            const sel = (existing && existing.playerId === p.id) ? 'selected' : '';
+            const g = p.grado ? ` (${p.grado})` : '';
+            playerOptions += `<option value="${p.id}" data-name="${escapeAttr(p.name)}" ${sel}>${escapeAttr(p.name)}${escapeAttr(g)}</option>`;
+        });
+
+        // Genitori / chi morde: max 2 (da parentIds o legacy sireId)
+        let selectedParentIds = [];
+        if (existing) {
+            if (Array.isArray(existing.parentIds) && existing.parentIds.length) {
+                selectedParentIds = existing.parentIds.filter(Boolean).map(String).slice(0, 2);
+            } else if (existing.sireId) {
+                selectedParentIds = [String(existing.sireId)];
+            }
+        }
+        let parentOptions = '';
+        sires.forEach(p => {
+            const sel = selectedParentIds.includes(p.id) ? 'selected' : '';
+            const g = p.grado ? ` (${p.grado})` : '';
+            parentOptions += `<option value="${p.id}" data-name="${escapeAttr(p.name)}" ${sel}>${escapeAttr(p.name)}${escapeAttr(g)}</option>`;
+        });
+
+        const nameVal = existing ? (existing.playerName || '') : '';
+        const notesVal = existing ? (existing.notes || '') : '';
+        const fialaVal = existing ? (existing.fiala || 'in_quest') : 'in_quest';
+        let dtVal = '';
+        if (existing && existing.datetime) {
+            try {
+                const d = new Date(existing.datetime);
+                if (!isNaN(d.getTime())) {
+                    const pad = n => String(n).padStart(2, '0');
+                    dtVal = `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}T${pad(d.getHours())}:${pad(d.getMinutes())}`;
+                }
+            } catch (e) {}
+        }
+
+        Swal.fire({
+            title: isEdit ? 'Modifica Abbraccio' : 'Nuovo Abbraccio',
+            width: 560,
+            background: '#131a25',
+            confirmButtonText: isEdit ? 'Salva modifiche' : 'Crea Abbraccio',
+            showCancelButton: true,
+            cancelButtonText: 'Annulla',
+            html: `
+                <label style="display:block;text-align:left;margin:8px 0 4px 4px;color:#a0a0a0;font-size:13px;font-weight:600;">Player collegato (opzionale)</label>
+                <select id="abb-player" class="swal2-select">${playerOptions}</select>
+                <label style="display:block;text-align:left;margin:8px 0 4px 4px;color:#a0a0a0;font-size:13px;font-weight:600;">Nome (se non collegato a un player, o override)</label>
+                <input id="abb-name" class="swal2-input" placeholder="Nome personaggio" value="${escapeAttr(nameVal)}">
+
+                <label style="display:block;text-align:left;margin:8px 0 4px 4px;color:#a0a0a0;font-size:13px;font-weight:600;">Stato fiala</label>
+                <select id="abb-fiala" class="swal2-select">
+                    <option value="in_quest" ${fialaVal === 'in_quest' ? 'selected' : ''}>Ancora in quest (non recuperata)</option>
+                    <option value="recuperata" ${fialaVal === 'recuperata' ? 'selected' : ''}>Fiala recuperata → pronto al rito</option>
+                </select>
+
+                <label style="display:block;text-align:left;margin:8px 0 4px 4px;color:#a0a0a0;font-size:13px;font-weight:600;">Data e ora del rito</label>
+                <input id="abb-datetime" type="datetime-local" class="swal2-input" value="${dtVal}">
+
+                <label style="display:block;text-align:left;margin:8px 0 4px 4px;color:#a0a0a0;font-size:13px;font-weight:600;">Genitori / chi morde (max 2, opzionale)</label>
+                <select id="abb-parents" class="swal2-select" multiple style="height:140px;">${parentOptions}</select>
+                <p style="font-size:12px;color:#6b7280;text-align:left;margin:-4px 0 8px 4px;">Tieni premuto Ctrl (Windows) o Cmd (Mac) per selezionare fino a 2 genitori. Compariranno su Giocatori come genitori del neonato.</p>
+
+                <label style="display:block;text-align:left;margin:8px 0 4px 4px;color:#a0a0a0;font-size:13px;font-weight:600;">Note</label>
+                <textarea id="abb-notes" class="swal2-textarea" placeholder="Dettagli, contesto RP...">${String(notesVal).replace(/</g, '&lt;')}</textarea>
+            `,
+            didOpen: () => {
+                const playerSel = document.getElementById('abb-player');
+                const nameInput = document.getElementById('abb-name');
+                if (playerSel && nameInput) {
+                    playerSel.addEventListener('change', () => {
+                        const opt = playerSel.options[playerSel.selectedIndex];
+                        if (opt && opt.value) {
+                            const n = opt.getAttribute('data-name') || opt.textContent.replace(/\s*\(.*\)\s*$/, '').trim();
+                            if (n) nameInput.value = n;
+                        }
+                    });
+                }
+                const parentSel = document.getElementById('abb-parents');
+                if (parentSel) {
+                    parentSel.addEventListener('change', () => {
+                        const selected = Array.from(parentSel.selectedOptions);
+                        if (selected.length > 2) {
+                            // Deseleziona le ultime oltre il 2°
+                            selected.slice(2).forEach(o => { o.selected = false; });
+                            showToast('Massimo 2 genitori');
+                        }
+                    });
+                }
+            },
+            preConfirm: () => {
+                const playerSel = document.getElementById('abb-player');
+                const playerId = playerSel && playerSel.value ? playerSel.value : null;
+                let playerName = (document.getElementById('abb-name').value || '').trim();
+                if (!playerName && playerId) {
+                    const opt = playerSel.options[playerSel.selectedIndex];
+                    playerName = (opt.getAttribute('data-name') || opt.textContent.replace(/\s*\(.*\)\s*$/, '').trim());
+                }
+                if (!playerName) {
+                    Swal.showValidationMessage('Inserisci almeno un nome');
+                    return false;
+                }
+                const fiala = document.getElementById('abb-fiala').value || 'in_quest';
+                const status = fiala === 'recuperata' ? 'pronto' : 'in_corso';
+                const dtStr = document.getElementById('abb-datetime').value;
+                let datetime = null;
+                if (dtStr) {
+                    const d = new Date(dtStr);
+                    if (isNaN(d.getTime())) {
+                        Swal.showValidationMessage('Data/ora non valida');
+                        return false;
+                    }
+                    datetime = d.toISOString();
+                }
+                const parentSel = document.getElementById('abb-parents');
+                const parentIds = [];
+                const parentNames = [];
+                if (parentSel) {
+                    Array.from(parentSel.selectedOptions).forEach(opt => {
+                        if (!opt.value) return;
+                        parentIds.push(opt.value);
+                        parentNames.push(opt.getAttribute('data-name') || opt.textContent.replace(/\s*\(.*\)\s*$/, '').trim());
+                    });
+                }
+                if (parentIds.length > 2) {
+                    Swal.showValidationMessage('Puoi selezionare al massimo 2 genitori');
+                    return false;
+                }
+                // Compat: sire = primo genitore
+                const sireId = parentIds[0] || null;
+                const sireName = parentNames[0] || '';
+                const notes = (document.getElementById('abb-notes').value || '').trim();
+                return { playerId, playerName, fiala, status, datetime, sireId, sireName, parentIds, parentNames, notes };
+            }
+        }).then(result => {
+            if (!result.isConfirmed || !result.value) return;
+            const data = result.value;
+            if (isEdit) {
+                db.collection('abbracci').doc(editId).get().then(doc => {
+                    if (!doc.exists) return;
+                    const prev = doc.data();
+                    const update = {
+                        playerId: data.playerId,
+                        playerName: data.playerName,
+                        fiala: data.fiala,
+                        datetime: data.datetime,
+                        sireId: data.sireId,
+                        sireName: data.sireName,
+                        parentIds: data.parentIds || [],
+                        parentNames: data.parentNames || [],
+                        notes: data.notes
+                    };
+                    if (prev.status !== 'concluso') {
+                        update.status = data.status;
+                    }
+                    return db.collection('abbracci').doc(editId).update(update).then(() => showToast('Abbraccio aggiornato'));
+                });
+            } else {
+                data.createdAt = new Date().toISOString();
+                data.completedAt = null;
+                data.fromOspite = false;
+                db.collection('abbracci').add(data).then(() => {
+                    showToast(data.status === 'pronto'
+                        ? 'Abbraccio creato — pronto per il rito'
+                        : 'Abbraccio creato — fiala ancora in quest');
+                });
+            }
+        });
+    }).catch(err => {
+        console.error('addAbbraccio', err);
+        Swal.fire({ icon: 'error', title: 'Errore', text: (err && err.message) || 'Caricamento fallito', background: '#131a25' });
+    });
+}
+
+function editAbbraccio(id) {
+    db.collection('abbracci').doc(id).get().then(doc => {
+        if (!doc.exists) return;
+        addAbbraccio(id, doc.data());
+    });
+}
+
+function openAbbraccioDetails(id) {
+    db.collection('abbracci').doc(id).get().then(doc => {
+        if (!doc.exists) {
+            Swal.fire({ icon: 'info', title: 'Abbraccio', text: 'Elemento non trovato.', background: '#131a25' });
+            return;
+        }
+        const a = { id: doc.id, ...doc.data() };
+        const statusLabel = a.status === 'concluso' ? '✓ Concluso'
+            : (a.status === 'pronto' ? '🩸 Pronto per il rito' : '⏳ In corso (fiala in quest)');
+        const fialaLabel = a.fiala === 'recuperata' ? 'Recuperata' : 'Ancora in quest';
+        Swal.fire({
+            title: '🩸 ' + (a.playerName || 'Abbraccio'),
+            width: 520,
+            background: '#131a25',
+            confirmButtonText: 'Chiudi',
+            html: `
+                <div style="text-align:left;">
+                    <p><b>Player:</b> ${escapeAttr(a.playerName || '—')}</p>
+                    <p><b>Stato:</b> ${statusLabel}</p>
+                    <p><b>Fiala:</b> ${fialaLabel}</p>
+                    <p><b>Data/ora rito:</b> ${a.datetime ? (formatDateTime(a.datetime) || a.datetime) : '—'}</p>
+                    <p><b>Genitori / chi morde:</b> ${(() => {
+                        const names = (Array.isArray(a.parentNames) && a.parentNames.length)
+                            ? a.parentNames
+                            : (a.sireName ? [a.sireName] : []);
+                        return names.length ? escapeAttr(names.join(', ')) : '—';
+                    })()}</p>
+                    ${a.notes ? `<div style="margin-top:14px;padding:12px;background:rgba(0,0,0,0.35);border-left:3px solid #c5a059;border-radius:0 8px 0 8px;">
+                        <p style="margin:0 0 6px;color:#c5a059;font-size:0.75rem;font-weight:700;text-transform:uppercase;letter-spacing:1px;">Note</p>
+                        <p style="margin:0;white-space:pre-wrap;line-height:1.5;">${String(a.notes).replace(/</g, '&lt;')}</p>
+                    </div>` : '<p style="color:#9ca3af;font-size:0.85rem;margin-top:12px;">Nessuna nota</p>'}
+                    ${a.createdAt ? `<p style="margin-top:14px;font-size:0.75rem;color:#6b7280;">Creato: ${formatDateTime(a.createdAt)}</p>` : ''}
+                    ${a.completedAt ? `<p style="font-size:0.75rem;color:#6b7280;">Concluso: ${formatDateTime(a.completedAt)}</p>` : ''}
+                </div>
+            `
+        });
+    });
+}
+
+/** Resolve parent ids/names from abbraccio doc (supports legacy sire*) */
+function resolveAbbraccioParents(a) {
+    if (!a) return { ids: [], names: [] };
+    let ids = [];
+    let names = [];
+    if (Array.isArray(a.parentIds) && a.parentIds.length) {
+        ids = a.parentIds.filter(Boolean).map(String).slice(0, 2);
+        names = Array.isArray(a.parentNames) ? a.parentNames.filter(Boolean).slice(0, 2) : [];
+    } else if (a.sireId || a.sireName) {
+        if (a.sireId) ids = [String(a.sireId)];
+        if (a.sireName) names = [String(a.sireName)];
+    }
+    return { ids, names };
+}
+
+/** Crea automaticamente tempi Neonato→Adulto (5 gg) e Forma Ferale (6 gg) dopo Abbraccio */
+function createTempiAfterAbbraccio(playerId, playerName, startIso) {
+    if (!playerId) return Promise.resolve();
+    const start = startIso || new Date().toISOString();
+    return db.collection('tempi').where('playerId', '==', playerId).get().then(snap => {
+        let hasNA = false;
+        let hasFA = false;
+        snap.forEach(doc => {
+            const t = doc.data();
+            if (t.tipo === 'neonato_adulto') hasNA = true;
+            if (t.tipo === 'forma_ferale') hasFA = true;
+        });
+        const ops = [];
+        const now = new Date().toISOString();
+        if (!hasNA) {
+            const days = 5;
+            const endDate = computeTempoEndDate(start, days);
+            const expired = tempoIsExpired(endDate);
+            ops.push(db.collection('tempi').add({
+                playerId,
+                playerName: playerName || '',
+                tipo: 'neonato_adulto',
+                tipoLabel: (tempoTipoMeta('neonato_adulto') || {}).label || 'Periodo Neonato → Adulto',
+                days,
+                startDate: start,
+                endDate,
+                notes: 'Creato automaticamente dall’Abbraccio',
+                status: expired ? 'terminato' : 'attivo',
+                createdAt: now,
+                completedAt: expired ? now : null
+            }));
+        }
+        if (!hasFA) {
+            const days = 6;
+            const endDate = computeTempoEndDate(start, days);
+            const expired = tempoIsExpired(endDate);
+            ops.push(db.collection('tempi').add({
+                playerId,
+                playerName: playerName || '',
+                tipo: 'forma_ferale',
+                tipoLabel: (tempoTipoMeta('forma_ferale') || {}).label || 'Forma Ferale',
+                days,
+                startDate: start,
+                endDate,
+                notes: 'Creato automaticamente dall’Abbraccio',
+                status: expired ? 'terminato' : 'attivo',
+                createdAt: now,
+                completedAt: expired ? now : null
+            }));
+        }
+        return Promise.all(ops);
+    }).catch(err => {
+        console.error('createTempiAfterAbbraccio', err);
+        showToast('Attenzione: tempi non creati automaticamente — ' + (err.message || ''));
+    });
+}
+
+
+/** Trova la cartella Giocatori "Vampiri" (o simili); se non esiste la crea. */
+function findOrCreateVampiriFolder() {
+    return db.collection('folders').where('type', '==', 'players').get().then(snap => {
+        const folders = [];
+        snap.forEach(f => folders.push({ id: f.id, ...f.data() }));
+        const match = folders.find(f => {
+            const n = (f.name || '').trim().toLowerCase()
+                .normalize('NFD').replace(/[\u0300-\u036f]/g, '');
+            return n === 'vampiri' || n === 'vampiro' || n === 'vampi' ||
+                n.indexOf('vampiri') >= 0 || n.indexOf('vampiro') >= 0;
+        });
+        if (match) return match.id;
+        return db.collection('folders').add({
+            name: 'Vampiri',
+            type: 'players'
+        }).then(ref => {
+            showToast('Cartella «Vampiri» creata in Giocatori');
+            return ref.id;
+        });
+    });
+}
+
+/** Conclude il rito: Neonato + genitori + tempi automatici */
+function concludeAbbraccio(id) {
+    db.collection('abbracci').doc(id).get().then(doc => {
+        if (!doc.exists) return;
+        const a = doc.data();
+        if (a.status === 'concluso') {
+            showToast('Questo abbraccio è già concluso');
+            return;
+        }
+        const name = a.playerName || 'Personaggio';
+        const parents = resolveAbbraccioParents(a);
+        const parentsLabel = parents.names.length
+            ? parents.names.join(', ')
+            : (parents.ids.length ? parents.ids.join(', ') : 'nessuno');
+
+        Swal.fire({
+            title: 'Concludere l’Abbraccio?',
+            html: `<p style="text-align:left;">Il rituale per <b>${escapeAttr(name)}</b> sarà segnato come <b>concluso</b>.</p>
+                   <p style="text-align:left;margin-top:8px;">Il player diventa <b>Neonato</b> e viene spostato nella cartella <b>Vampiri</b> (Giocatori), con genitori: <b>${escapeAttr(parentsLabel)}</b>.</p>
+                   <p style="text-align:left;margin-top:8px;color:#9ca3af;font-size:0.9rem;">Verranno creati in automatico i tempi: <b>Neonato → Adulto (5 giorni)</b> e <b>Forma Ferale (6 giorni)</b>.</p>`,
+            icon: 'question',
+            showCancelButton: true,
+            confirmButtonText: 'Sì, concludi → Neonato',
+            cancelButtonText: 'Annulla',
+            background: '#131a25'
+        }).then(result => {
+            if (!result.isConfirmed) return;
+
+            const startIso = a.datetime || new Date().toISOString();
+
+            const markDone = (playerId) => {
+                const payload = {
+                    status: 'concluso',
+                    fiala: 'recuperata',
+                    completedAt: new Date().toISOString()
+                };
+                if (playerId) payload.playerId = playerId;
+                return db.collection('abbracci').doc(id).update(payload);
+            };
+
+            const applyToPlayer = (playerId) => {
+                return findOrCreateVampiriFolder().then(folderId => {
+                    const update = {
+                        grado: 'Neonato',
+                        folderId: folderId
+                    };
+                    if (parents.ids.length) {
+                        update.parentIds = parents.ids.slice(0, 2);
+                    }
+                    return db.collection('players').doc(playerId).update(update).then(() => {
+                        return createTempiAfterAbbraccio(playerId, name, startIso);
+                    }).then(() => markDone(playerId)).then(() => {
+                        showToast(name + ' — Neonato in Vampiri · genitori e tempi creati');
+                    });
+                });
+            };
+
+            if (a.playerId) {
+                db.collection('players').doc(a.playerId).get().then(pDoc => {
+                    if (!pDoc.exists) {
+                        markDone(null).then(() => showToast(name + ' — Abbraccio concluso (player non trovato)'));
+                        return;
+                    }
+                    applyToPlayer(a.playerId).catch(err => {
+                        console.error('concludeAbbraccio', err);
+                        showToast('Errore: ' + (err.message || 'sconosciuto'));
+                    });
+                });
+            } else {
+                Swal.fire({
+                    title: 'Nessun player collegato',
+                    html: `<p style="text-align:left;">Vuoi creare <b>${escapeAttr(name)}</b> come <b>Neonato</b> in Giocatori?</p>
+                           <p style="text-align:left;color:#9ca3af;font-size:0.85rem;">Serve una cartella Giocatori esistente. Genitori e tempi verranno applicati automaticamente.</p>`,
+                    icon: 'question',
+                    showCancelButton: true,
+                    showDenyButton: true,
+                    confirmButtonText: 'Crea Neonato',
+                    denyButtonText: 'Solo concludi',
+                    cancelButtonText: 'Annulla',
+                    background: '#131a25'
+                }).then(r2 => {
+                    if (r2.isDismissed) return;
+                    if (r2.isDenied) {
+                        markDone(null).then(() => showToast(name + ' — Abbraccio concluso'));
+                        return;
+                    }
+                    findOrCreateVampiriFolder().then(folderId => {
+                        const newPlayer = {
+                            name: name,
+                            grado: 'Neonato',
+                            notes: a.notes || '',
+                            folderId: folderId,
+                            ferale: false,
+                            parentIds: parents.ids.slice(0, 2)
+                        };
+                        return db.collection('players').add(newPlayer).then(ref => {
+                            return createTempiAfterAbbraccio(ref.id, name, startIso).then(() => markDone(ref.id));
+                        }).then(() => {
+                            showToast(name + ' creato come Neonato in Vampiri · genitori e tempi ok');
+                        });
+                    }).catch(err => {
+                        console.error(err);
+                        showToast('Errore creazione: ' + (err.message || ''));
+                    });
+                });
+            }
+        });
+    });
+}
+
+let _abbracciUnsub = null;
+
+function loadAbbracci() {
+    const container = document.getElementById('abbraccio-list');
+    if (!container) return;
+
+    if (_abbracciUnsub) {
+        try { _abbracciUnsub(); } catch (e) {}
+        _abbracciUnsub = null;
+    }
+
+    _abbracciUnsub = db.collection('abbracci').onSnapshot(snapshot => {
+        const items = [];
+        snapshot.forEach(doc => items.push({ id: doc.id, ...doc.data() }));
+
+        const order = { in_corso: 0, pronto: 1, concluso: 2 };
+        items.sort((a, b) => {
+            const oa = order[a.status] != null ? order[a.status] : 9;
+            const ob = order[b.status] != null ? order[b.status] : 9;
+            if (oa !== ob) return oa - ob;
+            return String(b.createdAt || '').localeCompare(String(a.createdAt || ''));
+        });
+
+        container.innerHTML = '';
+        container.innerHTML += buildAbbraccioFilterBarHtml();
+
+        if (!items.length) {
+            container.innerHTML += `<p style="grid-column:1/-1;color:var(--text-dim);padding:16px;">Nessun abbraccio registrato. Usa 🩸 sugli Ospiti in Giocatori, oppure «+ Nuovo Abbraccio».</p>`;
+            return;
+        }
+
+        items.forEach(a => {
+            const status = a.status || 'in_corso';
+            let statusBadge = '';
+            let cardExtra = 'card-abbraccio';
+            if (status === 'concluso') {
+                statusBadge = '<div class="status abbraccio-status-concluso">✓ Concluso · Neonato</div>';
+                cardExtra += ' card-abbraccio-concluso';
+            } else if (status === 'pronto') {
+                statusBadge = '<div class="status abbraccio-status-pronto">🩸 Pronto per il rito</div>';
+                cardExtra += ' card-abbraccio-pronto';
+            } else {
+                statusBadge = '<div class="status abbraccio-status-corso">⏳ Fiala in quest</div>';
+            }
+
+            const fialaLine = a.fiala === 'recuperata'
+                ? '<p style="font-size:0.8rem;color:#34d399;margin:4px 0;">Fiala: recuperata</p>'
+                : '<p style="font-size:0.8rem;color:#fbbf24;margin:4px 0;">Fiala: ancora in quest</p>';
+
+            const dtLine = a.datetime
+                ? `<p style="font-size:0.8rem;color:var(--text-dim);margin:4px 0;"><i class="fa-regular fa-clock"></i> ${formatDateTime(a.datetime) || a.datetime}</p>`
+                : '';
+
+            const parentNamesDisp = (Array.isArray(a.parentNames) && a.parentNames.length)
+                ? a.parentNames
+                : (a.sireName ? [a.sireName] : []);
+            const sireLine = parentNamesDisp.length
+                ? `<p style="font-size:0.85rem;margin:4px 0;"><b>Genitori:</b> ${escapeAttr(parentNamesDisp.join(', '))}</p>`
+                : '';
+
+            const notesPrev = a.notes
+                ? `<p class="tempo-notes-preview">${String(a.notes).slice(0, 80).replace(/</g, '&lt;')}${String(a.notes).length > 80 ? '…' : ''}</p>`
+                : '';
+
+            const filterText = [a.playerName, parentNamesDisp.join(' '), a.notes, a.status, a.fiala].filter(Boolean).join(' ');
+
+            let actionExtra = '';
+            if (status !== 'concluso') {
+                if (status === 'in_corso') {
+                    actionExtra += `<button class="btn-abbraccio-fiala" onclick="markAbbraccioFialaRecuperata('${a.id}')" title="Segna fiala recuperata">🩸 Fiala presa</button>`;
+                }
+                actionExtra += `<button class="btn-abbraccio-done" onclick="concludeAbbraccio('${a.id}')" title="Concludi rito → Neonato">Concluso</button>`;
+            }
+
+            container.innerHTML += `
+                <div class="card ${cardExtra}" data-filter-text="${escapeAttr(filterText)}" data-abbraccio-status="${escapeAttr(status)}">
+                    <h3>${escapeAttr(a.playerName || '—')}</h3>
+                    ${statusBadge}
+                    ${fialaLine}
+                    ${dtLine}
+                    ${sireLine}
+                    ${notesPrev}
+                    <div class="action-buttons action-buttons-icons">
+                        <button class="btn-icon-only" onclick="openAbbraccioDetails('${a.id}')" title="Dettagli">
+                            <i class="fa-solid fa-eye"></i>
+                        </button>
+                        <button class="edit-btn" onclick="editAbbraccio('${a.id}')" title="Modifica">Modifica</button>
+                        ${actionExtra}
+                        <button class="delete-btn btn-icon-only" onclick="confirmDelete('abbracci', '${a.id}', loadAbbracci)" title="Elimina">🗑️</button>
+                    </div>
+                </div>
+            `;
+        });
+
+        applyListFilter('abbraccio');
+    }, err => {
+        console.error('loadAbbracci', err);
+    });
+}
+
+
 auth.onAuthStateChanged(user => {
 
     if (user && user.email === 'gm.vampiri@horde.it') {
@@ -6574,6 +7281,7 @@ auth.onAuthStateChanged(user => {
         loadPlayers();
         loadRitoPlayers();
         loadTempi();
+        loadAbbracci();
         loadFrammentiEvents();
         loadFrammenti();
         updateWeekRangeHints();
