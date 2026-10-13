@@ -5776,15 +5776,17 @@ function onTempiTipoFilter(key) {
     applyListFilter('tempi');
 }
 
-/** Calcola endDate da start + giorni (giorno intero inclusivo: 5 giorni = scade a fine del 5° giorno) */
+/** Calcola endDate da start + giorni (calendario locale, senza shift timezone).
+ *  Giorno 1 = giorno di inizio: con 5 giorni, il giorno 1 mostra "5 rimanenti"
+ *  e scade a fine del 5° giorno successivo (start + 5). Es: inizio 1 gen → fine 6 gen 23:59.
+ */
 function computeTempoEndDate(startIso, days) {
     const start = new Date(startIso);
     if (isNaN(start.getTime())) return null;
     const d = Number(days) || 0;
-    // Giorno 1 = giorno di inizio; dopo d giorni completi scade a fine giornata del giorno (start + d - 1)
-    // Es: inizio 1 gen, 5 giorni → scade fine 5 gen
+    // Solo data locale (ignora ora) per evitare offset UTC/CEST
     const end = new Date(start.getFullYear(), start.getMonth(), start.getDate());
-    end.setDate(end.getDate() + Math.max(0, d - 1));
+    end.setDate(end.getDate() + Math.max(0, d));
     end.setHours(23, 59, 59, 999);
     return end.toISOString();
 }
@@ -7108,7 +7110,7 @@ function resolveAbbraccioParents(a) {
     return { ids, names };
 }
 
-/** Crea automaticamente tempi Neonato→Adulto (5 gg) e Forma Ferale (6 gg) dopo Abbraccio */
+/** Crea automaticamente tempi Neonato→Adulto (5 gg) e Forma Ferale (5 gg) dopo Abbraccio */
 function createTempiAfterAbbraccio(playerId, playerName, startIso) {
     if (!playerId) return Promise.resolve();
     const start = startIso || new Date().toISOString();
@@ -7141,7 +7143,7 @@ function createTempiAfterAbbraccio(playerId, playerName, startIso) {
             }));
         }
         if (!hasFA) {
-            const days = 6;
+            const days = 5;
             const endDate = computeTempoEndDate(start, days);
             const expired = tempoIsExpired(endDate);
             ops.push(db.collection('tempi').add({
@@ -7207,7 +7209,7 @@ function concludeAbbraccio(id) {
             title: 'Concludere l’Abbraccio?',
             html: `<p style="text-align:left;">Il rituale per <b>${escapeAttr(name)}</b> sarà segnato come <b>concluso</b>.</p>
                    <p style="text-align:left;margin-top:8px;">Il player diventa <b>Neonato</b> e viene spostato nella cartella <b>Vampiri</b> (Giocatori), con genitori: <b>${escapeAttr(parentsLabel)}</b>.</p>
-                   <p style="text-align:left;margin-top:8px;color:#9ca3af;font-size:0.9rem;">Verranno creati in automatico i tempi: <b>Neonato → Adulto (5 giorni)</b> e <b>Forma Ferale (6 giorni)</b>.</p>`,
+                   <p style="text-align:left;margin-top:8px;color:#9ca3af;font-size:0.9rem;">Verranno creati in automatico i tempi: <b>Neonato → Adulto (5 giorni)</b> e <b>Forma Ferale (5 giorni)</b>.</p>`,
             icon: 'question',
             showCancelButton: true,
             confirmButtonText: 'Sì, concludi → Neonato',
