@@ -882,3 +882,25 @@ header {
     header { padding-top: 16px !important; }
     input, select, button, textarea { font-size: 16px !important; width: 100%; max-width: 100%; box-sizing: border-box; }
 }
+
+/* Stato Archiviato */
+.status-archiviato {
+    background: rgba(155, 89, 182, 0.1);
+    color: #9b59b6;
+    border-color: #9b59b6;
+    box-shadow: inset 5px 0 15px rgba(155, 89, 182, 0.2);
+}
+
+/* Bottone Archivia */
+.btn-archive {
+    border-color: #9b59b6;
+    color: #bb8fce;
+}
+.btn-archive::before {
+    background: linear-gradient(90deg, #6c3483, #9b59b6);
+}
+.btn-archive:hover {
+    box-shadow: 0 5px 20px rgba(155, 89, 182, 0.45);
+    border-color: #bb8fce;
+    color: #fff;
+}

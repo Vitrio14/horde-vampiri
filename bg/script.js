@@ -5,7 +5,6 @@
     const manutenzioneDiv = document.getElementById('schermata-manutenzione');
     
     function controllaStatoManutenzione() {
-        // Carica il file status.txt dal server evitando la cache del browser
         fetch('status.txt?t=' + new Date().getTime())
             .then(response => {
                 if (!response.ok) throw new Error('File status non trovato');
@@ -13,11 +12,10 @@
             })
             .then(stato => {
                 const statoPulito = stato.trim().toLowerCase();
-                
                 if (statoPulito === 'on') {
-                    manutenzioneDiv.style.display = 'flex'; // Attiva la schermata per tutti
+                    manutenzioneDiv.style.display = 'flex';
                 } else {
-                    manutenzioneDiv.style.display = 'none'; // Nasconde la schermata
+                    manutenzioneDiv.style.display = 'none';
                 }
             })
             .catch(err => {
@@ -25,10 +23,7 @@
             });
     }
 
-    // Controllo iniziale immediato
     controllaStatoManutenzione();
-
-    // Controllo automatico ogni 5 secondi
     setInterval(controllaStatoManutenzione, 5000);
 })();
 
@@ -37,7 +32,6 @@
 // CONFIGURAZIONE E LOGICA PRINCIPALE FIREBASE
 // ==========================================
 
-// CONFIGURAZIONE FIREBASE - Incolla qui le tue chiavi del progetto
 const firebaseConfig = {
   apiKey: "AIzaSyCc0vz3ZSC6zNqsdP5IGYCMJckeycvABX8",
   authDomain: "bg-vampiri.firebaseapp.com",
@@ -48,7 +42,6 @@ const firebaseConfig = {
   measurementId: "G-EMHJW2WKJ5"
 };
 
-// Inizializzazione Firebase
 firebase.initializeApp(firebaseConfig);
 const auth = firebase.auth();
 const db = firebase.firestore();
@@ -57,7 +50,6 @@ const GM_EMAIL = 'gm.vampiri@horde.it';
 let deviceToken = '';
 let gmSnapshotUnsubscribe = null;
 
-// Riferimenti elementi del DOM
 const loadingPanel = document.getElementById('loadingPanel');
 const bgFormPanel = document.getElementById('bgFormPanel');
 const bgLockedPanel = document.getElementById('bgLockedPanel');
@@ -71,14 +63,12 @@ const btnTogglePlayerPreview = document.getElementById('btnTogglePlayerPreview')
 const gmListContainer = document.getElementById('gmListContainer');
 const bgForm = document.getElementById('bgForm');
 
-// ELEMENTI DEL POP-UP CUSTOM
 const customPopup = document.getElementById('customPopup');
 const popupTitle = document.getElementById('popupTitle');
 const popupMessage = document.getElementById('popupMessage');
 const btnPopupClose = document.getElementById('btnPopupClose');
 let currentPopupCallback = null;
 
-// FUNZIONE PER INVIARE WEBHOOK A DISCORD (AGGIORNATA PER SUPPORTARE IL TAG ESTERNO ALL'EMBED)
 function sendDiscordWebhook(url, contentText, embedTitle, embedDescription, embedColor, embedFields) {
     const payload = {
         content: contentText,
@@ -104,14 +94,11 @@ function sendDiscordWebhook(url, contentText, embedTitle, embedDescription, embe
 
     fetch(url, {
         method: 'POST',
-        headers: {
-            'Content-Type': 'application/json',
-        },
+        headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify(payload)
     }).catch(err => console.error("Errore Invio Webhook Discord:", err));
 }
 
-// FUNZIONE PER EMETTERE NOTIFICHE / POP-UP CUSTOM
 function triggerChronicaAlert(title, message, callback = null) {
     popupTitle.innerText = title;
     popupMessage.innerText = message;
@@ -127,7 +114,6 @@ btnPopupClose.addEventListener('click', () => {
     }
 });
 
-// Gestione espansione e collasso visivo del background lato giocatore
 btnTogglePlayerPreview.addEventListener('click', () => {
     if (lockedContentPreview.classList.contains('hidden')) {
         lockedContentPreview.classList.remove('hidden');
@@ -138,7 +124,6 @@ btnTogglePlayerPreview.addEventListener('click', () => {
     }
 });
 
-// AGGIUNTA EVENTO INVIO TRAMITE TASTO INVIO PER IL LOGIN GM
 document.getElementById('gmPassword').addEventListener('keydown', (e) => {
     if (e.key === 'Enter') {
         e.preventDefault();
@@ -146,7 +131,6 @@ document.getElementById('gmPassword').addEventListener('keydown', (e) => {
     }
 });
 
-// GESTIONE IDENTIFICAZIONE HARDWARE / BROWSER SENZA LOGIN UTENTE
 function initDeviceIdentification() {
     let token = localStorage.getItem('sanguis_device_uid');
     if (!token) {
@@ -156,7 +140,6 @@ function initDeviceIdentification() {
     deviceToken = token;
 }
 
-// Controllo dello stato iniziale della pagina e sessioni persistenti GM
 auth.onAuthStateChanged(user => {
     if (user && user.email === GM_EMAIL) {
         switchPanel(gmDashboardPanel);
@@ -171,7 +154,6 @@ auth.onAuthStateChanged(user => {
     }
 });
 
-// Controlla se questo specifico PC ha già salvato un documento su Firestore
 function checkBackgroundStatus() {
     switchPanel(loadingPanel);
     
@@ -194,7 +176,6 @@ function checkBackgroundStatus() {
     });
 }
 
-// Gestione Visibilità Schermate
 function switchPanel(targetPanel) {
     loadingPanel.classList.add('hidden');
     bgFormPanel.classList.add('hidden');
@@ -206,29 +187,29 @@ function switchPanel(targetPanel) {
     window.scrollTo({ top: 0, behavior: 'smooth' });
 }
 
-// NAVIGAZIONE INTERFACCIA INTERNA PORTALE GM
 document.getElementById('btnGoToLoginGM').addEventListener('click', () => switchPanel(gmAuthPanel));
 document.getElementById('btnGoToLoginGM2').addEventListener('click', () => switchPanel(gmAuthPanel));
 document.getElementById('btnBackToPlayer').addEventListener('click', () => checkBackgroundStatus());
 
-// ELABORAZIONE AUTOMATICA DEGLI STATI PER IL GIOCATORE CORRENTE
 function handlePlayerBackgroundState(data) {
     const dataInvio = data.submittedAt ? data.submittedAt.toDate().toLocaleString('it-IT') : 'Data non registrata';
     const gmNameMod = data.reviewedBy ? ` (da ${data.reviewedBy})` : '';
     const gmNameNote = data.reviewedBy ? ` (${data.reviewedBy})` : '';
     
-    if (data.status === 'da_revisionare' || data.status === 'approvato') {
+    // Gli archiviati e gli approvati restano in locked panel per il giocatore
+    if (data.status === 'da_revisionare' || data.status === 'approvato' || data.status === 'archiviato') {
         let bannerHTML = '';
-        if(data.status === 'da_revisionare') {
+        if (data.status === 'da_revisionare') {
             bannerHTML = `<div class="status-banner status-da_revisionare">Inviato il ${dataInvio} — IN FASE DI REVISIONE</div>`;
-        } else {
+        } else if (data.status === 'approvato') {
             bannerHTML = `<div class="status-banner status-approvato">Inviato il ${dataInvio} — BACKGROUND APPROVATO${gmNameMod}</div>`;
+        } else if (data.status === 'archiviato') {
+            bannerHTML = `<div class="status-banner status-archiviato">Inviato il ${dataInvio} — BACKGROUND ARCHIVIATO${gmNameMod}</div>`;
         }
         
         lockedStatusBanner.innerHTML = bannerHTML;
         renderPreview(data, lockedContentPreview);
         
-        // Reset visualizzazione iniziale (chiusa per impostazione predefinita)
         lockedContentPreview.classList.add('hidden');
         btnTogglePlayerPreview.innerText = 'Visualizza Background';
         
@@ -259,7 +240,6 @@ function populateFormFields(data) {
     document.getElementById('fears').value = data.fears || '';
 }
 
-// COSTRUZIONE DI PREVIEW STRUTTURATA IN BOX VOCE PER VOCE
 function renderPreview(data, targetElement) {
     targetElement.innerHTML = `
         <div class="voice-box"><strong>Nome Utente Discord</strong><p>${data.discordUser || 'Non specificato'}</p></div>
@@ -275,7 +255,6 @@ function renderPreview(data, targetElement) {
     `;
 }
 
-// --- PROTEZIONE INTERFACCIA ---
 document.addEventListener('contextmenu', event => event.preventDefault());
 
 document.onkeydown = function(e) {
@@ -290,7 +269,6 @@ setInterval(function() {
     debugger;
 }, 100);
 
-// SALVATAGGIO E INVIO DEFINITIVO BACKGROUND LEGATO AL DISPOSITIVO
 bgForm.addEventListener('submit', (e) => {
     e.preventDefault();
     if (!deviceToken) return;
@@ -317,11 +295,9 @@ bgForm.addEventListener('submit', (e) => {
 
     db.collection('backgrounds').doc(deviceToken).set(finalPayload)
         .then(() => {
-            
-            // WEBHOOK INVIO BACKGROUND (Ora con tag ruolo GM all'esterno dell'embed)
             sendDiscordWebhook(
                 "https://discord.com/api/webhooks/1525137419567890635/48cnj0-0COKJ5EEjkKuMHba0KIGlghz8O4G0D8mLND-mhEjINUa3BMBexxQoVKpwLPMY",
-                "<@&1284193565194326189>", // Tag ruolo GM fuori dall'embed
+                "<@&1284193565194326189>",
                 "Horde V5 | Nuovo Background Ricevuto",
                 "È stato inviato un nuovo background in attesa di revisione da parte di un GM, collegati al seguente link: https://horde-vampiri.vitriotv.com/bg/.",
                 0x8b0000, 
@@ -342,7 +318,6 @@ bgForm.addEventListener('submit', (e) => {
         });
 });
 
-// FLUSSO ACCESSO RISERVATO AL GENERAL MASTER
 document.getElementById('btnLoginGM').addEventListener('click', () => {
     const password = document.getElementById('gmPassword').value;
 
@@ -381,7 +356,6 @@ const gmDetailContent = document.getElementById('gmDetailContent');
 const gmSearchInput = document.getElementById('gmSearchInput');
 const gmSearchClear = document.getElementById('gmSearchClear');
 
-// Tab click handlers
 document.querySelectorAll('.gm-tab').forEach(tabBtn => {
     tabBtn.addEventListener('click', () => {
         document.querySelectorAll('.gm-tab').forEach(t => t.classList.remove('active'));
@@ -391,7 +365,6 @@ document.querySelectorAll('.gm-tab').forEach(tabBtn => {
     });
 });
 
-// Barra di ricerca GM
 if (gmSearchInput) {
     gmSearchInput.addEventListener('input', () => {
         currentSearchQuery = gmSearchInput.value.trim().toLowerCase();
@@ -414,7 +387,6 @@ if (gmSearchClear) {
     });
 }
 
-// Torna alla lista dalla vista dettaglio
 document.getElementById('btnBackToList').addEventListener('click', () => {
     showGmListView();
 });
@@ -430,7 +402,6 @@ function showGmDetailView() {
     gmDetailView.classList.remove('hidden');
 }
 
-// CARICAMENTO IN DIRETTA DEI BACKGROUND RICEVUTI
 function loadGmDashboard() {
     if (gmSnapshotUnsubscribe) gmSnapshotUnsubscribe();
 
@@ -467,10 +438,13 @@ function updateTabCounts() {
     const countRev = allBackgroundsCache.filter(b => b.status === 'da_revisionare').length;
     const countMod = allBackgroundsCache.filter(b => b.status === 'da_modificare').length;
     const countApp = allBackgroundsCache.filter(b => b.status === 'approvato').length;
+    const countArch = allBackgroundsCache.filter(b => b.status === 'archiviato').length;
 
     document.getElementById('countDaRevisionare').innerText = countRev;
     document.getElementById('countDaModificare').innerText = countMod;
     document.getElementById('countApprovati').innerText = countApp;
+    const countArchEl = document.getElementById('countArchiviati');
+    if (countArchEl) countArchEl.innerText = countArch;
 }
 
 function renderGmList() {
@@ -478,7 +452,6 @@ function renderGmList() {
 
     let filtered = allBackgroundsCache.filter(b => b.status === currentGmTab);
 
-    // Filtro ricerca (Discord, nome personaggio, ombra, reviewedBy)
     if (currentSearchQuery) {
         filtered = filtered.filter(b => {
             const haystack = [
@@ -499,6 +472,7 @@ function renderGmList() {
             if (currentGmTab === 'da_revisionare') emptyMsg = 'Nessun background in attesa di revisione.';
             if (currentGmTab === 'da_modificare') emptyMsg = 'Nessun background con richieste di modifica.';
             if (currentGmTab === 'approvato') emptyMsg = 'Nessun background approvato.';
+            if (currentGmTab === 'archiviato') emptyMsg = 'Nessun background archiviato.';
         }
         gmListContainer.innerHTML = '<p style="color: var(--text-dim); text-align:center; padding: 20px;">' + emptyMsg + '</p>';
         return;
@@ -514,6 +488,7 @@ function renderGmList() {
         if (data.status === 'approvato') statusBadge = '<span style="color:var(--success-green);">[APPROVATO]</span>';
         if (data.status === 'da_revisionare') statusBadge = '<span style="color:var(--gold-accent);">[DA REVISIONARE]</span>';
         if (data.status === 'da_modificare') statusBadge = '<span style="color:var(--withdraw-red);">[DA MODIFICARE]</span>';
+        if (data.status === 'archiviato') statusBadge = '<span style="color:#9b59b6;">[ARCHIVIATO]</span>';
 
         const bgItem = document.createElement('div');
         bgItem.className = 'bg-item';
@@ -534,7 +509,6 @@ function renderGmList() {
     });
 }
 
-// Apre la vista dettaglio a pagina intera
 window.openGmDetail = function(docId) {
     const data = allBackgroundsCache.find(b => b.id === docId);
     if (!data) return;
@@ -550,10 +524,17 @@ window.openGmDetail = function(docId) {
         bannerHTML = '<div class="status-banner status-approvato">Inviato il ' + dataInvio + ' — BACKGROUND APPROVATO' + (data.reviewedBy ? ' (da ' + data.reviewedBy + ')' : '') + '</div>';
     } else if (data.status === 'da_modificare') {
         bannerHTML = '<div class="status-banner status-da_modificare">Richiesta di Modifica necessaria' + (data.reviewedBy ? ' (da ' + data.reviewedBy + ')' : '') + '</div>';
+    } else if (data.status === 'archiviato') {
+        bannerHTML = '<div class="status-banner status-archiviato">Inviato il ' + dataInvio + ' — BACKGROUND ARCHIVIATO' + (data.reviewedBy ? ' (da ' + data.reviewedBy + ')' : '') + '</div>';
     }
 
     const feedbackBox = data.feedback
         ? '<div class="feedback-box" style="margin-bottom:15px;"><strong>Nota Attuale in Archivio' + (data.reviewedBy ? ' (GM: ' + data.reviewedBy + ')' : '') + ':</strong> ' + data.feedback + '</div>'
+        : '';
+
+    // Pulsante Archivia solo se non è già archiviato
+    const archiveButtonHtml = (data.status !== 'archiviato')
+        ? '<button class="btn btn-archive" onclick="archiveBackground(\'' + docId + '\')">Archivia Background</button>'
         : '';
 
     gmDetailContent.innerHTML =
@@ -580,16 +561,17 @@ window.openGmDetail = function(docId) {
         '<div class="gm-actions">' +
             '<label style="font-size:0.75rem; margin-bottom:8px; color: var(--gold-accent); font-weight: bold;">Firma GM (Obbligatorio)</label>' +
             '<input type="text" id="gmSignature_detail" placeholder="Inserisci il tuo nome GM..." value="' + (data.reviewedBy || '') + '" style="margin-bottom: 15px;">' +
-            '<label style="font-size:0.75rem; margin-bottom:8px;">Istruzioni di Modifica / Commento di Rifiuto</label>' +
-            '<textarea id="feedback_detail" placeholder="Specifica qui cosa l\'utente deve correggere sul suo PC..." style="margin-bottom: 15px;">' + (data.feedback || '') + '</textarea>' +
+            '<label style="font-size:0.75rem; margin-bottom:8px;">Istruzioni di Modifica / Commento / Note di Archiviazione</label>' +
+            '<textarea id="feedback_detail" placeholder="Specifica qui cosa l\'utente deve correggere oppure le note di archiviazione..." style="margin-bottom: 15px;">' + (data.feedback || '') + '</textarea>' +
             '<div class="gm-buttons-group">' +
-                '<button class="btn btn-approve" onclick="reviewBackground(\'' + docId + '\', \'approvato\')">Approva Background</button>' +
-                '<button class="btn btn-reject" onclick="reviewBackground(\'' + docId + '\', \'da_modificare\')">Richiedi Modifiche</button>' +
+                (data.status !== 'archiviato' ? '<button class="btn btn-approve" onclick="reviewBackground(\'' + docId + '\', \'approvato\')">Approva Background</button>' : '') +
+                (data.status !== 'archiviato' ? '<button class="btn btn-reject" onclick="reviewBackground(\'' + docId + '\', \'da_modificare\')">Richiedi Modifiche</button>' : '') +
+                archiveButtonHtml +
             '</div>' +
             '<div class="gm-buttons-group" style="margin-top:12px;">' +
-                '<button class="btn btn-pdf" onclick="generateBackgroundPdf(\'' + docId + '\')">Scarica PDF</button>' +
-                '<button class="btn btn-txt" onclick="generateBackgroundTxt(\'' + docId + '\')">Scarica TXT</button>' +
-                '<button class="btn btn-word" onclick="generateBackgroundDocx(\'' + docId + '\')">Scarica Word</button>' +
+                // '<button class="btn btn-pdf" onclick="generateBackgroundPdf(\'' + docId + '\')">Scarica PDF</button>' +
+                // '<button class="btn btn-txt" onclick="generateBackgroundTxt(\'' + docId + '\')">Scarica TXT</button>' +
+                // '<button class="btn btn-word" onclick="generateBackgroundDocx(\'' + docId + '\')">Scarica Word</button>' +
             '</div>' +
         '</div>';
 
@@ -597,7 +579,6 @@ window.openGmDetail = function(docId) {
     window.scrollTo({ top: 0, behavior: 'smooth' });
 };
 
-// EMISSIONE DELLA SENTENZA DEL GM
 window.reviewBackground = function(docId, nextStatus) {
     const feedbackEl = document.getElementById('feedback_detail') || document.getElementById('feedback_' + docId);
     const signatureEl = document.getElementById('gmSignature_detail') || document.getElementById('gmSignature_' + docId);
@@ -670,9 +651,50 @@ window.reviewBackground = function(docId, nextStatus) {
         });
 };
 
+// ==========================================
+// ARCHIVIAZIONE BACKGROUND (SENZA WEBHOOK)
+// ==========================================
+window.archiveBackground = function(docId) {
+    const feedbackEl = document.getElementById('feedback_detail');
+    const signatureEl = document.getElementById('gmSignature_detail');
+
+    const feedbackText = feedbackEl ? feedbackEl.value.trim() : '';
+    const gmSignature = signatureEl ? signatureEl.value.trim() : '';
+
+    if (!gmSignature) {
+        triggerChronicaAlert('Firma Mancante', 'Devi inserire il tuo nome GM prima di archiviare.');
+        return;
+    }
+
+    if (!feedbackText) {
+        triggerChronicaAlert('Nota mancante', 'Devi inserire una nota di archiviazione (motivo, commento interno, ecc.).');
+        return;
+    }
+
+    const updateData = {
+        status: 'archiviato',
+        feedback: feedbackText,
+        reviewedBy: gmSignature
+    };
+
+    db.collection('backgrounds').doc(docId).update(updateData)
+        .then(() => {
+            triggerChronicaAlert('Background archiviato', 'Il background è stato spostato in Archiviati. Nessuna notifica è stata inviata.', () => {
+                currentGmTab = 'archiviato';
+                document.querySelectorAll('.gm-tab').forEach(t => t.classList.remove('active'));
+                const tabArch = document.getElementById('tabArchiviati');
+                if (tabArch) tabArch.classList.add('active');
+                showGmListView();
+            });
+        })
+        .catch(error => {
+            triggerChronicaAlert('Errore Di Registro', 'Impossibile archiviare: ' + error.message);
+        });
+};
+
 
 // ==========================================
-// GENERAZIONE FILE BACKGROUND (PDF / TXT / DOCX) — PORTALE GM
+// GENERAZIONE FILE BACKGROUND (PDF / TXT / DOCX)
 // ==========================================
 
 function buildBackgroundPlainText(data) {
@@ -680,7 +702,8 @@ function buildBackgroundPlainText(data) {
     const statusLabel = {
         'da_revisionare': 'In revisione',
         'approvato': 'Approvato',
-        'da_modificare': 'Da modificare'
+        'da_modificare': 'Da modificare',
+        'archiviato': 'Archiviato'
     }[data.status] || data.status;
 
     const lines = [
@@ -783,7 +806,6 @@ function downloadBlob(blob, fileName) {
     }, 150);
 }
 
-// Costruisce il Blob del formato richiesto (senza scaricare/inviare)
 function buildBackgroundBlob(docId, format) {
     return new Promise(function(resolve, reject) {
         const data = allBackgroundsCache.find(b => b.id === docId);
@@ -816,7 +838,6 @@ function buildBackgroundBlob(docId, format) {
                 reject(new Error('jsPDF non è caricato. Ricarica la pagina e riprova.'));
                 return;
             }
-            // PDF is async because of logo; we reuse the existing logic via a helper
             buildPdfBlob(data).then(function(blob) {
                 resolve({ blob: blob, fileName: getSafeFileName(data, 'pdf'), data: data, label: 'PDF' });
             }).catch(reject);
@@ -827,7 +848,6 @@ function buildBackgroundBlob(docId, format) {
     });
 }
 
-// --- Scarica solo sul PC ---
 window.generateBackgroundTxt = function(docId) {
     buildBackgroundBlob(docId, 'txt').then(function(res) {
         downloadBlob(res.blob, res.fileName);
@@ -846,7 +866,6 @@ window.generateBackgroundDocx = function(docId) {
     });
 };
 
-// Helper PDF -> Blob (estratto dalla logica originale)
 function buildPdfBlob(data) {
     return new Promise(function(resolve, reject) {
         const { jsPDF } = window.jspdf;
@@ -926,7 +945,8 @@ function buildPdfBlob(data) {
             const statusLabel = {
                 'da_revisionare': 'In revisione',
                 'approvato': 'Approvato',
-                'da_modificare': 'Da modificare'
+                'da_modificare': 'Da modificare',
+                'archiviato': 'Archiviato'
             }[data.status] || data.status;
 
             doc.setFontSize(8);
@@ -1043,7 +1063,6 @@ function buildPdfBlob(data) {
     });
 }
 
-// --- PDF: solo download locale ---
 window.generateBackgroundPdf = function(docId) {
     buildBackgroundBlob(docId, 'pdf').then(function(res) {
         downloadBlob(res.blob, res.fileName);
@@ -1052,4 +1071,3 @@ window.generateBackgroundPdf = function(docId) {
         triggerChronicaAlert('Errore', err.message || String(err));
     });
 };
-
