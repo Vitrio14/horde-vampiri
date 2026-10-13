@@ -936,6 +936,96 @@ footer:hover strong { color: var(--blood-red); }
     opacity: 0.9;
 }
 
+/* Stati speciali (morto / reietto / rito carne) */
+.albero-nodo .nodo-stati {
+    display: flex;
+    justify-content: center;
+    gap: 4px;
+    margin: 3px 0 2px;
+    flex-wrap: wrap;
+}
+.albero-nodo .nodo-stato {
+    font-size: 0.85rem;
+    line-height: 1;
+    filter: drop-shadow(0 1px 2px rgba(0,0,0,0.6));
+}
+.albero-nodo.is-morto {
+    opacity: 0.72;
+    filter: grayscale(0.55);
+    border-color: rgba(120, 120, 120, 0.5);
+}
+.albero-nodo.is-morto .nodo-nome,
+.albero-nodo.is-morto .nodo-cognome {
+    text-decoration: line-through;
+    text-decoration-color: rgba(200, 60, 60, 0.7);
+}
+.albero-nodo.is-reietto {
+    border-color: rgba(160, 100, 60, 0.55);
+    box-shadow: 0 4px 16px rgba(0,0,0,0.5), inset 0 0 12px rgba(160, 80, 40, 0.12);
+}
+.albero-nodo.is-reietto .nodo-nome {
+    color: #c49a6c;
+}
+
+/* Bottoni stato in Gestione > Albero */
+.btn-stato {
+    width: auto !important;
+    min-width: 32px;
+    padding: 5px 8px !important;
+    font-size: 0.95rem !important;
+    letter-spacing: 0 !important;
+    border: 1px solid rgba(255,255,255,0.15) !important;
+    color: #666 !important;
+    background: rgba(0,0,0,0.35) !important;
+    border-radius: 6px !important;
+    margin-right: 3px;
+    opacity: 0.55;
+    transition: opacity 0.2s, border-color 0.2s, background 0.2s;
+}
+.btn-stato::before { display: none !important; }
+.btn-stato:hover {
+    opacity: 1 !important;
+    border-color: var(--gold-dim) !important;
+    color: #fff !important;
+    transform: none !important;
+}
+.btn-stato.is-active {
+    opacity: 1 !important;
+    border-color: var(--gold-accent) !important;
+    background: rgba(197, 160, 89, 0.15) !important;
+    color: #fff !important;
+    box-shadow: 0 0 8px rgba(197, 160, 89, 0.25);
+}
+.stati-admin-row {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 4px;
+    margin-top: 4px;
+}
+.stato-badge {
+    font-size: 0.58rem;
+    font-weight: 700;
+    padding: 2px 6px;
+    border-radius: 4px;
+    letter-spacing: 0.3px;
+    text-transform: uppercase;
+}
+.stato-badge.stato-morto {
+    background: rgba(80, 80, 80, 0.4);
+    color: #bbb;
+    border: 1px solid rgba(150, 150, 150, 0.35);
+}
+.stato-badge.stato-reietto {
+    background: rgba(160, 90, 40, 0.2);
+    color: #d4a574;
+    border: 1px solid rgba(160, 100, 50, 0.4);
+}
+.stato-badge.stato-rito {
+    background: rgba(139, 0, 0, 0.2);
+    color: #e88a7a;
+    border: 1px solid rgba(139, 0, 0, 0.4);
+}
+
 .albero-nodo .nodo-bat {
     position: absolute;
     top: -8px;

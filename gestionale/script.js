@@ -31,7 +31,7 @@ let comunicazioni = [];
 let documenti = [];
 let itemImagesLib = []; // { id, fileName, dataUrl, size, createdAt }
 let tipiMateriale = []; // { id, nome, prezzoUnitario, percPropria, percDinastia, percEkaton, sezioni:[], attivo }
-let alberoNodi = []; // { id, nome, cognome, clan, anno, parentId, foto, note, ordine, createdAt }
+let alberoNodi = []; // { id, nome, cognome, clan, anno, parentId, foto, note, ordine, morto, reietto, ritoCarne, createdAt }
 let tipiLavoro = []; // { id, nome, sblocchi: [{ livello, item, ingredienti, strumenti }], createdAt }
 let lavoriMembri = []; // { id, vampiro, lavoroId, lavoroNome, livello } — più record per stesso vampiro
 
@@ -3837,6 +3837,29 @@ window.eliminaNodoAlbero = async (id) => {
     }
 };
 
+/** Toggle stato speciale: morto | reietto | ritoCarne */
+window.toggleStatoAlbero = async (id, campo) => {
+    if (!currentUser || !currentUser.isAdmin) {
+        return vampireToast('Solo il gestore può modificare gli stati.', 'error');
+    }
+    const allowed = ['morto', 'reietto', 'ritoCarne'];
+    if (!allowed.includes(campo)) return;
+    const n = alberoNodi.find(x => x.id === id);
+    if (!n) return vampireToast('Persona non trovata.', 'error');
+    const nuovo = !n[campo];
+    const labels = { morto: 'Morto', reietto: 'Reietto', ritoCarne: 'Rito della Carne' };
+    try {
+        await setDoc(doc(db, 'albero_genealogico', id), {
+            [campo]: nuovo,
+            updatedAt: Date.now()
+        }, { merge: true });
+        vampireToast(`${alberoNomeCompleto(n)}: ${labels[campo]} ${nuovo ? 'attivato' : 'rimosso'}.`, 'success');
+    } catch (err) {
+        console.error(err);
+        vampireToast('Errore aggiornamento stato.', 'error');
+    }
+};
+
 window.renderAdminAlbero = () => {
     const tbody = document.getElementById('admin-albero-body');
     if (!tbody) return;
@@ -3867,13 +3890,28 @@ window.renderAdminAlbero = () => {
         const parents = [p1, p2].filter(Boolean).join(' + ') || '—';
         const spouse = n.spouseId ? alberoNomeCompleto(alberoNodi.find(x => x.id === n.spouseId)) : '—';
         const fotoSrc = n.foto || PLACEHOLDER_FOTO;
+        const isMorto = !!n.morto;
+        const isReietto = !!n.reietto;
+        const isRito = !!n.ritoCarne;
+        const statiBadges = [
+            isMorto ? '<span class="stato-badge stato-morto" title="Morto">💀 Morto</span>' : '',
+            isReietto ? '<span class="stato-badge stato-reietto" title="Reietto">🐀 Reietto</span>' : '',
+            isRito ? '<span class="stato-badge stato-rito" title="Rito della Carne">🥩 Rito Carne</span>' : ''
+        ].filter(Boolean).join(' ');
         return `<tr>
             <td><img src="${fotoSrc}" alt="" loading="lazy" decoding="async" onerror="this.src='${PLACEHOLDER_FOTO}'"></td>
-            <td><strong>${full}</strong><br><span style="opacity:0.6;font-size:0.6rem;">${n.clan || ''}</span></td>
+            <td>
+                <strong>${full}</strong><br>
+                <span style="opacity:0.6;font-size:0.6rem;">${n.clan || ''}</span>
+                ${statiBadges ? `<div class="stati-admin-row">${statiBadges}</div>` : ''}
+            </td>
             <td style="font-size:0.65rem;color:var(--gold-dim);">${n.relazione || '—'}</td>
             <td style="font-size:0.65rem;">${parents}</td>
             <td style="font-size:0.65rem;">${spouse}</td>
-            <td>
+            <td style="white-space:nowrap;">
+                <button type="button" class="btn-stato ${isMorto ? 'is-active' : ''}" title="${isMorto ? 'Rimuovi Morto' : 'Segna come Morto'}" onclick="window.toggleStatoAlbero('${n.id}','morto')">💀</button>
+                <button type="button" class="btn-stato ${isReietto ? 'is-active' : ''}" title="${isReietto ? 'Rimuovi Reietto' : 'Segna come Reietto'}" onclick="window.toggleStatoAlbero('${n.id}','reietto')">🐀</button>
+                <button type="button" class="btn-stato ${isRito ? 'is-active' : ''}" title="${isRito ? 'Rimuovi Rito della Carne' : 'Segna Rito della Carne'}" onclick="window.toggleStatoAlbero('${n.id}','ritoCarne')">🥩</button>
                 <button class="btn-delete" style="border-color:var(--gold-accent);color:var(--gold-accent);margin-right:4px;" onclick="window.caricaNodoAlberoPerEdit('${n.id}')">Modifica</button>
                 <button class="btn-delete" onclick="window.eliminaNodoAlbero('${n.id}')">Elimina</button>
             </td>
@@ -3948,11 +3986,22 @@ function buildAlberoTree(nodes) {
         const sibHint = sibs.length
             ? `<div class="nodo-siblings">⇄ ${sibs.map(s => s.nome || alberoNomeCompleto(s)).join(', ')}</div>`
             : '';
-        return `<div class="albero-nodo ${extraClass || ''}" data-id="${n.id}">
+        const isMorto = !!n.morto;
+        const isReietto = !!n.reietto;
+        const isRito = !!n.ritoCarne;
+        const statiHtml = [
+            isMorto ? '<span class="nodo-stato" title="Morto">💀</span>' : '',
+            isReietto ? '<span class="nodo-stato" title="Reietto (disconosciuto)">🐀</span>' : '',
+            isRito ? '<span class="nodo-stato" title="Rito della Carne">🥩</span>' : ''
+        ].filter(Boolean).join('');
+        const mortoClass = isMorto ? ' is-morto' : '';
+        const reiettoClass = isReietto ? ' is-reietto' : '';
+        return `<div class="albero-nodo ${extraClass || ''}${mortoClass}${reiettoClass}" data-id="${n.id}">
             <span class="nodo-bat" title="Vampiro">🦇</span>
             <img class="nodo-foto" src="${fotoSrc}" alt="" loading="lazy" decoding="async" onerror="this.src='${PLACEHOLDER_FOTO}'">
             <div class="nodo-nome">${n.nome || ''}</div>
             <div class="nodo-cognome">${n.cognome || ''}</div>
+            ${statiHtml ? `<div class="nodo-stati">${statiHtml}</div>` : ''}
             ${n.relazione ? `<div class="nodo-relazione">${n.relazione}</div>` : ''}
             ${n.clan ? `<div class="nodo-clan">${n.clan}</div>` : ''}
             ${n.anno ? `<div class="nodo-anno">${n.anno}</div>` : ''}
@@ -4094,7 +4143,7 @@ function buildAlberoTree(nodes) {
     }
 
     let out = '<div class="albero-title-clan">Clan Drakòvič · Dè Lùne</div>';
-    out += '<div class="albero-legend">♥ Coniugi &nbsp;·&nbsp; ⇄ Fratelli/Sorelle (anche senza stessi genitori) &nbsp;·&nbsp; ↳ Figlio/a di</div>';
+    out += '<div class="albero-legend">♥ Coniugi &nbsp;·&nbsp; ⇄ Fratelli/Sorelle &nbsp;·&nbsp; ↳ Figlio/a di &nbsp;·&nbsp; 💀 Morto &nbsp;·&nbsp; 🐀 Reietto &nbsp;·&nbsp; 🥩 Rito della Carne</div>';
     out += '<div class="albero-roots-row">';
 
     // Radici "differite": senza genitore ma fratelli di qualcuno che HA un genitore
@@ -4199,7 +4248,8 @@ function alberoDataSignature(nodes) {
     return nodes.map(n => [
         n.id, n.nome, n.cognome, n.clan, n.anno, n.parentId, n.parent2Id,
         n.spouseId, (Array.isArray(n.fratelliIds) ? n.fratelliIds.join(',') : ''),
-        n.relazione, n.ordine, n.foto ? (n.foto.length + ':' + n.foto.slice(0, 24)) : ''
+        n.relazione, n.ordine, n.foto ? (n.foto.length + ':' + n.foto.slice(0, 24)) : '',
+        n.morto ? 1 : 0, n.reietto ? 1 : 0, n.ritoCarne ? 1 : 0
     ].join('|')).join('~');
 }
 
