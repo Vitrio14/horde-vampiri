@@ -876,7 +876,6 @@ window.registraVenditaMateriali = async () => {
             settimanaEtichetta: getWeekYearKey(now)
         };
         await addDoc(collection(db, "vendite_materiali"), matEntry);
-        venditeMateriali = [matEntry, ...venditeMateriali];
         forceRefreshAfterWrite('materiali');
 
         vampireToast("Vendita registrata correttamente.", "success");
@@ -1570,7 +1569,6 @@ window.registraVendita = async () => {
         settimanaEtichetta: getWeekYearKey(now)
     };
     await addDoc(collection(db, "vendite"), vendEntry);
-    vendite = [vendEntry, ...vendite];
     forceRefreshAfterWrite('vendite');
     vampireToast("Vendita sigillata nel registro.", "success");
     document.getElementById('vamp-qty').value = "";
