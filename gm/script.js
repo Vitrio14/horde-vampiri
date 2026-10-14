@@ -1756,16 +1756,37 @@ function formatParentsBadgeHtml(parentIds, playersMap) {
     return `<div class="status parent-status" title="Genitori: ${escapeAttr(label)}">🧬 Genitori: ${escapeAttr(label)}</div>`;
 }
 
-/** HTML badge figli (count cliccabile) sulla card del genitore */
-function formatChildrenBadgeHtml(parentId, parentName, childrenList) {
-    if (!childrenList || !childrenList.length) return '';
-    const n = childrenList.length;
-    const safeId = String(parentId).replace(/'/g, "\\'");
-    const safeName = String(parentName || '').replace(/\\/g, '\\\\').replace(/'/g, "\\'");
-    return `<button type="button" class="status children-status children-count-btn" onclick="event.stopPropagation(); showPlayerChildren('${safeId}', '${safeName}')" title="Clicca per vedere i figli">👶 Figli: ${n}</button>`;
+/** Separa figli attivi (ancora in Giocatori) da figli passati (Rito / Reietto / Uscita). */
+function splitActivePastChildren(childrenList) {
+    const active = [];
+    const past = [];
+    (childrenList || []).forEach(ch => {
+        if (resolveExitType(ch)) past.push(ch);
+        else active.push(ch);
+    });
+    return { active, past };
 }
 
-/** Popup lista figli di un player */
+/** HTML badge figli (count cliccabile) sulla card del genitore.
+ *  Conta solo i figli ATTIVI nel badge principale; i passati (rito/reietto/uscita)
+ *  appaiono come badge secondario «Figli passati». */
+function formatChildrenBadgeHtml(parentId, parentName, childrenList) {
+    if (!childrenList || !childrenList.length) return '';
+    const { active, past } = splitActivePastChildren(childrenList);
+    if (!active.length && !past.length) return '';
+    const safeId = String(parentId).replace(/'/g, "\\'");
+    const safeName = String(parentName || '').replace(/\\/g, '\\\\').replace(/'/g, "\\'");
+    let html = '';
+    if (active.length) {
+        html += `<button type="button" class="status children-status children-count-btn" onclick="event.stopPropagation(); showPlayerChildren('${safeId}', '${safeName}')" title="Figli attivi (clicca per lista completa)">👶 Figli: ${active.length}</button>`;
+    }
+    if (past.length) {
+        html += `<button type="button" class="status children-past-status children-count-btn" onclick="event.stopPropagation(); showPlayerChildren('${safeId}', '${safeName}')" title="Figli passati: Rito / Reietto / Uscita (clicca per lista)">📜 Figli passati: ${past.length}</button>`;
+    }
+    return html;
+}
+
+/** Popup lista figli di un player — separa attivi e passati (Rito/Reietto/Uscita) */
 function showPlayerChildren(parentId, parentName) {
     db.collection('players').get().then(snap => {
         const children = [];
@@ -1786,24 +1807,41 @@ function showPlayerChildren(parentId, parentName) {
             });
             return;
         }
-        const rows = children.map(c => {
+        const { active, past } = splitActivePastChildren(children);
+
+        function rowHtml(c) {
             const grado = c.grado ? ` <span style="color:#9ca3af;">(${escapeAttr(c.grado)})</span>` : '';
             const exit = resolveExitType(c);
             let exitTag = '';
-            if (exit === 'rito') exitTag = ' <span style="color:#a78bfa;">· Rito</span>';
-            else if (exit === 'uscita_ospitato') exitTag = ' <span style="color:#38bdf8;">· Uscita</span>';
+            if (exit === 'rito') exitTag = ' <span style="color:#a78bfa;">· Rito della Carne</span>';
+            else if (exit === 'uscita_ospitato') exitTag = ' <span style="color:#38bdf8;">· Uscita Ospitato</span>';
             else if (exit === 'reietto') exitTag = ' <span style="color:#f97316;">· Reietto</span>';
             return `<li style="padding:8px 0;border-bottom:1px dashed rgba(255,255,255,0.08);">
                 <b style="color:#c5a059;">${escapeAttr(c.name || '—')}</b>${grado}${exitTag}
             </li>`;
-        }).join('');
+        }
+
+        let body = '';
+        if (active.length) {
+            body += `<p style="text-align:left;color:#34d399;font-size:0.8rem;font-weight:700;margin:0 0 6px;text-transform:uppercase;letter-spacing:0.5px;">Attivi (${active.length})</p>
+                <ul style="list-style:none;padding:0;margin:0 0 16px;text-align:left;">${active.map(rowHtml).join('')}</ul>`;
+        }
+        if (past.length) {
+            body += `<p style="text-align:left;color:#9ca3af;font-size:0.8rem;font-weight:700;margin:0 0 6px;text-transform:uppercase;letter-spacing:0.5px;">Passati — Rito / Reietto / Uscita (${past.length})</p>
+                <p style="text-align:left;color:#6b7280;font-size:0.75rem;margin:0 0 8px;">Non contano più tra i figli attivi; restano in archivio genealogico.</p>
+                <ul style="list-style:none;padding:0;margin:0;text-align:left;">${past.map(rowHtml).join('')}</ul>`;
+        }
+
+        const summaryParts = [];
+        if (active.length) summaryParts.push(`${active.length} attiv${active.length === 1 ? 'o' : 'i'}`);
+        if (past.length) summaryParts.push(`${past.length} passat${past.length === 1 ? 'o' : 'i'}`);
         Swal.fire({
             title: '👶 Figli di ' + (parentName || 'player'),
-            html: `<p style="text-align:left;color:#9ca3af;margin-bottom:10px;">${children.length} collegat${children.length === 1 ? 'o' : 'i'}</p>
-                <ul style="list-style:none;padding:0;margin:0;text-align:left;max-height:320px;overflow-y:auto;">${rows}</ul>`,
+            html: `<p style="text-align:left;color:#9ca3af;margin-bottom:12px;">${summaryParts.join(' · ')}</p>
+                <div style="max-height:360px;overflow-y:auto;">${body}</div>`,
             background: '#131a25',
             confirmButtonText: 'Chiudi',
-            width: 480
+            width: 500
         });
     }).catch(err => {
         console.error(err);

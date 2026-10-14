@@ -338,3 +338,31 @@ button.status.children-status:hover,button.children-count-btn:hover{background:r
 .btn-quest-libro:hover{border-color:#fbbf24 !important;color:#fff !important;box-shadow:0 0 12px rgba(234,179,8,0.35) !important}
 .btn-quest-libro::before{background:linear-gradient(90deg,#a16207,#eab308) !important}
 .status.quest-libro-status{background:rgba(234,179,8,0.12);color:#fbbf24;border-color:#eab308;box-shadow:inset 5px 0 15px rgba(234,179,8,0.18);margin:0 0 8px 0}
+
+
+/* Figli passati (Rito / Reietto / Uscita) — non contano come attivi */
+.status.children-past-status,button.status.children-past-status{
+background:rgba(156,163,175,0.12)!important;
+color:#9ca3af!important;
+border:1px solid #6b7280!important;
+border-left:3px solid #6b7280!important;
+box-shadow:inset 5px 0 15px rgba(107,114,128,0.12)!important;
+margin:0 0 8px 0!important;
+cursor:pointer!important;
+font-family:'Cinzel',serif!important;
+font-size:0.65rem!important;
+font-weight:800!important;
+letter-spacing:0.8px!important;
+text-transform:uppercase!important;
+padding:4px 10px!important;
+width:max-content!important;
+display:inline-block!important
+}
+button.status.children-past-status::before{display:none!important}
+button.status.children-past-status:hover{
+background:rgba(107,114,128,0.28)!important;
+color:#fff!important;
+border-color:#9ca3af!important;
+transform:none!important;
+box-shadow:0 0 12px rgba(156,163,175,0.3)!important
+}
