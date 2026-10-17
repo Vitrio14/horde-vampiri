@@ -75,6 +75,142 @@ function formatDateTime(iso) {
     }
 }
 
+
+/* ========== SEARCHABLE MULTI-SELECT (checkbox + ricerca) ========== */
+/**
+ * Costruisce HTML di un multi-select con checkbox + barra di ricerca.
+ * items: [{ value, label, selected? }]
+ * opts: { max?, height?, searchPlaceholder?, emptyText? }
+ */
+function buildSearchableMultiSelect(containerId, items, opts) {
+    opts = opts || {};
+    const max = opts.max != null ? opts.max : null;
+    const height = opts.height || 180;
+    const placeholder = opts.searchPlaceholder || 'Cerca per nome...';
+    const emptyText = opts.emptyText || 'Nessun elemento';
+    const selectedCount = (items || []).filter(function (i) { return i.selected; }).length;
+
+    let listHtml = '';
+    if (!items || !items.length) {
+        listHtml = '<div class="ms-empty">' + escapeAttr(emptyText) + '</div>';
+    } else {
+        items.forEach(function (it, idx) {
+            const id = containerId + '-cb-' + idx;
+            const checked = it.selected ? ' checked' : '';
+            const label = it.label != null ? String(it.label) : String(it.value);
+            listHtml +=
+                '<label class="ms-item" data-search="' + escapeAttr(label.toLowerCase()) + '">' +
+                '<input type="checkbox" id="' + id + '" value="' + escapeAttr(it.value) + '" data-label="' + escapeAttr(label) + '"' + checked +
+                ' onchange="onMultiSelectChange(\'' + containerId + '\')">' +
+                '<span>' + escapeAttr(label) + '</span>' +
+                '</label>';
+        });
+    }
+
+    return (
+        '<div class="ms-widget" id="' + containerId + '" data-max="' + (max != null ? max : '') + '">' +
+        '<div class="ms-search-row">' +
+        '<i class="fa-solid fa-magnifying-glass"></i>' +
+        '<input type="search" class="ms-search" placeholder="' + escapeAttr(placeholder) + '" ' +
+        'oninput="filterMultiSelect(\'' + containerId + '\', this.value)" autocomplete="off">' +
+        '<button type="button" class="ms-clear-btn" onclick="clearMultiSelectSearch(\'' + containerId + '\')" title="Pulisci ricerca">×</button>' +
+        '</div>' +
+        '<div class="ms-toolbar">' +
+        '<span class="ms-count" id="' + containerId + '-count">' + selectedCount + (selectedCount === 1 ? ' selezionato' : ' selezionati') + '</span>' +
+        '<button type="button" class="ms-tool-btn" onclick="multiSelectAll(\'' + containerId + '\', true)">Tutti</button>' +
+        '<button type="button" class="ms-tool-btn" onclick="multiSelectAll(\'' + containerId + '\', false)">Nessuno</button>' +
+        '</div>' +
+        '<div class="ms-list" style="max-height:' + height + 'px;">' + listHtml + '</div>' +
+        '</div>'
+    );
+}
+
+function filterMultiSelect(containerId, query) {
+    const root = document.getElementById(containerId);
+    if (!root) return;
+    const q = String(query || '').trim().toLowerCase();
+    root.querySelectorAll('.ms-item').forEach(function (el) {
+        const text = el.getAttribute('data-search') || '';
+        el.style.display = (!q || text.indexOf(q) !== -1) ? '' : 'none';
+    });
+}
+
+function clearMultiSelectSearch(containerId) {
+    const root = document.getElementById(containerId);
+    if (!root) return;
+    const input = root.querySelector('.ms-search');
+    if (input) input.value = '';
+    filterMultiSelect(containerId, '');
+}
+
+function multiSelectAll(containerId, select) {
+    const root = document.getElementById(containerId);
+    if (!root) return;
+    const maxAttr = root.getAttribute('data-max');
+    const max = maxAttr !== '' && maxAttr != null ? parseInt(maxAttr, 10) : null;
+    const boxes = Array.from(root.querySelectorAll('.ms-item input[type="checkbox"]')).filter(function (cb) {
+        const item = cb.closest('.ms-item');
+        return item && item.style.display !== 'none';
+    });
+    if (select && max != null && !isNaN(max)) {
+        let count = root.querySelectorAll('.ms-item input:checked').length;
+        boxes.forEach(function (cb) {
+            if (cb.checked) return;
+            if (count >= max) return;
+            cb.checked = true;
+            count++;
+        });
+        if (count >= max) showToast('Massimo ' + max + ' selezionabili');
+    } else {
+        boxes.forEach(function (cb) { cb.checked = !!select; });
+    }
+    updateMultiSelectCount(containerId);
+}
+
+function onMultiSelectChange(containerId) {
+    const root = document.getElementById(containerId);
+    if (!root) return;
+    const maxAttr = root.getAttribute('data-max');
+    const max = maxAttr !== '' && maxAttr != null ? parseInt(maxAttr, 10) : null;
+    if (max != null && !isNaN(max)) {
+        const checked = Array.from(root.querySelectorAll('.ms-item input:checked'));
+        if (checked.length > max) {
+            checked.slice(max).forEach(function (cb) { cb.checked = false; });
+            showToast('Massimo ' + max + ' selezionabili');
+        }
+    }
+    updateMultiSelectCount(containerId);
+}
+
+function updateMultiSelectCount(containerId) {
+    const root = document.getElementById(containerId);
+    if (!root) return;
+    const n = root.querySelectorAll('.ms-item input:checked').length;
+    const el = document.getElementById(containerId + '-count');
+    if (el) el.textContent = n + (n === 1 ? ' selezionato' : ' selezionati');
+}
+
+/** Array di value selezionati */
+function getMultiSelectValues(containerId) {
+    const root = document.getElementById(containerId);
+    if (!root) return [];
+    return Array.from(root.querySelectorAll('.ms-item input:checked')).map(function (cb) {
+        return cb.value;
+    }).filter(Boolean);
+}
+
+/** Array di { value, label } selezionati */
+function getMultiSelectItems(containerId) {
+    const root = document.getElementById(containerId);
+    if (!root) return [];
+    return Array.from(root.querySelectorAll('.ms-item input:checked')).map(function (cb) {
+        return {
+            value: cb.value,
+            label: cb.getAttribute('data-label') || cb.value
+        };
+    });
+}
+
 /* ========== FILTRI LISTE (ricerca + grado player) ========== */
 const listFilters = {
     quests: '',
@@ -1849,7 +1985,7 @@ function showPlayerChildren(parentId, parentName) {
     });
 }
 
-/** Options multi-select genitori (esclude selfId) */
+/** Options multi-select genitori (esclude selfId) — legacy <select> */
 function buildParentSelectOptions(allPlayers, selectedIds, selfId) {
     const sel = new Set((selectedIds || []).map(String));
     const list = (allPlayers || []).filter(p => p.id !== selfId);
@@ -1868,6 +2004,26 @@ function buildParentSelectOptions(allPlayers, selectedIds, selfId) {
     return html;
 }
 
+/** Items per searchable multi-select genitori (esclude selfId) */
+function buildParentSelectItems(allPlayers, selectedIds, selfId) {
+    const sel = new Set((selectedIds || []).map(String));
+    const list = (allPlayers || []).filter(p => p.id !== selfId);
+    sortAlpha(list, 'name');
+    return list.map(p => {
+        const gradoTag = p.grado ? ` (${p.grado})` : '';
+        const exit = resolveExitType(p);
+        let exitTag = '';
+        if (exit === 'rito') exitTag = ' [Rito]';
+        else if (exit === 'uscita_ospitato') exitTag = ' [Uscita]';
+        else if (exit === 'reietto') exitTag = ' [Reietto]';
+        return {
+            value: p.id,
+            label: (p.name || p.id) + gradoTag + exitTag,
+            selected: sel.has(String(p.id))
+        };
+    });
+}
+
 function addPlayer() {
     if (!currentPlayersFolder) {
         Swal.fire({
@@ -1882,7 +2038,11 @@ function addPlayer() {
     db.collection('players').get().then(playersSnap => {
         const allPlayers = [];
         playersSnap.forEach(doc => allPlayers.push({ id: doc.id, ...doc.data() }));
-        const parentOptions = buildParentSelectOptions(allPlayers, [], null);
+        const parentItems = buildParentSelectItems(allPlayers, [], null);
+        const parentMultiHtml = buildSearchableMultiSelect('player-parents-ms', parentItems, {
+            height: 160,
+            searchPlaceholder: 'Cerca genitore...'
+        });
 
         Swal.fire({
             title: 'Nuovo Player',
@@ -1906,12 +2066,10 @@ function addPlayer() {
                     <option value="Ospite">Ospite</option>
                 </select>
                 <label style="display:block; text-align:left; margin: 8px 0 4px 4px; color: #a0a0a0; font-size:13px; font-weight:600;">
-                    Genitori (uno o più, Ctrl/Cmd+click)
+                    Genitori (checkbox + cerca)
                 </label>
-                <select id="player-parents" class="swal2-select" multiple style="height:140px;">
-                    ${parentOptions}
-                </select>
-                <p style="font-size:12px;color:#6b7280;text-align:left;margin:-4px 0 8px 4px;">Tieni premuto Ctrl (Windows) o Cmd (Mac) per selezionare più genitori.</p>
+                ${parentMultiHtml}
+                <p style="font-size:12px;color:#6b7280;text-align:left;margin:-4px 0 8px 4px;">Cerca e spunta i genitori. Nessun limite di numero.</p>
                 <textarea
                     id="player-notes"
                     class="swal2-textarea"
@@ -1927,10 +2085,7 @@ function addPlayer() {
                     Swal.showValidationMessage('Inserisci un nome');
                     return false;
                 }
-                const parentSel = document.getElementById('player-parents');
-                const parentIds = parentSel
-                    ? Array.from(parentSel.selectedOptions).map(o => o.value).filter(Boolean)
-                    : [];
+                const parentIds = getMultiSelectValues('player-parents-ms');
                 return {
                     name: name.trim(),
                     notes: document.getElementById('player-notes').value,
@@ -2286,28 +2441,26 @@ function openPlayerModal(playerId) {
                 const allPlayers = [];
                 allPlayersSnap.forEach(doc => allPlayers.push({ id: doc.id, ...doc.data() }));
                 const currentParentIds = getParentIds(player);
-                const parentOptions = buildParentSelectOptions(allPlayers, currentParentIds, playerId);
+                const parentItems = buildParentSelectItems(allPlayers, currentParentIds, playerId);
+                const parentMultiHtml = buildSearchableMultiSelect('player-parents-edit-ms', parentItems, {
+                    height: 160,
+                    searchPlaceholder: 'Cerca genitore...'
+                });
 
-                let questOptions = '';
                 const questList = [];
                 snapshot.forEach(qDoc => {
                     questList.push(qDoc.data());
                 });
-                sortAlpha(questList, 'title').forEach(q => {
-                    const selected =
-                        player.quests &&
-                        player.quests.includes(q.title)
-                            ? 'selected'
-                            : '';
-
-                    questOptions += `
-                        <option
-                            value="${q.title}"
-                            ${selected}
-                        >
-                            ${q.title}
-                        </option>
-                    `;
+                sortAlpha(questList, 'title');
+                const questItems = questList.map(q => ({
+                    value: q.title,
+                    label: q.title,
+                    selected: !!(player.quests && player.quests.includes(q.title))
+                }));
+                const questMultiHtml = buildSearchableMultiSelect('player-quests-ms', questItems, {
+                    height: 180,
+                    searchPlaceholder: 'Cerca quest...',
+                    emptyText: 'Nessuna quest nel database'
                 });
 
                 let exitInfo = '';
@@ -2379,12 +2532,10 @@ function openPlayerModal(playerId) {
                         </select>
 
                         <label style="display:block; text-align:left; margin: 8px 0 4px 4px; color: #a0a0a0; font-size:13px; font-weight:600;">
-                            Genitori (uno o più, Ctrl/Cmd+click)
+                            Genitori (checkbox + cerca)
                         </label>
-                        <select id="player-parents-edit" class="swal2-select" multiple style="height:140px;">
-                            ${parentOptions}
-                        </select>
-                        <p style="font-size:12px;color:#6b7280;text-align:left;margin:-4px 0 8px 4px;">Tieni premuto Ctrl (Windows) o Cmd (Mac) per selezionare più genitori. Lascia vuoto se non ha genitori collegati.</p>
+                        ${parentMultiHtml}
+                        <p style="font-size:12px;color:#6b7280;text-align:left;margin:-4px 0 8px 4px;">Cerca e spunta i genitori. Lascia vuoto se non ne ha.</p>
 
                         <textarea
                             id="player-notes-edit"
@@ -2392,15 +2543,8 @@ function openPlayerModal(playerId) {
                             placeholder="Note"
                         >${player.notes || ''}</textarea>
 
-                        <label style="display:block; text-align:left; margin: 10px 0 5px 12px; color: var(--muted); font-size:14px; font-weight:600;">Seleziona Quest Attive dal Database:</label>
-                        <select
-                            id="player-quests"
-                            class="swal2-select"
-                            multiple
-                            style="height:200px;"
-                        >
-                            ${questOptions}
-                        </select>
+                        <label style="display:block; text-align:left; margin: 10px 0 5px 4px; color: #a0a0a0; font-size:13px; font-weight:600;">Quest attive (checkbox + cerca)</label>
+                        ${questMultiHtml}
 
                         <div style="margin-top:12px;text-align:left;">
                             <button type="button" id="btn-move-from-modal" class="swal2-styled" style="background:transparent;border:1px solid #c5a059;color:#c5a059;width:100%;padding:10px;cursor:pointer;font-weight:700;text-transform:uppercase;letter-spacing:1px;">
@@ -2444,14 +2588,8 @@ function openPlayerModal(playerId) {
                         }
                     },
                     preConfirm: () => {
-                        const selectedQuests =
-                            Array.from(
-                                document.getElementById('player-quests').selectedOptions
-                            ).map(option => option.value);
-                        const parentSel = document.getElementById('player-parents-edit');
-                        const parentIds = parentSel
-                            ? Array.from(parentSel.selectedOptions).map(o => o.value).filter(Boolean)
-                            : [];
+                        const selectedQuests = getMultiSelectValues('player-quests-ms');
+                        const parentIds = getMultiSelectValues('player-parents-edit-ms');
                         return {
                             notes: document.getElementById('player-notes-edit').value,
                             quests: selectedQuests,
@@ -4253,33 +4391,33 @@ function addFrammentoForEvent(eventId) {
             return;
         }
 
-        function optsHtml(list) {
-            if (!list.length) {
-                return '<option disabled value="">— nessuno —</option>';
-            }
-            // Copia + sort esplicito (non fidarsi solo dell'array in input)
+        function listToMsItems(list) {
             const sorted = list.slice().sort((a, b) => cmpAlpha(a.name, b.name));
-            return sorted.map(p =>
-                `<option value="${String(p.name).replace(/"/g, '&quot;')}">${String(p.name)}</option>`
-            ).join('');
+            return sorted.map(p => ({ value: String(p.name), label: String(p.name), selected: false }));
         }
-
-        // Sempre entrambe le sezioni visibili
+        const vampiriItems = listToMsItems(vampiri);
+        const ospitiItems = listToMsItems(ospiti);
+        const vampiriMs = buildSearchableMultiSelect('fr-player-vampiri-ms', vampiriItems, {
+            height: 140,
+            searchPlaceholder: 'Cerca vampiro...',
+            emptyText: 'Nessun vampiro disponibile'
+        });
+        const ospitiMs = buildSearchableMultiSelect('fr-player-ospiti-ms', ospitiItems, {
+            height: 140,
+            searchPlaceholder: 'Cerca ospite...',
+            emptyText: 'Nessun ospite disponibile'
+        });
         const vampiriBlock = `
             <label style="display:block;text-align:left;margin:12px 0 4px 4px;color:#c5a059;font-size:13px;font-weight:700;">
                 🧛 Vampiri <span style="color:#9ca3af;font-weight:400;">(${vampiri.length})</span>
             </label>
-            <select id="fr-player-vampiri" class="swal2-select" multiple size="${Math.min(7, Math.max(3, vampiri.length || 3))}" style="height:auto !important;min-height:100px;">
-                ${optsHtml(vampiri)}
-            </select>
+            ${vampiriMs}
         `;
         const ospitiBlock = `
             <label style="display:block;text-align:left;margin:14px 0 4px 4px;color:#38bdf8;font-size:13px;font-weight:700;">
                 🚪 Ospiti <span style="color:#9ca3af;font-weight:400;">(${ospiti.length})</span>
             </label>
-            <select id="fr-player-ospiti" class="swal2-select" multiple size="${Math.min(7, Math.max(3, ospiti.length || 3))}" style="height:auto !important;min-height:100px;">
-                ${optsHtml(ospiti)}
-            </select>
+            ${ospitiMs}
         `;
 
         const weekNow = getWeekBounds();
@@ -4301,7 +4439,7 @@ function addFrammentoForEvent(eventId) {
                 </p>
                 ${excludedHint}
                 <p style="text-align:left;font-size:11px;color:#6b7280;margin:0 0 4px 4px;">
-                    Seleziona da una o entrambe le liste (Ctrl / Cmd per multipla)
+                    Cerca e spunta i player da una o entrambe le liste
                 </p>
                 ${vampiriBlock}
                 ${ospitiBlock}
@@ -4309,15 +4447,9 @@ function addFrammentoForEvent(eventId) {
             `,
             confirmButtonText: 'Assegna',
             background: '#131a25',
-            didOpen: () => {
-                sortSelectOptions(document.getElementById('fr-player-vampiri'));
-                sortSelectOptions(document.getElementById('fr-player-ospiti'));
-            },
             preConfirm: () => {
-                const selV = document.getElementById('fr-player-vampiri');
-                const selO = document.getElementById('fr-player-ospiti');
-                const fromV = selV ? Array.from(selV.selectedOptions).map(o => o.value).filter(Boolean) : [];
-                const fromO = selO ? Array.from(selO.selectedOptions).map(o => o.value).filter(Boolean) : [];
+                const fromV = getMultiSelectValues('fr-player-vampiri-ms');
+                const fromO = getMultiSelectValues('fr-player-ospiti-ms');
                 const selectedPlayers = [...fromV, ...fromO];
                 const note = (document.getElementById('fr-note').value || '').trim();
                 if (selectedPlayers.length === 0) {
@@ -4372,14 +4504,21 @@ function addFrammento() {
         db.collection('players').get(),
         db.collection('frammentiEvents').get()
     ]).then(([playersSnap, eventsSnap]) => {
-        let playerOptions = '';
         const playersList = [];
         playersSnap.forEach(doc => {
             const p = doc.data();
             if (p.name) playersList.push(p);
         });
-        sortAlpha(playersList, 'name').forEach(p => {
-            playerOptions += `<option value="${p.name.replace(/"/g, '&quot;')}">${p.name}</option>`;
+        sortAlpha(playersList, 'name');
+        const frPlayerItems = playersList.map(p => ({
+            value: String(p.name),
+            label: String(p.name),
+            selected: false
+        }));
+        const frPlayerMs = buildSearchableMultiSelect('fr-player-ms', frPlayerItems, {
+            height: 180,
+            searchPlaceholder: 'Cerca player...',
+            emptyText: 'Nessun player'
         });
 
         let eventOptions = '<option value="">Seleziona evento</option>';
@@ -4414,11 +4553,9 @@ function addFrammento() {
                     Settimana attuale: <b style="color:#a78bfa;">${weekLabel}</b>
                 </p>
                 <label style="display:block;text-align:left;margin:8px 0 4px 4px;color:#a0a0a0;font-size:13px;font-weight:600;">
-                    Vampiri (tieni Ctrl / Cmd per selezionarne più di uno)
+                    Player (checkbox + cerca)
                 </label>
-                <select id="fr-player" class="swal2-select" multiple size="6" style="height:auto !important;min-height:140px;">
-                    ${playerOptions}
-                </select>
+                ${frPlayerMs}
                 <label style="display:block;text-align:left;margin:8px 0 4px 4px;color:#a0a0a0;font-size:13px;font-weight:600;">Evento / Categoria</label>
                 <select id="fr-event" class="swal2-select">${eventOptions}</select>
                 <textarea id="fr-note" class="swal2-textarea" placeholder="Note opzionali (uguali per tutti i selezionati)"></textarea>
@@ -4426,12 +4563,10 @@ function addFrammento() {
             confirmButtonText: 'Assegna',
             background: '#131a25',
             didOpen: () => {
-                sortSelectOptions(document.getElementById('fr-player'));
                 sortSelectOptions(document.getElementById('fr-event'));
             },
             preConfirm: () => {
-                const playerSelect = document.getElementById('fr-player');
-                const selectedPlayers = Array.from(playerSelect.selectedOptions).map(o => o.value).filter(Boolean);
+                const selectedPlayers = getMultiSelectValues('fr-player-ms');
                 const eventId = document.getElementById('fr-event').value;
                 const note = (document.getElementById('fr-note').value || '').trim();
                 if (selectedPlayers.length === 0) {
@@ -6944,11 +7079,19 @@ function addAbbraccio(editId = null, existing = null) {
                 selectedParentIds = [String(existing.sireId)];
             }
         }
-        let parentOptions = '';
-        sires.forEach(p => {
-            const sel = selectedParentIds.includes(p.id) ? 'selected' : '';
+        const abbParentItems = sires.map(p => {
             const g = p.grado ? ` (${p.grado})` : '';
-            parentOptions += `<option value="${p.id}" data-name="${escapeAttr(p.name)}" ${sel}>${escapeAttr(p.name)}${escapeAttr(g)}</option>`;
+            return {
+                value: p.id,
+                label: (p.name || '') + g,
+                selected: selectedParentIds.includes(p.id)
+            };
+        });
+        const abbParentsMs = buildSearchableMultiSelect('abb-parents-ms', abbParentItems, {
+            max: 2,
+            height: 160,
+            searchPlaceholder: 'Cerca genitore...',
+            emptyText: 'Nessun genitore disponibile'
         });
 
         const nameVal = existing ? (existing.playerName || '') : '';
@@ -6988,8 +7131,8 @@ function addAbbraccio(editId = null, existing = null) {
                 <input id="abb-datetime" type="datetime-local" class="swal2-input" value="${dtVal}">
 
                 <label style="display:block;text-align:left;margin:8px 0 4px 4px;color:#a0a0a0;font-size:13px;font-weight:600;">Genitori / chi morde (max 2, opzionale)</label>
-                <select id="abb-parents" class="swal2-select" multiple style="height:140px;">${parentOptions}</select>
-                <p style="font-size:12px;color:#6b7280;text-align:left;margin:-4px 0 8px 4px;">Tieni premuto Ctrl (Windows) o Cmd (Mac) per selezionare fino a 2 genitori. Compariranno su Giocatori come genitori del neonato.</p>
+                ${abbParentsMs}
+                <p style="font-size:12px;color:#6b7280;text-align:left;margin:-4px 0 8px 4px;">Cerca e spunta fino a 2 genitori. Compariranno su Giocatori come genitori del neonato.</p>
 
                 <label style="display:block;text-align:left;margin:8px 0 4px 4px;color:#a0a0a0;font-size:13px;font-weight:600;">Note</label>
                 <textarea id="abb-notes" class="swal2-textarea" placeholder="Dettagli, contesto RP...">${String(notesVal).replace(/</g, '&lt;')}</textarea>
@@ -7006,17 +7149,7 @@ function addAbbraccio(editId = null, existing = null) {
                         }
                     });
                 }
-                const parentSel = document.getElementById('abb-parents');
-                if (parentSel) {
-                    parentSel.addEventListener('change', () => {
-                        const selected = Array.from(parentSel.selectedOptions);
-                        if (selected.length > 2) {
-                            // Deseleziona le ultime oltre il 2°
-                            selected.slice(2).forEach(o => { o.selected = false; });
-                            showToast('Massimo 2 genitori');
-                        }
-                    });
-                }
+
             },
             preConfirm: () => {
                 const playerSel = document.getElementById('abb-player');
@@ -7042,16 +7175,12 @@ function addAbbraccio(editId = null, existing = null) {
                     }
                     datetime = d.toISOString();
                 }
-                const parentSel = document.getElementById('abb-parents');
-                const parentIds = [];
-                const parentNames = [];
-                if (parentSel) {
-                    Array.from(parentSel.selectedOptions).forEach(opt => {
-                        if (!opt.value) return;
-                        parentIds.push(opt.value);
-                        parentNames.push(opt.getAttribute('data-name') || opt.textContent.replace(/\s*\(.*\)\s*$/, '').trim());
-                    });
-                }
+                const parentItems = getMultiSelectItems('abb-parents-ms');
+                const parentIds = parentItems.map(i => i.value);
+                const parentNames = parentItems.map(i => {
+                    // label may include " (Grado)" — strip trailing paren group
+                    return String(i.label || '').replace(/\s*\([^)]*\)\s*$/, '').trim() || i.value;
+                });
                 if (parentIds.length > 2) {
                     Swal.showValidationMessage('Puoi selezionare al massimo 2 genitori');
                     return false;
