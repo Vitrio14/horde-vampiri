@@ -392,3 +392,18 @@ box-shadow:0 0 12px rgba(156,163,175,0.3)!important
 .ms-empty{padding:16px 12px;color:var(--text-dim);font-size:0.85rem;font-style:italic;text-align:center}
 .swal2-popup .ms-widget{width:100%;box-sizing:border-box}
 .swal2-popup .ms-search{box-sizing:border-box}
+
+/* ========== ARCHIVIATI (Uscite & Abbraccio) ========== */
+.card-exit-archived,
+.card-abbraccio-archived {
+    border-color: rgba(107, 114, 128, 0.45) !important;
+    opacity: 0.88;
+}
+.card-exit-archived:hover,
+.card-abbraccio-archived:hover {
+    border-color: rgba(156, 163, 175, 0.6) !important;
+}
+.card-exit-archived h3,
+.card-abbraccio-archived h3 {
+    color: #9ca3af !important;
+}

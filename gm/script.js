@@ -220,7 +220,7 @@ const listFilters = {
     commands: '',
     admin: '',
     players: { text: '', grado: 'all', ferale: 'all', inattivo: 'all', questLibro: 'all' },
-    rito: { text: '', tipo: 'all' },
+    rito: { text: '', tipo: 'all', archived: 'no' },
     tempi: { text: '', status: 'attivo', tipo: 'all' },
     abbraccio: { text: '', status: 'all' }
 };
@@ -389,14 +389,23 @@ function buildRitoFilterBarHtml() {
     const val = escapeAttr(f.text || '');
     const hasVal = !!(f.text && String(f.text).trim());
     const tipos = [
-        { key: 'all', label: 'Tutti' },
+        { key: 'all', label: 'Tutti i tipi' },
         { key: 'rito', label: 'Rito della Carne' },
         { key: 'uscita_ospitato', label: 'Uscita Ospitato' },
         { key: 'reietto', label: 'Reietto' }
     ];
     const chips = tipos.map(t => {
         const isActive = f.tipo === t.key;
-        return `<button type="button" class="filter-chip ${isActive ? 'active' : ''}" onclick="onRitoTipoFilter('${t.key}')">${t.label}</button>`;
+        return `<button type="button" class="filter-chip ${isActive ? 'active' : ''}" data-rito-tipo-chip="${t.key}" onclick="onRitoTipoFilter('${t.key}')">${t.label}</button>`;
+    }).join('');
+    const archKey = f.archived || 'no';
+    const archChips = [
+        { key: 'no', label: 'Attivi' },
+        { key: 'yes', label: 'Archiviati' },
+        { key: 'all', label: 'Tutti' }
+    ].map(a => {
+        const isActive = archKey === a.key;
+        return `<button type="button" class="filter-chip ${isActive ? 'active' : ''}" data-rito-arch-chip="${a.key}" onclick="onRitoArchivedFilter('${a.key}')">${a.label}</button>`;
     }).join('');
     return `
         <div class="section-filter-bar" style="grid-column: 1 / -1;" data-filter-bar="rito">
@@ -409,7 +418,14 @@ function buildRitoFilterBarHtml() {
                     oninput="onSectionSearch('rito', this.value)">
                 ${hasVal ? `<button type="button" class="filter-clear-btn" onclick="clearSectionSearch('rito')" title="Pulisci ricerca">×</button>` : ''}
             </div>
-            <div class="section-filter-chips">${chips}</div>
+            <div class="section-filter-chips" style="margin-bottom:4px;">
+                <span class="filter-chips-label">Vista:</span>
+                ${archChips}
+            </div>
+            <div class="section-filter-chips">
+                <span class="filter-chips-label">Tipo:</span>
+                ${chips}
+            </div>
         </div>`;
 }
 
@@ -491,11 +507,19 @@ function onRitoTipoFilter(key) {
     listFilters.rito.tipo = key;
     const bar = document.querySelector('[data-filter-bar="rito"]');
     if (bar) {
-        bar.querySelectorAll('.filter-chip').forEach(btn => {
-            const onclick = btn.getAttribute('onclick') || '';
-            const m = onclick.match(/onRitoTipoFilter\\('([^']+)'\\)/);
-            const k = m ? m[1] : '';
-            btn.classList.toggle('active', k === key);
+        bar.querySelectorAll('[data-rito-tipo-chip]').forEach(btn => {
+            btn.classList.toggle('active', btn.getAttribute('data-rito-tipo-chip') === key);
+        });
+    }
+    applyListFilter('rito');
+}
+
+function onRitoArchivedFilter(key) {
+    listFilters.rito.archived = key || 'no';
+    const bar = document.querySelector('[data-filter-bar="rito"]');
+    if (bar) {
+        bar.querySelectorAll('[data-rito-arch-chip]').forEach(btn => {
+            btn.classList.toggle('active', btn.getAttribute('data-rito-arch-chip') === listFilters.rito.archived);
         });
     }
     applyListFilter('rito');
@@ -517,6 +541,7 @@ function applyListFilter(sectionKey) {
     let statusFilter = null;
     let tempoTipoFilter = null;
     let abbraccioStatusFilter = null;
+    let ritoArchivedFilter = null;
     if (typeof listFilters[sectionKey] === 'string') {
         query = listFilters[sectionKey];
     } else if (listFilters[sectionKey]) {
@@ -527,7 +552,10 @@ function applyListFilter(sectionKey) {
             inattivoFilter = listFilters[sectionKey].inattivo;
             questLibroFilter = listFilters[sectionKey].questLibro;
         }
-        if (sectionKey === 'rito') tipoFilter = listFilters[sectionKey].tipo;
+        if (sectionKey === 'rito') {
+            tipoFilter = listFilters[sectionKey].tipo;
+            ritoArchivedFilter = listFilters[sectionKey].archived || 'no';
+        }
         if (sectionKey === 'tempi') {
             statusFilter = listFilters[sectionKey].status;
             tempoTipoFilter = listFilters[sectionKey].tipo;
@@ -566,6 +594,15 @@ function applyListFilter(sectionKey) {
             const t = el.getAttribute('data-exit-type') || '';
             show = (t === tipoFilter);
         }
+        if (show && sectionKey === 'rito' && ritoArchivedFilter != null) {
+            const isArchived = el.getAttribute('data-exit-archived') === '1';
+            if (ritoArchivedFilter === 'yes') {
+                show = isArchived;
+            } else if (ritoArchivedFilter === 'no') {
+                show = !isArchived;
+            }
+            // 'all' = nessuna restrizione su archived
+        }
         if (show && statusFilter != null && statusFilter !== 'all') {
             const st = el.getAttribute('data-tempo-status') || '';
             const isArchived = el.getAttribute('data-tempo-archived') === '1';
@@ -584,9 +621,17 @@ function applyListFilter(sectionKey) {
             const tt = el.getAttribute('data-tempo-tipo') || '';
             show = (tt === tempoTipoFilter);
         }
-        if (show && abbraccioStatusFilter != null && abbraccioStatusFilter !== 'all') {
-            const as = el.getAttribute('data-abbraccio-status') || '';
-            show = (as === abbraccioStatusFilter);
+        if (show && sectionKey === 'abbraccio' && abbraccioStatusFilter != null) {
+            const isArchived = el.getAttribute('data-abbraccio-archived') === '1';
+            if (abbraccioStatusFilter === 'archiviato') {
+                show = isArchived;
+            } else if (abbraccioStatusFilter === 'all') {
+                show = !isArchived;
+            } else {
+                // in_corso / pronto / concluso: nascondi archiviati
+                const as = el.getAttribute('data-abbraccio-status') || '';
+                show = !isArchived && (as === abbraccioStatusFilter);
+            }
         }
 
         el.style.display = show ? '' : 'none';
@@ -3115,7 +3160,9 @@ function loadRitoPlayers() {
             const notesHtml = p.exitNotes
                 ? `<p class="exit-notes-preview"><i class="fa-solid fa-note-sticky"></i> ${String(p.exitNotes).replace(/</g,'&lt;')}</p>`
                 : '';
-            const cardClass = exitCardClass(exitType);
+            const isExitArchived = !!p.exitArchived;
+            let cardClass = exitCardClass(exitType);
+            if (isExitArchived) cardClass += ' card-exit-archived';
             const safeName = (p.name || '').replace(/'/g, "\\'");
 
             const gradoBadgeRito = p.grado
@@ -3127,9 +3174,13 @@ function loadRitoPlayers() {
             const myChildren = childrenByParent[p.id] || [];
             const childrenBadge = formatChildrenBadgeHtml(p.id, p.name, myChildren);
             const ritoFilterText = [p.name, p.notes, p.exitNotes, p.grado, badgeLabel, dateLabel, exitType === 'reietto' ? (p.cacciaAperta ? 'caccia' : 'allontanato') : '', pParentIds.map(id => (playersMapFamily[id] && playersMapFamily[id].name) || '').join(' ')].filter(Boolean).join(' ');
+            const archiveBtn = isExitArchived
+                ? `<button class="btn-tempo-unarchive" onclick="unarchiveExit('${p.id}')" title="Ripristina dalla lista Archiviati">Ripristina</button>`
+                : `<button class="btn-tempo-archive" onclick="archiveExit('${p.id}')" title="Archivia (non elimina)">Archivia</button>`;
             container.innerHTML += `
-                <div class="${cardClass}" data-filter-text="${escapeAttr(ritoFilterText)}" data-exit-type="${escapeAttr(exitType)}">
+                <div class="${cardClass}" data-filter-text="${escapeAttr(ritoFilterText)}" data-exit-type="${escapeAttr(exitType)}" data-exit-archived="${isExitArchived ? '1' : '0'}">
                     <h3>${p.name}</h3>
+                    ${isExitArchived ? '<div class="status tempo-status-archived">📦 Archiviato</div>' : ''}
                     ${gradoBadgeRito}
                     ${parentsBadge}
                     ${childrenBadge}
@@ -3144,6 +3195,7 @@ function loadRitoPlayers() {
                         <button class="btn-frammenti" onclick="openPlayerFrammentiModal('${p.id}', '${safeName}')" title="Resoconto Frammenti">🔮</button>
                         <button class="btn-punizioni" onclick="openPlayerPunizioniModal('${p.id}', '${safeName}')" title="Punizioni">⚖️</button>
                         <button class="btn-move-player" onclick="movePlayerToFolder('${p.id}')" title="Sposta cartella">📂</button>
+                        ${archiveBtn}
                         <button class="edit-btn" style="border-color:#a78bfa;color:#a78bfa;" onclick="undoPlayerExit('${p.id}', '${safeName}')" title="Annulla uscita">↩</button>
                         <button class="delete-btn btn-icon-only" onclick="confirmDelete('players', '${p.id}', loadRitoPlayers)" title="Elimina">🗑️</button>
                     </div>
@@ -3151,6 +3203,44 @@ function loadRitoPlayers() {
             `;
         });
         applyListFilter('rito');
+    });
+}
+
+/** Archivia un'uscita (Rito / Uscita Ospitato / Reietto). Non elimina: resta in Archiviati. */
+function archiveExit(playerId) {
+    Swal.fire({
+        title: 'Archiviare questa uscita?',
+        text: 'Non verrà eliminata: sparirà da Attivi e comparirà in Archiviati. I dati restano.',
+        icon: 'question',
+        showCancelButton: true,
+        confirmButtonText: 'Sì, archivia',
+        cancelButtonText: 'Annulla',
+        background: '#131a25'
+    }).then(result => {
+        if (!result.isConfirmed) return;
+        db.collection('players').doc(playerId).update({
+            exitArchived: true,
+            exitArchivedAt: new Date().toISOString()
+        }).then(() => showToast('Uscita archiviata'));
+    });
+}
+
+/** Ripristina un'uscita archiviata. */
+function unarchiveExit(playerId) {
+    Swal.fire({
+        title: 'Ripristinare questa uscita?',
+        text: 'Tornerà nella lista Attivi di Uscite & Riti.',
+        icon: 'question',
+        showCancelButton: true,
+        confirmButtonText: 'Sì, ripristina',
+        cancelButtonText: 'Annulla',
+        background: '#131a25'
+    }).then(result => {
+        if (!result.isConfirmed) return;
+        db.collection('players').doc(playerId).update({
+            exitArchived: false,
+            exitArchivedAt: null
+        }).then(() => showToast('Uscita ripristinata'));
     });
 }
 
@@ -7008,14 +7098,15 @@ function buildAbbraccioFilterBarHtml() {
     const val = escapeAttr(f.text || '');
     const hasVal = !!(f.text && String(f.text).trim());
     const statuses = [
-        { key: 'all', label: 'Tutti' },
+        { key: 'all', label: 'Attivi' },
         { key: 'in_corso', label: 'In corso' },
         { key: 'pronto', label: 'Pronti al rito' },
-        { key: 'concluso', label: 'Conclusi' }
+        { key: 'concluso', label: 'Conclusi' },
+        { key: 'archiviato', label: 'Archiviati' }
     ];
     const chips = statuses.map(s => {
         const isActive = (f.status || 'all') === s.key;
-        return `<button type="button" class="filter-chip ${isActive ? 'active' : ''}" onclick="onAbbraccioStatusFilter('${s.key}')">${s.label}</button>`;
+        return `<button type="button" class="filter-chip ${isActive ? 'active' : ''}" data-abbraccio-status-chip="${s.key}" onclick="onAbbraccioStatusFilter('${s.key}')">${s.label}</button>`;
     }).join('');
     return `
         <div class="section-filter-bar" style="grid-column: 1 / -1;" data-filter-bar="abbraccio">
@@ -7028,7 +7119,10 @@ function buildAbbraccioFilterBarHtml() {
                     oninput="onSectionSearch('abbraccio', this.value)">
                 ${hasVal ? `<button type="button" class="filter-clear-btn" onclick="clearSectionSearch('abbraccio')" title="Pulisci ricerca">×</button>` : ''}
             </div>
-            <div class="section-filter-chips">${chips}</div>
+            <div class="section-filter-chips">
+                <span class="filter-chips-label">Stato:</span>
+                ${chips}
+            </div>
         </div>`;
 }
 
@@ -7036,14 +7130,49 @@ function onAbbraccioStatusFilter(key) {
     listFilters.abbraccio.status = key || 'all';
     const bar = document.querySelector('[data-filter-bar="abbraccio"]');
     if (bar) {
-        bar.querySelectorAll('.filter-chip').forEach(btn => {
-            const onclick = btn.getAttribute('onclick') || '';
-            const m = onclick.match(/onAbbraccioStatusFilter\('([^']+)'\)/);
-            const k = m ? m[1] : '';
-            btn.classList.toggle('active', k === listFilters.abbraccio.status);
+        bar.querySelectorAll('[data-abbraccio-status-chip]').forEach(btn => {
+            btn.classList.toggle('active', btn.getAttribute('data-abbraccio-status-chip') === listFilters.abbraccio.status);
         });
     }
     applyListFilter('abbraccio');
+}
+
+/** Archivia un abbraccio (non elimina: resta in Archiviati). */
+function archiveAbbraccio(id) {
+    Swal.fire({
+        title: 'Archiviare questo abbraccio?',
+        text: 'Non verrà eliminato: sparirà da Attivi e comparirà in Archiviati. I dati restano.',
+        icon: 'question',
+        showCancelButton: true,
+        confirmButtonText: 'Sì, archivia',
+        cancelButtonText: 'Annulla',
+        background: '#131a25'
+    }).then(result => {
+        if (!result.isConfirmed) return;
+        db.collection('abbracci').doc(id).update({
+            archived: true,
+            archivedAt: new Date().toISOString()
+        }).then(() => showToast('Abbraccio archiviato'));
+    });
+}
+
+/** Ripristina un abbraccio archiviato. */
+function unarchiveAbbraccio(id) {
+    Swal.fire({
+        title: 'Ripristinare questo abbraccio?',
+        text: 'Tornerà nella lista in base allo stato (In corso / Pronto / Concluso).',
+        icon: 'question',
+        showCancelButton: true,
+        confirmButtonText: 'Sì, ripristina',
+        cancelButtonText: 'Annulla',
+        background: '#131a25'
+    }).then(result => {
+        if (!result.isConfirmed) return;
+        db.collection('abbracci').doc(id).update({
+            archived: false,
+            archivedAt: null
+        }).then(() => showToast('Abbraccio ripristinato'));
+    });
 }
 
 /** Avvia Abbraccio da card Ospite: chiede stato fiala */
@@ -7055,7 +7184,7 @@ function startAbbraccioFromOspite(playerId, playerName) {
             const open = [];
             snap.forEach(doc => {
                 const d = doc.data();
-                if (d.status !== 'concluso') open.push({ id: doc.id, ...d });
+                if (d.status !== 'concluso' && !d.archived) open.push({ id: doc.id, ...d });
             });
             if (open.length) {
                 const a = open[0];
@@ -7616,8 +7745,12 @@ function loadAbbracci() {
 
         items.forEach(a => {
             const status = a.status || 'in_corso';
+            const isArchived = !!a.archived;
             let statusBadge = '';
             let cardExtra = 'card-abbraccio';
+            if (isArchived) {
+                cardExtra += ' card-abbraccio-archived';
+            }
             if (status === 'concluso') {
                 statusBadge = '<div class="status abbraccio-status-concluso">✓ Concluso · Neonato</div>';
                 cardExtra += ' card-abbraccio-concluso';
@@ -7650,16 +7783,20 @@ function loadAbbracci() {
             const filterText = [a.playerName, parentNamesDisp.join(' '), a.notes, a.status, a.fiala].filter(Boolean).join(' ');
 
             let actionExtra = '';
-            if (status !== 'concluso') {
+            if (!isArchived && status !== 'concluso') {
                 if (status === 'in_corso') {
                     actionExtra += `<button class="btn-abbraccio-fiala" onclick="markAbbraccioFialaRecuperata('${a.id}')" title="Segna fiala recuperata">🩸 Fiala presa</button>`;
                 }
                 actionExtra += `<button class="btn-abbraccio-done" onclick="concludeAbbraccio('${a.id}')" title="Concludi rito → Neonato">Concluso</button>`;
             }
+            const archiveBtn = isArchived
+                ? `<button class="btn-tempo-unarchive" onclick="unarchiveAbbraccio('${a.id}')" title="Ripristina dalla lista Archiviati">Ripristina</button>`
+                : `<button class="btn-tempo-archive" onclick="archiveAbbraccio('${a.id}')" title="Archivia (non elimina)">Archivia</button>`;
 
             container.innerHTML += `
-                <div class="card ${cardExtra}" data-filter-text="${escapeAttr(filterText)}" data-abbraccio-status="${escapeAttr(status)}">
+                <div class="card ${cardExtra}" data-filter-text="${escapeAttr(filterText)}" data-abbraccio-status="${escapeAttr(status)}" data-abbraccio-archived="${isArchived ? '1' : '0'}">
                     <h3>${escapeAttr(a.playerName || '—')}</h3>
+                    ${isArchived ? '<div class="status tempo-status-archived">📦 Archiviato</div>' : ''}
                     ${statusBadge}
                     ${fialaLine}
                     ${dtLine}
@@ -7671,6 +7808,7 @@ function loadAbbracci() {
                         </button>
                         <button class="edit-btn" onclick="editAbbraccio('${a.id}')" title="Modifica">Modifica</button>
                         ${actionExtra}
+                        ${archiveBtn}
                         <button class="delete-btn btn-icon-only" onclick="confirmDelete('abbracci', '${a.id}', loadAbbracci)" title="Elimina">🗑️</button>
                     </div>
                 </div>
