@@ -296,7 +296,7 @@ bgForm.addEventListener('submit', (e) => {
     db.collection('backgrounds').doc(deviceToken).set(finalPayload)
         .then(() => {
             sendDiscordWebhook(
-                "https://discord.com/api/webhooks/1559759140916695040/o0pmrY0vTxt9ALv1QApmkGjjxKERx1GAUsrJVH3Eiof7XqRNMTTwCxz-kZil3s4gzlAx",
+                "https://discord.com/api/webhooks/1564656327199039549/0GyEMZLhJBl8pQ5Ll1F9YVxuWrdiBTmWFAW6HWjgyln-aEQIq9RhGNNod_L1lyhPW4ea",
                 "<@&1284193565194326189>",
                 "Horde V5 | Nuovo Background Ricevuto",
                 "È stato inviato un nuovo background in attesa di revisione da parte di un GM, collegati al seguente link: https://horde-vampiri.vitriotv.com/bg/.",
@@ -625,7 +625,7 @@ window.reviewBackground = function(docId, nextStatus) {
             }
 
             sendDiscordWebhook(
-                "https://discord.com/api/webhooks/1559759414586511400/ziLQZGLL73Wu5_vfVhOyyW6BFkWrCIKTZX_wLDwR1Kr_f-RYZZQyBXS4IKIQbeAIPMlw",
+                "https://discord.com/api/webhooks/1564656563732615331/ZA-0606-e67dE8gaQdAfa9Zl_z9zAgT-7Y8KSUepzlRI28zSdUwDYaHl49gPappFlDU6",
                 '<@' + userDiscord + '>',
                 isApproved ? "Horde V5 | Background Approvato" : "Horde V5 | Richiesta Modifiche Background",
                 embedDescription,
