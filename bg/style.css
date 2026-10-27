@@ -9,7 +9,7 @@
     --text-dim: #a0a0a0;
     --success-green: #2ecc71;
     --withdraw-red: #e74c3c;
-    --glass-bg: rgba(18, 18, 18, 0.75);
+    --glass-bg: rgba(10, 8, 8, 0.28);
     --glass-border: rgba(197, 160, 89, 0.25);
     --glass-border-hover: rgba(139, 0, 0, 0.6);
     --shadow-premium: 0 8px 32px rgba(0, 0, 0, 0.9), 0 0 20px rgba(139, 0, 0, 0.05);
@@ -59,7 +59,7 @@ body {
         repeating-linear-gradient(-45deg, rgba(139, 0, 0, 0.02) 0px, rgba(139, 0, 0, 0.02) 1px, transparent 1px, transparent 30px),
         radial-gradient(circle at 10% 20%, rgba(139, 0, 0, 0.1) 0%, transparent 45%),
         radial-gradient(circle at 90% 80%, rgba(197, 160, 89, 0.08) 0%, transparent 45%),
-        linear-gradient(rgba(7, 7, 7, 0.42), rgba(7, 7, 7, 0.58)),
+        linear-gradient(rgba(7, 7, 7, 0.28), rgba(7, 7, 7, 0.42)),
         url('../assets/banner.png');
     background-size: cover;
     background-position: center center;
@@ -105,15 +105,15 @@ header {
 }
 
 .card {
-    background: var(--glass-bg); 
+    background: rgba(10, 8, 8, 0.32) !important; 
     border: 1px solid var(--glass-border); 
     padding: 3rem;
     border-radius: 0 30px 0 30px; 
     margin-bottom: 3rem; 
     box-shadow: var(--shadow-premium); 
     width: 100%;
-    backdrop-filter: blur(20px); 
-    -webkit-backdrop-filter: blur(20px);
+    backdrop-filter: none !important; 
+    -webkit-backdrop-filter: none !important;
     position: relative;
     text-align: center;
     overflow-wrap: anywhere;
@@ -348,7 +348,7 @@ textarea {
 }
 
 .voice-box {
-    background: rgba(18, 18, 18, 0.8);
+    background: rgba(12, 10, 10, 0.45);
     border: 1px solid rgba(197, 160, 89, 0.15);
     border-left: 3px solid var(--blood-red);
     padding: 18px;
@@ -407,7 +407,7 @@ textarea {
 }
 
 .bg-item {
-    background: linear-gradient(135deg, rgba(25, 25, 25, 0.8), rgba(10, 10, 10, 0.9));
+    background: rgba(10, 8, 8, 0.32);
     border: 1px solid var(--glass-border);
     padding: 22px;
     margin-bottom: 18px;
@@ -620,8 +620,8 @@ textarea {
     justify-content: center;
     align-items: center;
     z-index: 99999;
-    backdrop-filter: blur(15px);
-    -webkit-backdrop-filter: blur(15px);
+    backdrop-filter: none;
+    -webkit-backdrop-filter: none;
     opacity: 0;
     pointer-events: none;
     transition: opacity 0.3s ease;
@@ -719,12 +719,12 @@ footer:hover strong { color: var(--blood-red); }
     text-align: center;
     box-sizing: border-box;
     padding: 24px;
-    backdrop-filter: blur(15px);
+    backdrop-filter: none;
 }
 
 #schermata-manutenzione .card-manutenzione {
     background: var(--glass-bg);
-    backdrop-filter: blur(20px);
+    backdrop-filter: none;
     border: 1px solid var(--glass-border);
     padding: 48px 32px;
     border-radius: 0 30px 0 30px;
@@ -850,7 +850,7 @@ header {
     border: 1px solid rgba(197,160,89,0.4);
     padding: 6px 12px;
     border-radius: 6px;
-    background: rgba(18,18,18,0.7);
+    background: rgba(12, 10, 10, 0.4);
     transition: all 0.2s;
     z-index: 10;
 }
