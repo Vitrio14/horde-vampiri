@@ -889,41 +889,45 @@
             <div id="admin-content" style="display: none;">
                 
                 <div id="admin-dashboard-menu" class="admin-grid-menu">
-                    <div class="admin-menu-card" onclick="window.apriAdminView('comunicazioni')">
+                    <div class="admin-menu-card" data-admin-view="comunicazioni" onclick="window.apriAdminView('comunicazioni')">
                         <h3>📢 Comunicazioni & Link</h3>
                         <p>Gestisci avvisi alla dinastia e documenti utili</p>
                     </div>
-                    <div class="admin-menu-card" onclick="window.apriAdminView('membri')">
+                    <div class="admin-menu-card" data-admin-view="membri" onclick="window.apriAdminView('membri')">
                         <h3>🦇 Gestione Membri</h3>
                         <p>Aggiungi e modifica i ranghi dei vampiri</p>
                     </div>
-                    <div class="admin-menu-card" onclick="window.apriAdminView('dungeon')">
+                    <div class="admin-menu-card" data-admin-view="dungeon" onclick="window.apriAdminView('dungeon')">
                         <h3>⚔️ Dungeon & Nidi</h3>
                         <p>Visualizza e filtra i database delle operazioni</p>
                     </div>
-                    <div class="admin-menu-card" onclick="window.apriAdminView('storico-vendite')">
+                    <div class="admin-menu-card" data-admin-view="storico-vendite" onclick="window.apriAdminView('storico-vendite')">
                         <h3>📦 Storico Vendite</h3>
                         <p>Statistiche storiche, carbonio e materiali</p>
                     </div>
-                    <div class="admin-menu-card" onclick="window.apriAdminView('finanze')">
+                    <div class="admin-menu-card" data-admin-view="finanze" onclick="window.apriAdminView('finanze')">
                         <h3>💰 Gestione Finanze</h3>
                         <p>Correzione saldo dinastia e log transazioni</p>
                     </div>
-                    <div class="admin-menu-card" onclick="window.apriAdminView('inventario')">
+                    <div class="admin-menu-card" data-admin-view="inventario" onclick="window.apriAdminView('inventario')">
                         <h3>🎒 Gestione Inventario</h3>
                         <p>Libreria PNG, item, giacenze e log magazzini</p>
                     </div>
-                    <div class="admin-menu-card" onclick="window.apriAdminView('materiali')">
+                    <div class="admin-menu-card" data-admin-view="materiali" onclick="window.apriAdminView('materiali')">
                         <h3>🧱 Tipi Materiale</h3>
                         <p>Prezzi, percentuali, Ekaton e dove appaiono</p>
                     </div>
-                    <div class="admin-menu-card" onclick="window.apriAdminView('albero')">
+                    <div class="admin-menu-card" data-admin-view="albero" onclick="window.apriAdminView('albero')">
                         <h3>🌳 Albero Genealogico</h3>
                         <p>Nodi, foto, legami di sangue e download PNG</p>
                     </div>
-                    <div class="admin-menu-card" onclick="window.apriAdminView('lavori')">
+                    <div class="admin-menu-card" data-admin-view="lavori" onclick="window.apriAdminView('lavori')">
                         <h3>⚒️ Gestione Lavori</h3>
                         <p>Assegna lavori multipli, livelli e sblocchi per i membri</p>
+                    </div>
+                    <div class="admin-menu-card" data-admin-view="permessi-gestione" onclick="window.apriAdminView('permessi-gestione')">
+                        <h3>🔑 Permessi Gestione</h3>
+                        <p>Abilita ai membri le tab di Gestione (delega)</p>
                     </div>
                 </div>
 
@@ -1523,6 +1527,70 @@
                     </div>
                 </div>
 
+                <div id="admin-view-permessi-gestione" class="admin-sub-view" style="display: none;">
+                    <button class="btn-indietro" onclick="window.tornaAdminMenu()">🔙 Torna alla Dashboard</button>
+                    <div class="vamp-card">
+                        <h2>🔑 Permessi Gestione (delega tab ai membri)</h2>
+                        <p style="font-size:0.75rem; color:var(--text-dim); margin-bottom:18px; line-height:1.5;">
+                            Seleziona un membro già presente e spunta le <strong style="color:var(--gold-accent);">tab di Gestione</strong> che potrà usare.
+                            Al prossimo accesso con il suo codice + password vedrà la voce <strong>Gestione</strong> in navbar e solo le card che gli hai abilitato.
+                            <br><span style="opacity:0.8;">Questa pagina è riservata al gestore (Firebase). I membri non possono auto-assegnarsi permessi.</span>
+                        </p>
+
+                        <div class="form-group" style="max-width:420px;">
+                            <label>Membro</label>
+                            <select id="adm-perm-gest-membro" onchange="window.onSelectMembroPermessiGestione()">
+                                <option value="">— Seleziona membro —</option>
+                            </select>
+                        </div>
+                        <p id="adm-perm-gest-info" style="font-size:0.7rem; color:var(--gold-dim); margin:-8px 0 16px;">
+                            Seleziona un membro per vedere/modificare le tab di Gestione abilitate.
+                        </p>
+
+                        <label style="display:block; margin-bottom:12px; color: var(--gold-dim); font-size:0.75rem; letter-spacing:1px;">
+                            Tab di Gestione da abilitare
+                        </label>
+                        <div id="adm-perm-gest-checkboxes" class="permessi-grid" style="margin-bottom:18px;">
+                            <div class="permessi-group">
+                                <span class="permessi-group-title">Pannelli amministrativi</span>
+                                <div class="permessi-group-items">
+                                    <label class="perm-label"><input type="checkbox" class="perm-admin-check" value="comunicazioni"> Comunicazioni &amp; Link</label>
+                                    <label class="perm-label"><input type="checkbox" class="perm-admin-check" value="membri"> Gestione Membri</label>
+                                    <label class="perm-label"><input type="checkbox" class="perm-admin-check" value="dungeon"> Dungeon &amp; Nidi</label>
+                                    <label class="perm-label"><input type="checkbox" class="perm-admin-check" value="storico-vendite"> Storico Vendite</label>
+                                    <label class="perm-label"><input type="checkbox" class="perm-admin-check" value="finanze"> Gestione Finanze</label>
+                                    <label class="perm-label"><input type="checkbox" class="perm-admin-check" value="inventario"> Gestione Inventario</label>
+                                    <label class="perm-label"><input type="checkbox" class="perm-admin-check" value="materiali"> Tipi Materiale</label>
+                                    <label class="perm-label"><input type="checkbox" class="perm-admin-check" value="albero"> Albero Genealogico</label>
+                                    <label class="perm-label"><input type="checkbox" class="perm-admin-check" value="lavori"> Gestione Lavori</label>
+                                </div>
+                            </div>
+                        </div>
+
+                        <div style="display:flex; gap:12px; flex-wrap:wrap; margin-bottom:24px;">
+                            <button type="button" onclick="window.salvaPermessiGestioneMembro()" style="width:auto; padding:14px 25px;">Salva permessi Gestione</button>
+                            <button type="button" onclick="document.querySelectorAll('.perm-admin-check').forEach(c=>c.checked=false); window.onSelectMembroPermessiGestione();" style="width:auto; padding:14px 25px; border-color:#555; color:#888;">Deseleziona tutto</button>
+                        </div>
+
+                        <h3 style="font-size:0.8rem; color:var(--gold-accent); margin:10px 0 10px; letter-spacing:1px; text-transform:uppercase;">Riepilogo deleghe</h3>
+                        <div class="search-box" style="margin-bottom: 10px;">
+                            <input type="text" id="search-admin-permessi-gest" placeholder="Cerca membro o tab..." onkeyup="window.renderAdminPermessiGestioneTable()">
+                        </div>
+                        <div class="scroll-container" style="max-height:320px;">
+                            <table style="font-size:0.75rem;">
+                                <thead>
+                                    <tr>
+                                        <th>Membro</th>
+                                        <th>Tab Gestione abilitate</th>
+                                        <th>Azione</th>
+                                    </tr>
+                                </thead>
+                                <tbody id="admin-permessi-gestione-body"></tbody>
+                            </table>
+                        </div>
+                    </div>
+                </div>
+
                 <div style="text-align: center; margin-top: 40px; margin-bottom: 20px;">
                     <button onclick="window.logoutAdmin()" style="background: transparent; border: 1px solid #444; width: auto; color: #555; display: inline-block;">Chiudi Sessione Gestore</button>
                 </div>
@@ -1535,6 +1603,22 @@
 
     <script>
         window.apriAdminView = function(viewId) {
+            // Controllo permesso sulla sottosezione
+            if (viewId === 'permessi-gestione') {
+                // Solo gestore pieno (Firebase)
+                if (!window.currentUser || !window.currentUser.isAdmin) {
+                    if (typeof window.vampireToast === 'function') {
+                        window.vampireToast('Solo il gestore può assegnare i permessi di Gestione.', 'error');
+                    }
+                    return;
+                }
+            } else if (typeof window.hasAdminPerm === 'function' && !window.hasAdminPerm(viewId)) {
+                if (typeof window.vampireToast === 'function') {
+                    window.vampireToast('Non hai il permesso per questa sezione di Gestione.', 'error');
+                }
+                return;
+            }
+
             // Nasconde la griglia del menu principale
             document.getElementById('admin-dashboard-menu').style.display = 'none';
             
@@ -1557,6 +1641,10 @@
                     if (typeof window.renderAdminTipiLavoro === 'function') window.renderAdminTipiLavoro();
                 }
             }
+            if (viewId === 'permessi-gestione') {
+                if (typeof window.popolaSelectPermessiGestione === 'function') window.popolaSelectPermessiGestione();
+                if (typeof window.renderAdminPermessiGestioneTable === 'function') window.renderAdminPermessiGestioneTable();
+            }
         };
 
         window.tornaAdminMenu = function() {
@@ -1564,8 +1652,9 @@
             const views = document.querySelectorAll('.admin-sub-view');
             views.forEach(v => v.style.display = 'none');
             
-            // Mostra di nuovo il menu a griglia
+            // Mostra di nuovo il menu a griglia (filtrato)
             document.getElementById('admin-dashboard-menu').style.display = 'grid';
+            if (typeof window.filterAdminMenuCards === 'function') window.filterAdminMenuCards();
         };
 
     </script>

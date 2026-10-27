@@ -39,7 +39,11 @@ let squadraDungeonTemp = [];
 let squadraConquistaTemp = [];
 
 // Utente loggato corrente (null se non autenticato)
-let currentUser = null; // { nome, grado, codice, password, permessi: [], isAdmin: false }
+let currentUser = null; // { nome, grado, codice, password, permessi: [], permessiAdmin: [], isAdmin: false }
+Object.defineProperty(window, 'currentUser', {
+    get() { return currentUser; },
+    set(v) { currentUser = v; }
+});
 let listenersStarted = false;
 
 const VALORE_UNITARIO = 30; // fallback legacy
@@ -59,6 +63,36 @@ const SEZIONI = {
     gestione: { id: 'gestione', label: 'Gestione' },
     foto: { id: 'foto', label: 'Foto' }
 };
+
+/** Sottosezioni del pannello Gestione assegnabili ai membri dal gestore */
+const ADMIN_VIEWS = {
+    comunicazioni: { id: 'comunicazioni', label: 'Comunicazioni & Link' },
+    membri: { id: 'membri', label: 'Gestione Membri' },
+    dungeon: { id: 'dungeon', label: 'Dungeon & Nidi' },
+    'storico-vendite': { id: 'storico-vendite', label: 'Storico Vendite' },
+    finanze: { id: 'finanze', label: 'Gestione Finanze' },
+    inventario: { id: 'inventario', label: 'Gestione Inventario' },
+    materiali: { id: 'materiali', label: 'Tipi Materiale' },
+    albero: { id: 'albero', label: 'Albero Genealogico' },
+    lavori: { id: 'lavori', label: 'Gestione Lavori' }
+    // 'permessi-gestione' NON è assegnabile — solo gestore Firebase
+};
+
+/** True se l'utente corrente è gestore pieno o ha almeno un permesso admin */
+function canAccessGestione() {
+    if (!currentUser) return false;
+    if (currentUser.isAdmin) return true;
+    return Array.isArray(currentUser.permessiAdmin) && currentUser.permessiAdmin.length > 0;
+}
+
+/** True se può usare una specifica sottosezione di Gestione */
+function hasAdminPerm(viewId) {
+    if (!currentUser) return false;
+    if (currentUser.isAdmin) return true;
+    return Array.isArray(currentUser.permessiAdmin) && currentUser.permessiAdmin.includes(viewId);
+}
+window.hasAdminPerm = hasAdminPerm;
+window.canAccessGestione = canAccessGestione;
 
 // --- UTILS ---
 const fmt = (n) => {
@@ -124,6 +158,7 @@ window.unlockSite = async () => {
             codice: found.codice,
             password: found.password,
             permessi: Array.isArray(found.permessi) ? found.permessi : ["generale"],
+            permessiAdmin: Array.isArray(found.permessiAdmin) ? found.permessiAdmin : [],
             isAdmin: false
         };
 
@@ -219,6 +254,7 @@ function applyPermissions() {
 
     const isAdmin = currentUser.isAdmin;
     const perm = currentUser.permessi || [];
+    const canGest = canAccessGestione();
 
     // Nav links interni
     document.querySelectorAll('.nav-link[onclick]').forEach(link => {
@@ -228,7 +264,8 @@ function applyPermissions() {
             sectionId = onclick.match(/showSection\('([^']+)'\)/)?.[1];
         }
         if (sectionId === 'gestione') {
-            link.style.display = isAdmin ? '' : 'none';
+            // Gestore pieno OPPURE membro con almeno un permesso admin assegnato
+            link.style.display = canGest ? '' : 'none';
         } else if (sectionId) {
             link.style.display = (isAdmin || perm.includes(sectionId)) ? '' : 'none';
         }
@@ -312,6 +349,9 @@ function refreshAdminUI() {
     if (typeof window.renderAdminTipiMateriale === 'function') window.renderAdminTipiMateriale();
     if (typeof window.renderAdminAlbero === 'function') window.renderAdminAlbero();
     if (typeof window.renderAdminLavoriMembri === 'function') window.renderAdminLavoriMembri();
+    if (typeof window.popolaSelectPermessiGestione === 'function') window.popolaSelectPermessiGestione();
+    if (typeof window.renderAdminPermessiGestioneTable === 'function') window.renderAdminPermessiGestioneTable();
+    if (typeof window.filterAdminMenuCards === 'function') window.filterAdminMenuCards();
     if (typeof window.renderAdminTipiLavoro === 'function') window.renderAdminTipiLavoro();
     if (typeof window.popolaSelectTipiLavoro === 'function') window.popolaSelectTipiLavoro();
     renderVampiriLists(); 
@@ -356,6 +396,11 @@ window.showSection = (id) => {
         scheduleUI(() => window.refreshActiveSectionUI());
     }
 
+    // Accesso delegato a Gestione: membro con permessiAdmin vede le card abilitate
+    if (id === 'gestione') {
+        setupGestionePanelForCurrentUser();
+    }
+
     if (id === 'albero') {
         if (window._alberoDirty || !document.getElementById('albero-tree-root')?.querySelector('.albero-nodo, .albero-roots-row')) {
             window._alberoDirty = false;
@@ -367,6 +412,53 @@ window.showSection = (id) => {
         }
     }
 };
+
+/** Mostra/nasconde login gestore vs pannello admin filtrato in base ai permessi */
+function setupGestionePanelForCurrentUser() {
+    const loginBox = document.getElementById('login-container-gestione');
+    const adminContent = document.getElementById('admin-content');
+    if (!loginBox || !adminContent) return;
+
+    if (currentUser?.isAdmin) {
+        // Gestore Firebase: pannello completo
+        loginBox.style.display = 'none';
+        adminContent.style.display = 'block';
+        filterAdminMenuCards();
+        return;
+    }
+
+    if (canAccessGestione()) {
+        // Membro con permessi admin delegati
+        loginBox.style.display = 'none';
+        adminContent.style.display = 'block';
+        // Torna al menu griglia
+        document.querySelectorAll('.admin-sub-view').forEach(v => v.style.display = 'none');
+        const menu = document.getElementById('admin-dashboard-menu');
+        if (menu) menu.style.display = 'grid';
+        filterAdminMenuCards();
+        return;
+    }
+
+    // Nessun permesso: mostra form login gestore (Firebase)
+    loginBox.style.display = 'flex';
+    adminContent.style.display = 'none';
+}
+
+/** Filtra le card del menu Gestione in base a permessiAdmin (o tutte se isAdmin) */
+function filterAdminMenuCards() {
+    document.querySelectorAll('.admin-menu-card[data-admin-view]').forEach(card => {
+        const viewId = card.getAttribute('data-admin-view');
+        if (!viewId) return;
+        // Solo il gestore pieno vede la card "Permessi Gestione"
+        if (viewId === 'permessi-gestione') {
+            card.style.display = currentUser?.isAdmin ? '' : 'none';
+            return;
+        }
+        card.style.display = hasAdminPerm(viewId) ? '' : 'none';
+    });
+}
+window.filterAdminMenuCards = filterAdminMenuCards;
+window.setupGestionePanelForCurrentUser = setupGestionePanelForCurrentUser;
 
 // --- GESTIONE DINAMICA ---
 window.addDinamico = async (col) => {
@@ -484,9 +576,99 @@ function membriArchiviati() {
     return listaVampiri.filter(v => v.archiviato === true);
 }
 
-window.archiviaVampiro = async (id) => {
+// --- PERMESSI GESTIONE (delega sottosezioni admin ai membri) ---
+window.popolaSelectPermessiGestione = function() {
+    const sel = document.getElementById('adm-perm-gest-membro');
+    if (!sel) return;
+    const current = sel.value;
+    const opts = membriAttivi()
+        .slice()
+        .sort((a, b) => (a.nome || '').localeCompare(b.nome || '', 'it'))
+        .map(v => `<option value="${String(v.nome).replace(/"/g, '&quot;')}">${v.nome}</option>`)
+        .join('');
+    sel.innerHTML = `<option value="">— Seleziona membro —</option>` + opts;
+    if (current) sel.value = current;
+};
+
+window.onSelectMembroPermessiGestione = function() {
+    const nome = (document.getElementById('adm-perm-gest-membro')?.value || '').trim();
+    const box = document.getElementById('adm-perm-gest-checkboxes');
+    if (!box) return;
+    const v = listaVampiri.find(x => x.nome === nome);
+    const assigned = (v && Array.isArray(v.permessiAdmin)) ? v.permessiAdmin : [];
+    box.querySelectorAll('.perm-admin-check').forEach(cb => {
+        cb.checked = assigned.includes(cb.value);
+    });
+    const info = document.getElementById('adm-perm-gest-info');
+    if (info) {
+        info.textContent = nome
+            ? `${assigned.length} tab Gestione abilitate per ${nome}.`
+            : 'Seleziona un membro per vedere/modificare le tab di Gestione abilitate.';
+    }
+};
+
+window.salvaPermessiGestioneMembro = async function() {
     if (!currentUser || !currentUser.isAdmin) {
-        return vampireToast("Solo il gestore può archiviare membri.", "error");
+        return vampireToast('Solo il gestore può assegnare i permessi di Gestione.', 'error');
+    }
+    const nome = (document.getElementById('adm-perm-gest-membro')?.value || '').trim();
+    if (!nome) return vampireToast('Seleziona un membro.', 'error');
+    const permessiAdmin = [];
+    document.querySelectorAll('.perm-admin-check:checked').forEach(cb => {
+        if (ADMIN_VIEWS[cb.value]) permessiAdmin.push(cb.value);
+    });
+    try {
+        await setDoc(doc(db, 'membri', nome), {
+            permessiAdmin,
+            permessiAdminAggiornatiAt: Date.now(),
+            permessiAdminDa: currentUser.nome || 'GESTORE'
+        }, { merge: true });
+        vampireToast(`Permessi Gestione aggiornati per ${nome} (${permessiAdmin.length} tab).`, 'success');
+        window.onSelectMembroPermessiGestione();
+        if (typeof window.renderAdminPermessiGestioneTable === 'function') {
+            window.renderAdminPermessiGestioneTable();
+        }
+    } catch (err) {
+        console.error(err);
+        vampireToast('Errore salvataggio permessi.', 'error');
+    }
+};
+
+window.renderAdminPermessiGestioneTable = function() {
+    const tbody = document.getElementById('admin-permessi-gestione-body');
+    if (!tbody) return;
+    const search = (document.getElementById('search-admin-permessi-gest')?.value || '').toLowerCase().trim();
+    let list = membriAttivi();
+    if (search) {
+        list = list.filter(v =>
+            (v.nome || '').toLowerCase().includes(search) ||
+            (Array.isArray(v.permessiAdmin) ? v.permessiAdmin.join(' ') : '').toLowerCase().includes(search)
+        );
+    }
+    list = [...list].sort((a, b) => (a.nome || '').localeCompare(b.nome || '', 'it'));
+    tbody.innerHTML = list.map(v => {
+        const perms = Array.isArray(v.permessiAdmin) ? v.permessiAdmin : [];
+        const labels = perms.map(p => ADMIN_VIEWS[p]?.label || p);
+        const chips = labels.length
+            ? labels.map(l => `<span class="rango-count-chip" style="min-width:auto;padding:4px 8px;margin:2px;"><span class="rango-count-label" style="margin:0;">${l}</span></span>`).join('')
+            : '<span style="opacity:0.4;font-size:0.7rem;">Nessuna tab Gestione</span>';
+        const safeName = String(v.nome || '').replace(/'/g, "\\'");
+        return `<tr>
+            <td><strong>${v.nome}</strong></td>
+            <td style="text-align:left;">${chips}</td>
+            <td>
+                <button class="btn-delete" style="border-color:var(--gold-accent);color:var(--gold-accent);"
+                    onclick="document.getElementById('adm-perm-gest-membro').value='${safeName}';window.onSelectMembroPermessiGestione();">
+                    Modifica
+                </button>
+            </td>
+        </tr>`;
+    }).join('') || '<tr><td colspan="3" style="opacity:0.5;text-align:center;">Nessun membro trovato.</td></tr>';
+};
+
+window.archiviaVampiro = async (id) => {
+    if (!hasAdminPerm('membri')) {
+        return vampireToast("Non hai il permesso Gestione Membri.", "error");
     }
     const v = listaVampiri.find(x => x.nome === id);
     if (!v) return vampireToast("Membro non trovato.", "error");
@@ -529,8 +711,8 @@ window.archiviaVampiro = async (id) => {
 };
 
 window.ripristinaVampiro = async (id) => {
-    if (!currentUser || !currentUser.isAdmin) {
-        return vampireToast("Solo il gestore può ripristinare membri.", "error");
+    if (!hasAdminPerm('membri')) {
+        return vampireToast("Non hai il permesso Gestione Membri.", "error");
     }
     const res = await Swal.fire({
         title: 'Ripristinare membro?',
@@ -689,6 +871,8 @@ function renderVampiriLists() {
 
     window.renderAdminMembriTable();
     if (typeof window.renderAdminArchiviatiTable === 'function') window.renderAdminArchiviatiTable();
+    if (typeof window.popolaSelectPermessiGestione === 'function') window.popolaSelectPermessiGestione();
+    if (typeof window.renderAdminPermessiGestioneTable === 'function') window.renderAdminPermessiGestioneTable();
     
     if (currentUser) applyPermissions();
 }
@@ -2491,8 +2675,8 @@ async function compressImageToMaxBytes(source, maxBytes = MAX_ITEM_IMAGE_BYTES) 
  */
 window.ottimizzaImmaginiEsistenti = async function() {
     try {
-        if (!currentUser || !currentUser.isAdmin) {
-            return vampireToast('Solo il gestore può ottimizzare le immagini.', 'error');
+        if (!hasAdminPerm('inventario')) {
+            return vampireToast('Non hai il permesso Gestione Inventario.', 'error');
         }
         if (!itemImagesLib.length) {
             return vampireToast('Nessuna immagine in libreria da ottimizzare.', 'info');
@@ -2588,8 +2772,8 @@ window.ottimizzaImmaginiEsistenti = async function() {
 window.uploadItemImagesFromInput = async function() {
     console.log('[Vampiri] upload immagini', { isAdmin: currentUser?.isAdmin });
     try {
-        if (!currentUser || !currentUser.isAdmin) {
-            return vampireToast('Solo il gestore può caricare immagini.', 'error');
+        if (!hasAdminPerm('inventario')) {
+            return vampireToast('Non hai il permesso Gestione Inventario.', 'error');
         }
         const fileInput = document.getElementById('item-image-file');
         const files = fileInput?.files ? Array.from(fileInput.files) : [];
@@ -3056,7 +3240,7 @@ window.resetFormTipoLavoro = function() {
 };
 
 window.salvaTipoLavoro = async function() {
-    if (!currentUser || !currentUser.isAdmin) return vampireToast('Solo il gestore può modificare i lavori.', 'error');
+    if (!hasAdminPerm('lavori')) return vampireToast('Non hai il permesso Gestione Lavori.', 'error');
     const nome = (document.getElementById('adm-tipo-lavoro-nome')?.value || '').trim();
     const editId = (document.getElementById('adm-tipo-lavoro-edit-id')?.value || '').trim();
     if (!nome) return vampireToast('Inserisci il nome del lavoro.', 'error');
@@ -3207,7 +3391,7 @@ window.renderAdminTipiLavoro = function() {
 // --- Assegnazioni membri (multi-job) ---
 
 window.salvaLavoroMembro = async function() {
-    if (!currentUser || !currentUser.isAdmin) return vampireToast('Solo il gestore può assegnare lavori.', 'error');
+    if (!hasAdminPerm('lavori')) return vampireToast('Non hai il permesso Gestione Lavori.', 'error');
     const vamp = (document.getElementById('adm-lavoro-vamp')?.value || '').trim();
     const lavoroId = (document.getElementById('adm-lavoro-tipo')?.value || '').trim();
     const livello = parseInt(document.getElementById('adm-lavoro-livello')?.value, 10);
@@ -3289,7 +3473,7 @@ window.eliminaLavoroMembro = async function(id) {
 };
 
 window.cambiaLivelloLavoro = async function(id, delta) {
-    if (!currentUser || !currentUser.isAdmin) return;
+    if (!hasAdminPerm('lavori')) return;
     const m = lavoriMembri.find(x => x.id === id);
     if (!m) return;
     const nuovo = Math.max(1, (Number(m.livello) || 1) + delta);
@@ -3692,7 +3876,7 @@ window.resetFormAlbero = () => {
 };
 
 window.salvaNodoAlbero = async () => {
-    if (!currentUser || !currentUser.isAdmin) return vampireToast('Solo il gestore può modificare l\'albero.', 'error');
+    if (!hasAdminPerm('albero')) return vampireToast('Non hai il permesso Albero Genealogico.', 'error');
     const nome = (document.getElementById('adm-albero-nome')?.value || '').trim();
     const cognome = (document.getElementById('adm-albero-cognome')?.value || '').trim();
     const clan = (document.getElementById('adm-albero-clan')?.value || '').trim();
@@ -3837,8 +4021,8 @@ window.eliminaNodoAlbero = async (id) => {
 
 /** Toggle stato speciale: morto | reietto | ritoCarne */
 window.toggleStatoAlbero = async (id, campo) => {
-    if (!currentUser || !currentUser.isAdmin) {
-        return vampireToast('Solo il gestore può modificare gli stati.', 'error');
+    if (!hasAdminPerm('albero')) {
+        return vampireToast('Non hai il permesso Albero Genealogico.', 'error');
     }
     const allowed = ['morto', 'reietto', 'ritoCarne'];
     if (!allowed.includes(campo)) return;
