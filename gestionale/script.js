@@ -70,6 +70,7 @@ const ADMIN_VIEWS = {
     membri: { id: 'membri', label: 'Gestione Membri' },
     dungeon: { id: 'dungeon', label: 'Dungeon & Nidi' },
     'storico-vendite': { id: 'storico-vendite', label: 'Storico Vendite' },
+    classifiche: { id: 'classifiche', label: 'Classifiche' },
     finanze: { id: 'finanze', label: 'Gestione Finanze' },
     inventario: { id: 'inventario', label: 'Gestione Inventario' },
     materiali: { id: 'materiali', label: 'Tipi Materiale' },
@@ -351,6 +352,7 @@ function refreshAdminUI() {
     if (typeof window.renderAdminLavoriMembri === 'function') window.renderAdminLavoriMembri();
     if (typeof window.popolaSelectPermessiGestione === 'function') window.popolaSelectPermessiGestione();
     if (typeof window.renderAdminPermessiGestioneTable === 'function') window.renderAdminPermessiGestioneTable();
+    if (typeof window.renderAdminClassifiche === 'function') window.renderAdminClassifiche({ refreshWeeks: true });
     if (typeof window.filterAdminMenuCards === 'function') window.filterAdminMenuCards();
     if (typeof window.renderAdminTipiLavoro === 'function') window.renderAdminTipiLavoro();
     if (typeof window.popolaSelectTipiLavoro === 'function') window.popolaSelectTipiLavoro();
@@ -2185,6 +2187,148 @@ function getWeekRangeLabel(weekKey) {
     ISOweekEnd.setDate(ISOweekStart.getDate() + 6);
     return `${ISOweekStart.toLocaleDateString('it-IT', {day:'2-digit', month:'short'})} - ${ISOweekEnd.toLocaleDateString('it-IT', {day:'2-digit', month:'short'})}`;
 }
+
+
+// --- ADMIN CLASSIFICHE (storico settimane + sempre) ---
+window.popolaSelectSettimaneClassifiche = function() {
+    const sel = document.getElementById('adm-class-settimana');
+    if (!sel) return;
+    const current = sel.value;
+    const keys = new Set();
+    (vendite || []).forEach(v => { if (v.settimanaEtichetta) keys.add(v.settimanaEtichetta); });
+    (venditeMateriali || []).forEach(m => { if (m.settimanaEtichetta) keys.add(m.settimanaEtichetta); });
+    const sorted = [...keys].sort((a, b) => b.localeCompare(a)); // più recente prima
+    const currentWeek = getWeekYearKey(new Date());
+    let opts = [
+        `<option value="__sempre__">Migliori di sempre (tutto lo storico)</option>`,
+        `<option value="__corrente__">Settimana corrente (${getWeekRangeLabel(currentWeek)})</option>`
+    ];
+    sorted.forEach(k => {
+        const label = getWeekRangeLabel(k);
+        const isCurr = k === currentWeek ? ' · corrente' : '';
+        opts.push(`<option value="${k}">${label}${isCurr} · chiave ${k}</option>`);
+    });
+    sel.innerHTML = opts.join('');
+    // ripristina scelta se ancora valida
+    if (current && [...sel.options].some(o => o.value === current)) {
+        sel.value = current;
+    } else {
+        sel.value = '__corrente__';
+    }
+};
+
+/**
+ * Costruisce classifica aggregata per nome.
+ * @param {Array} rows
+ * @param {string} nameKey
+ * @param {string} qtyKey
+ * @param {string} creditKey
+ * @param {string|null} weekKey  null = tutte le settimane (sempre)
+ * @param {'qty'|'crediti'} sortBy
+ */
+function buildRankList(rows, nameKey, qtyKey, creditKey, weekKey, sortBy) {
+    const map = {};
+    (rows || []).forEach(r => {
+        if (weekKey && r.settimanaEtichetta !== weekKey) return;
+        const nome = r[nameKey];
+        if (!nome) return;
+        if (!map[nome]) map[nome] = { qty: 0, crediti: 0, count: 0 };
+        map[nome].qty += (Number(r[qtyKey]) || 0);
+        map[nome].crediti += (Number(r[creditKey]) || 0);
+        map[nome].count += 1;
+    });
+    const arr = Object.entries(map).map(([nome, s]) => ({ nome, ...s }));
+    if (sortBy === 'crediti') {
+        arr.sort((a, b) => b.crediti - a.crediti || b.qty - a.qty || a.nome.localeCompare(b.nome, 'it'));
+    } else {
+        arr.sort((a, b) => b.qty - a.qty || b.crediti - a.crediti || a.nome.localeCompare(b.nome, 'it'));
+    }
+    return arr;
+}
+
+function rankTableHtml(arr, unitLabel) {
+    if (!arr.length) {
+        return `<tr><td colspan="5" style="opacity:0.5;text-align:center;">Nessun dato per i filtri scelti.</td></tr>`;
+    }
+    return arr.map((item, index) => {
+        const pos = index + 1;
+        const medal = pos === 1 ? '🥇' : pos === 2 ? '🥈' : pos === 3 ? '🥉' : pos;
+        const rowStyle = pos <= 3 ? 'color:var(--gold-accent);font-weight:700;' : '';
+        return `<tr style="${rowStyle}">
+            <td style="text-align:center;white-space:nowrap;">${medal}</td>
+            <td style="text-align:left;"><strong>${item.nome}</strong></td>
+            <td>${fmt(item.qty)} ${unitLabel}</td>
+            <td>${fmt(item.crediti)} cr</td>
+            <td>${fmt(item.count)}</td>
+        </tr>`;
+    }).join('');
+}
+
+window.renderAdminClassifiche = function(opts = {}) {
+    // opts.refreshWeeks: forza ripopolamento elenco settimane (apertura tab / nuovi dati)
+    if (opts.refreshWeeks || !document.getElementById('adm-class-settimana')?.options?.length) {
+        window.popolaSelectSettimaneClassifiche();
+    }
+
+    const tipo = (document.getElementById('adm-class-tipo')?.value || 'entrambi');
+    const periodoRaw = (document.getElementById('adm-class-settimana')?.value || '__corrente__');
+    const sortBy = (document.getElementById('adm-class-sort')?.value || 'qty');
+    const search = (document.getElementById('adm-class-search')?.value || '').toLowerCase().trim();
+
+    let weekKey = null;
+    let periodoLabel = 'Migliori di sempre';
+    if (periodoRaw === '__sempre__') {
+        weekKey = null;
+        periodoLabel = 'Migliori di sempre (tutto lo storico)';
+    } else if (periodoRaw === '__corrente__') {
+        weekKey = getWeekYearKey(new Date());
+        periodoLabel = 'Settimana corrente · ' + getWeekRangeLabel(weekKey);
+    } else {
+        weekKey = periodoRaw;
+        periodoLabel = getWeekRangeLabel(weekKey) + ' · ' + weekKey;
+    }
+
+    const info = document.getElementById('adm-class-periodo-info');
+    if (info) info.textContent = periodoLabel;
+
+    const filterName = (list) => {
+        if (!search) return list;
+        return list.filter(x => (x.nome || '').toLowerCase().includes(search));
+    };
+
+    // Vendite
+    const boxVend = document.getElementById('adm-class-vendite-wrap');
+    const bodyVend = document.getElementById('adm-class-vendite-body');
+    if (boxVend) boxVend.style.display = (tipo === 'materiali') ? 'none' : '';
+    if (bodyVend && tipo !== 'materiali') {
+        let rank = buildRankList(vendite, 'nome', 'qty', 'dinastia', weekKey, sortBy);
+        rank = filterName(rank);
+        bodyVend.innerHTML = rankTableHtml(rank, 'qty');
+        const meta = document.getElementById('adm-class-vendite-meta');
+        if (meta) {
+            const totQ = rank.reduce((s, r) => s + r.qty, 0);
+            const totC = rank.reduce((s, r) => s + r.crediti, 0);
+            meta.textContent = `${rank.length} in classifica · ${fmt(totQ)} qty · ${fmt(totC)} cr dinastia`;
+        }
+    }
+
+    // Materiali
+    const boxMat = document.getElementById('adm-class-materiali-wrap');
+    const bodyMat = document.getElementById('adm-class-materiali-body');
+    if (boxMat) boxMat.style.display = (tipo === 'vendite') ? 'none' : '';
+    if (bodyMat && tipo !== 'vendite') {
+        let rank = buildRankList(venditeMateriali, 'vampiro', 'qty', 'vDin', weekKey, sortBy);
+        rank = filterName(rank);
+        bodyMat.innerHTML = rankTableHtml(rank, 'mat');
+        const meta = document.getElementById('adm-class-materiali-meta');
+        if (meta) {
+            const totQ = rank.reduce((s, r) => s + r.qty, 0);
+            const totC = rank.reduce((s, r) => s + r.crediti, 0);
+            meta.textContent = `${rank.length} in classifica · ${fmt(totQ)} mat · ${fmt(totC)} cr dinastia`;
+        }
+    }
+};
+
 
 function calcEkatonFromRecord(v) {
     if (v.ekaton != null && !isNaN(v.ekaton)) return Number(v.ekaton);

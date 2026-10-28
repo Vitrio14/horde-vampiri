@@ -905,6 +905,10 @@
                         <h3>📦 Storico Vendite</h3>
                         <p>Statistiche storiche, carbonio e materiali</p>
                     </div>
+                    <div class="admin-menu-card" data-admin-view="classifiche" onclick="window.apriAdminView('classifiche')">
+                        <h3>🏆 Classifiche</h3>
+                        <p>Posizioni settimanali e migliori di sempre (anche settimane passate)</p>
+                    </div>
                     <div class="admin-menu-card" data-admin-view="finanze" onclick="window.apriAdminView('finanze')">
                         <h3>💰 Gestione Finanze</h3>
                         <p>Correzione saldo dinastia e log transazioni</p>
@@ -1120,7 +1124,92 @@
                     </div>
                 </div>
 
-                <div id="admin-view-finanze" class="admin-sub-view" style="display: none;">
+                
+                <div id="admin-view-classifiche" class="admin-sub-view" style="display: none;">
+                    <button class="btn-indietro" onclick="window.tornaAdminMenu()">🔙 Torna alla Dashboard</button>
+                    <div class="vamp-card">
+                        <h2>🏆 Classifiche Dinastia</h2>
+                        <p style="font-size:0.75rem; color:var(--text-dim); margin-bottom:18px; line-height:1.5;">
+                            Consulta le <strong style="color:var(--gold-accent);">posizioni in classifica</strong> per vendite e materiali.
+                            Puoi filtrare per <strong>settimana specifica</strong> (anche quelle già chiuse), per la settimana corrente
+                            oppure vedere i <strong>migliori di sempre</strong>. I dati non si perdono: restano legati alla chiave settimana di ogni transazione.
+                        </p>
+
+                        <div style="display:grid; grid-template-columns:repeat(auto-fit, minmax(180px, 1fr)); gap:14px; margin-bottom:16px;">
+                            <div class="form-group" style="margin:0;">
+                                <label>Tipo classifica</label>
+                                <select id="adm-class-tipo" onchange="window.renderAdminClassifiche()">
+                                    <option value="entrambi">Vendite + Materiali</option>
+                                    <option value="vendite">Solo Vendite</option>
+                                    <option value="materiali">Solo Materiali</option>
+                                </select>
+                            </div>
+                            <div class="form-group" style="margin:0;">
+                                <label>Periodo / Settimana</label>
+                                <select id="adm-class-settimana" onchange="window.renderAdminClassifiche()">
+                                    <option value="__corrente__">Settimana corrente</option>
+                                    <option value="__sempre__">Migliori di sempre</option>
+                                </select>
+                            </div>
+                            <div class="form-group" style="margin:0;">
+                                <label>Ordina per</label>
+                                <select id="adm-class-sort" onchange="window.renderAdminClassifiche()">
+                                    <option value="qty">Quantità (come in Generale)</option>
+                                    <option value="crediti">Crediti dinastia</option>
+                                </select>
+                            </div>
+                            <div class="form-group" style="margin:0;">
+                                <label>Cerca membro</label>
+                                <input type="text" id="adm-class-search" placeholder="Nome vampiro..." onkeyup="window.renderAdminClassifiche()">
+                            </div>
+                        </div>
+                        <p id="adm-class-periodo-info" style="font-size:0.7rem; color:var(--gold-dim); margin-bottom:20px; letter-spacing:0.5px;"></p>
+
+                        <div id="adm-class-vendite-wrap" style="margin-bottom:28px;">
+                            <div style="display:flex; justify-content:space-between; align-items:baseline; flex-wrap:wrap; gap:8px; margin-bottom:10px;">
+                                <h3 style="margin:0; font-size:0.9rem; color:var(--gold-accent); letter-spacing:1px;">💲 Classifica Vendite</h3>
+                                <span id="adm-class-vendite-meta" style="font-size:0.65rem; color:var(--text-dim);"></span>
+                            </div>
+                            <div class="scroll-container" style="max-height:420px;">
+                                <table style="font-size:0.8rem;">
+                                    <thead>
+                                        <tr>
+                                            <th style="width:70px;">Pos.</th>
+                                            <th>Vampiro</th>
+                                            <th>Quantità</th>
+                                            <th>Crediti Dinastia</th>
+                                            <th>Transazioni</th>
+                                        </tr>
+                                    </thead>
+                                    <tbody id="adm-class-vendite-body"></tbody>
+                                </table>
+                            </div>
+                        </div>
+
+                        <div id="adm-class-materiali-wrap">
+                            <div style="display:flex; justify-content:space-between; align-items:baseline; flex-wrap:wrap; gap:8px; margin-bottom:10px;">
+                                <h3 style="margin:0; font-size:0.9rem; color:var(--gold-accent); letter-spacing:1px;">🧱 Classifica Materiali</h3>
+                                <span id="adm-class-materiali-meta" style="font-size:0.65rem; color:var(--text-dim);"></span>
+                            </div>
+                            <div class="scroll-container" style="max-height:420px;">
+                                <table style="font-size:0.8rem;">
+                                    <thead>
+                                        <tr>
+                                            <th style="width:70px;">Pos.</th>
+                                            <th>Vampiro</th>
+                                            <th>Quantità</th>
+                                            <th>Crediti Dinastia</th>
+                                            <th>Transazioni</th>
+                                        </tr>
+                                    </thead>
+                                    <tbody id="adm-class-materiali-body"></tbody>
+                                </table>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+
+<div id="admin-view-finanze" class="admin-sub-view" style="display: none;">
                     <button class="btn-indietro" onclick="window.tornaAdminMenu()">🔙 Torna alla Dashboard</button>
                     <div class="vamp-card">
                         <h2>Gestione Saldo Dinastia</h2>
@@ -1558,6 +1647,7 @@
                                     <label class="perm-label"><input type="checkbox" class="perm-admin-check" value="membri"> Gestione Membri</label>
                                     <label class="perm-label"><input type="checkbox" class="perm-admin-check" value="dungeon"> Dungeon &amp; Nidi</label>
                                     <label class="perm-label"><input type="checkbox" class="perm-admin-check" value="storico-vendite"> Storico Vendite</label>
+                                    <label class="perm-label"><input type="checkbox" class="perm-admin-check" value="classifiche"> Classifiche</label>
                                     <label class="perm-label"><input type="checkbox" class="perm-admin-check" value="finanze"> Gestione Finanze</label>
                                     <label class="perm-label"><input type="checkbox" class="perm-admin-check" value="inventario"> Gestione Inventario</label>
                                     <label class="perm-label"><input type="checkbox" class="perm-admin-check" value="materiali"> Tipi Materiale</label>
@@ -1644,6 +1734,9 @@
             if (viewId === 'permessi-gestione') {
                 if (typeof window.popolaSelectPermessiGestione === 'function') window.popolaSelectPermessiGestione();
                 if (typeof window.renderAdminPermessiGestioneTable === 'function') window.renderAdminPermessiGestioneTable();
+            }
+            if (viewId === 'classifiche') {
+                if (typeof window.renderAdminClassifiche === 'function') window.renderAdminClassifiche({ refreshWeeks: true });
             }
         };
 
