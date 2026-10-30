@@ -933,6 +933,10 @@
                         <h3>🔑 Permessi Gestione</h3>
                         <p>Abilita ai membri le tab di Gestione (delega)</p>
                     </div>
+                    <div class="admin-menu-card" data-admin-view="system-logs" onclick="window.apriAdminView('system-logs')">
+                        <h3>📋 Log di Sistema</h3>
+                        <p>Accessi, logout, modifiche gestore e ogni azione tracciata</p>
+                    </div>
                 </div>
 
                 <div id="admin-view-comunicazioni" class="admin-sub-view" style="display: none;">
@@ -1681,6 +1685,78 @@
                     </div>
                 </div>
 
+                <div id="admin-view-system-logs" class="admin-sub-view" style="display: none;">
+                    <button class="btn-indietro" onclick="window.tornaAdminMenu()">🔙 Torna alla Dashboard</button>
+                    <div class="vamp-card">
+                        <h2>📋 Log di Sistema</h2>
+                        <p style="font-size:0.75rem; color:var(--text-dim); margin-bottom:16px; line-height:1.5;">
+                            Registro completo di accessi (login/logout, anche falliti), azioni del gestore e scritture sulla piattaforma.
+                            Ogni riga include <strong style="color:var(--gold-accent);">utente, IP, data/ora</strong> e dettagli.
+                            <br><span style="opacity:0.75;">Visibile solo al gestore. Ultimi ~400 eventi in tempo reale.</span>
+                        </p>
+                        <div style="display:grid; grid-template-columns: 1.4fr 1fr 1fr 1fr 1fr; gap:12px; margin-bottom:12px; align-items:end;">
+                            <div class="form-group" style="margin:0;">
+                                <label>Cerca (testo libero)</label>
+                                <input type="text" id="syslog-search" placeholder="nome, IP, azione, dettagli..." oninput="window.renderSystemLogs()">
+                            </div>
+                            <div class="form-group" style="margin:0;">
+                                <label>Tipo evento</label>
+                                <select id="syslog-tipo" onchange="window.renderSystemLogs()">
+                                    <option value="">— Tutti i tipi —</option>
+                                    <option value="auth">Accessi / Auth</option>
+                                    <option value="admin">Admin / Permessi</option>
+                                    <option value="membro">Membri</option>
+                                    <option value="vendita">Vendite</option>
+                                    <option value="materiali">Materiali</option>
+                                    <option value="inventario">Inventario</option>
+                                    <option value="saldo">Saldo / Finanze</option>
+                                    <option value="albero">Albero</option>
+                                    <option value="lavori">Lavori</option>
+                                    <option value="dungeon">Dungeon / Nidi</option>
+                                    <option value="conquista">Conquiste</option>
+                                    <option value="dinamico">Comunicazioni / Link</option>
+                                    <option value="altro">Altro</option>
+                                </select>
+                            </div>
+                            <div class="form-group" style="margin:0;">
+                                <label>Utente</label>
+                                <input type="text" id="syslog-utente" placeholder="es. GESTORE, Nome..." oninput="window.renderSystemLogs()">
+                            </div>
+                            <div class="form-group" style="margin:0;">
+                                <label>Da data</label>
+                                <input type="date" id="syslog-from" onchange="window.renderSystemLogs()">
+                            </div>
+                            <div class="form-group" style="margin:0;">
+                                <label>A data</label>
+                                <input type="date" id="syslog-to" onchange="window.renderSystemLogs()">
+                            </div>
+                        </div>
+                        <div style="display:flex; flex-wrap:wrap; gap:10px; align-items:center; margin-bottom:14px;">
+                            <button type="button" onclick="window.resetSystemLogFilters()" style="width:auto; padding:10px 16px; font-size:0.7rem; border-color:#555; color:#888;">Azzera filtri</button>
+                            <button type="button" onclick="window.exportSystemLogsCSV()" style="width:auto; padding:10px 16px; font-size:0.7rem;">📥 Esporta CSV</button>
+                            <span id="syslog-count" style="font-size:0.72rem; color:var(--gold-dim); margin-left:auto;"></span>
+                        </div>
+                        <div class="scroll-container" style="max-height:min(62vh, 560px);">
+                            <table style="font-size:0.78rem;">
+                                <thead>
+                                    <tr>
+                                        <th>Data / Ora</th>
+                                        <th>Tipo</th>
+                                        <th>Azione</th>
+                                        <th>Utente</th>
+                                        <th>Dettagli</th>
+                                        <th>IP</th>
+                                        <th>Device</th>
+                                    </tr>
+                                </thead>
+                                <tbody id="system-logs-body">
+                                    <tr><td colspan="7" style="opacity:0.5;text-align:center;padding:24px;">Caricamento log...</td></tr>
+                                </tbody>
+                            </table>
+                        </div>
+                    </div>
+                </div>
+
                 <div style="text-align: center; margin-top: 40px; margin-bottom: 20px;">
                     <button onclick="window.logoutAdmin()" style="background: transparent; border: 1px solid #444; width: auto; color: #555; display: inline-block;">Chiudi Sessione Gestore</button>
                 </div>
@@ -1694,11 +1770,13 @@
     <script>
         window.apriAdminView = function(viewId) {
             // Controllo permesso sulla sottosezione
-            if (viewId === 'permessi-gestione') {
+            if (viewId === 'permessi-gestione' || viewId === 'system-logs') {
                 // Solo gestore pieno (Firebase)
                 if (!window.currentUser || !window.currentUser.isAdmin) {
                     if (typeof window.vampireToast === 'function') {
-                        window.vampireToast('Solo il gestore può assegnare i permessi di Gestione.', 'error');
+                        window.vampireToast(viewId === 'system-logs'
+                            ? 'Solo il gestore può consultare i Log di Sistema.'
+                            : 'Solo il gestore può assegnare i permessi di Gestione.', 'error');
                     }
                     return;
                 }
@@ -1737,6 +1815,9 @@
             }
             if (viewId === 'classifiche') {
                 if (typeof window.renderAdminClassifiche === 'function') window.renderAdminClassifiche({ refreshWeeks: true });
+            }
+            if (viewId === 'system-logs') {
+                if (typeof window.renderSystemLogs === 'function') window.renderSystemLogs();
             }
         };
 

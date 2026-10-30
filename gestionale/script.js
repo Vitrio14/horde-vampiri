@@ -23,6 +23,7 @@ let venditeMateriali = [];
 let inventarioDati = [];
 let logs = [];
 let saldoLogs = [];
+let systemLogs = []; // log di sistema globali (auth, admin, scritture)
 let dungeonDati = [];
 let conquisteDati = [];
 let saldoGlobale = 0;
@@ -34,6 +35,8 @@ let tipiMateriale = []; // { id, nome, prezzoUnitario, percPropria, percDinastia
 let alberoNodi = []; // { id, nome, cognome, clan, anno, parentId, foto, note, ordine, morto, reietto, ritoCarne, createdAt }
 let tipiLavoro = []; // { id, nome, sblocchi: [{ livello, item, ingredienti, strumenti }], createdAt }
 let lavoriMembri = []; // { id, vampiro, lavoroId, lavoroNome, livello } — più record per stesso vampiro
+let _cachedClientIp = null;
+let _ipFetchPromise = null;
 
 let squadraDungeonTemp = [];
 let squadraConquistaTemp = [];
@@ -117,6 +120,79 @@ const vampireToast = (msg, icon = 'info') => {
 };
 window.vampireToast = vampireToast;
 
+// --- LOG DI SISTEMA (auth, admin, scritture) ---
+async function resolveClientIp() {
+    if (_cachedClientIp) return _cachedClientIp;
+    if (_ipFetchPromise) return _ipFetchPromise;
+    _ipFetchPromise = (async () => {
+        try {
+            const ctrl = new AbortController();
+            const t = setTimeout(() => ctrl.abort(), 2500);
+            const res = await fetch('https://api.ipify.org?format=json', { signal: ctrl.signal });
+            clearTimeout(t);
+            if (res.ok) {
+                const j = await res.json();
+                _cachedClientIp = (j && j.ip) ? String(j.ip) : 'sconosciuto';
+            } else {
+                _cachedClientIp = 'sconosciuto';
+            }
+        } catch (_) {
+            _cachedClientIp = 'sconosciuto';
+        }
+        return _cachedClientIp;
+    })();
+    return _ipFetchPromise;
+}
+
+/**
+ * Registra un evento nel log di sistema (non blocca l'UI se fallisce).
+ */
+/**
+ * Log di sistema leggero: non blocca l'UI.
+ * - IP in cache dopo la prima chiamata
+ * - scrittura Firestore in background (fire-and-forget)
+ * - meta limitata per non gonfiare i documenti
+ */
+function logSystemEvent(tipo, azione, dettagli, meta = null, opts = {}) {
+    // Cattura contesto subito (prima che currentUser cambi su logout)
+    const utente = (opts.utente != null)
+        ? opts.utente
+        : (currentUser?.nome || 'Anonimo');
+    const ruolo = (opts.ruolo != null)
+        ? opts.ruolo
+        : (currentUser?.isAdmin ? 'gestore' : (currentUser ? 'membro' : 'anonimo'));
+    const ua = (typeof navigator !== 'undefined' && navigator.userAgent) ? navigator.userAgent.slice(0, 200) : '';
+    let metaSafe = null;
+    if (meta && typeof meta === 'object') {
+        try {
+            const s = JSON.stringify(meta);
+            metaSafe = s.length > 800 ? { _truncated: true, preview: s.slice(0, 400) } : meta;
+        } catch (_) {
+            metaSafe = null;
+        }
+    }
+    const base = {
+        timestamp: Date.now(),
+        tipo: String(tipo || 'altro').slice(0, 40),
+        azione: String(azione || 'evento').slice(0, 60),
+        utente: String(utente).slice(0, 80),
+        ruolo: String(ruolo).slice(0, 20),
+        dettagli: String(dettagli || '').slice(0, 600),
+        userAgent: ua,
+        meta: metaSafe
+    };
+    // Background: non awaitato dai caller
+    (async () => {
+        try {
+            const ip = await resolveClientIp();
+            await addDoc(collection(db, 'system_logs'), { ...base, ip: ip || 'sconosciuto' });
+        } catch (err) {
+            console.warn('[system_logs] scrittura fallita:', err?.code || err?.message || err);
+        }
+    })();
+}
+window.logSystemEvent = logSystemEvent;
+
 // --- GESTIONE AUTENTICAZIONE ---
 window.unlockSite = async () => {
     const codice = (document.getElementById('global-codice')?.value || "").trim();
@@ -133,6 +209,7 @@ window.unlockSite = async () => {
         const snap = await getDocs(q);
         
         if (snap.empty) {
+            logSystemEvent('auth', 'login_fallito', `Login membro fallito: codice ${codice} non riconosciuto`, { codice }, { utente: `codice:${codice}`, ruolo: 'anonimo' });
             return vampireToast("Accesso negato. Codice non riconosciuto.", "error");
         }
 
@@ -145,10 +222,12 @@ window.unlockSite = async () => {
         });
 
         if (!found) {
+            logSystemEvent('auth', 'login_fallito', `Login membro fallito: password errata per codice ${codice}`, { codice }, { utente: `codice:${codice}`, ruolo: 'anonimo' });
             return vampireToast("Accesso negato. Password errata.", "error");
         }
 
         if (found.archiviato === true) {
+            logSystemEvent('auth', 'login_fallito', `Login bloccato: membro archiviato ${found.nome}`, { codice, nome: found.nome }, { utente: found.nome, ruolo: 'membro' });
             return vampireToast("Questo membro risulta archiviato (uscito dalla dinastia). Accesso non consentito.", "error");
         }
 
@@ -177,6 +256,7 @@ window.unlockSite = async () => {
         applyPermissions();
         const firstPerm = currentUser.permessi.find(p => SEZIONI[p] && p !== 'gestione' && p !== 'foto') || 'generale';
         window.showSection(firstPerm);
+        logSystemEvent('auth', 'login', `Login membro riuscito: ${currentUser.nome} (${currentUser.grado || 'n/d'})`, { codice: currentUser.codice, grado: currentUser.grado, permessi: currentUser.permessi });
         vampireToast(`Benvenuto, ${currentUser.nome}.`, "success");
         
         // Pulisci campi
@@ -198,6 +278,9 @@ window.logoutVampiro = async () => {
         color: '#fff'
     });
     if(res.isConfirmed) {
+        const who = currentUser?.nome || 'Anonimo';
+        const ruolo = currentUser?.isAdmin ? 'gestore' : 'membro';
+        logSystemEvent('auth', 'logout', `Logout: ${who}`, null, { utente: who, ruolo });
         currentUser = null;
         try { localStorage.removeItem('vamp_session'); } catch(e){}
         // Se era admin Firebase, esci anche da lì
@@ -215,8 +298,10 @@ window.checkAccess = async () => {
     try {
         await signInWithEmailAndPassword(auth, email, passInput);
         // onAuthStateChanged gestirà il resto
+        logSystemEvent('auth', 'login_gestore', 'Login gestore riuscito (pannello gestione)', { email }, { utente: 'GESTORE', ruolo: 'gestore' });
         vampireToast("Accesso Gestore garantito.", "success");
     } catch (error) {
+        logSystemEvent('auth', 'login_fallito', 'Login gestore fallito (pannello gestione)', { email }, { utente: 'GESTORE', ruolo: 'anonimo' });
         vampireToast("Credenziali Gestore errate.", "error");
     }
 };
@@ -243,8 +328,10 @@ window.unlockGestore = async () => {
     try {
         await signInWithEmailAndPassword(auth, email, passInput);
         // onAuthStateChanged si occupa del resto (mostra pannello admin)
+        logSystemEvent('auth', 'login_gestore', 'Login gestore riuscito (schermata principale)', { email }, { utente: 'GESTORE', ruolo: 'gestore' });
         vampireToast("Accesso Gestore garantito.", "success");
     } catch (error) {
+        logSystemEvent('auth', 'login_fallito', 'Login gestore fallito: credenziali errate', { email }, { utente: 'GESTORE', ruolo: 'anonimo' });
         vampireToast("Credenziali Gestore errate.", "error");
     }
 };
@@ -375,6 +462,7 @@ window.logoutAdmin = async () => {
     });
     
     if(res.isConfirmed) {
+        logSystemEvent('auth', 'logout', 'Logout gestore', null, { utente: 'GESTORE', ruolo: 'gestore' });
         currentUser = null;
         try { localStorage.removeItem('vamp_session'); } catch(e){}
         await signOut(auth);
@@ -452,7 +540,7 @@ function filterAdminMenuCards() {
         const viewId = card.getAttribute('data-admin-view');
         if (!viewId) return;
         // Solo il gestore pieno vede la card "Permessi Gestione"
-        if (viewId === 'permessi-gestione') {
+        if (viewId === 'permessi-gestione' || viewId === 'system-logs') {
             card.style.display = currentUser?.isAdmin ? '' : 'none';
             return;
         }
@@ -472,7 +560,7 @@ window.addDinamico = async (col) => {
 
     if(!titolo || !desc) return vampireToast("Titolo e descrizione obbligatori", "error");
     await addDoc(collection(db, col), { titolo, desc, link, firma, timestamp: Date.now() });
-    
+    logSystemEvent('dinamico', 'crea', `Pubblicato ${col}: "${titolo}"`, { col, titolo, firma });
     document.getElementById(pref + 'titolo').value = "";
     document.getElementById(pref + 'desc').value = "";
     document.getElementById(pref + 'link').value = "";
@@ -484,6 +572,7 @@ window.delDinamico = async (col, id) => {
     const res = await Swal.fire({ title: 'Rimuovere?', icon: 'warning', showCancelButton: true, confirmButtonColor: '#8b0000', background: '#111', color: '#fff' });
     if(res.isConfirmed) {
         await deleteDoc(doc(db, col, id));
+        logSystemEvent('dinamico', 'elimina', `Rimosso elemento da ${col} (id ${id})`, { col, id });
         vampireToast("Elemento rimosso correttamente.", "success");
     }
 };
@@ -555,7 +644,7 @@ window.aggiungiVampiro = async () => {
     // (per ripristino usare esplicitamente ripristinaVampiro)
 
     await setDoc(doc(db, "membri", nome), data, { merge: true });
-    
+    logSystemEvent('membro', 'salva', `Membro salvato/aggiornato: ${nome} (${grado})`, { nome, grado, permessi: data.permessi, codice: !!codice });
     document.getElementById('admin-vamp-nome').value = "";
     document.getElementById('admin-vamp-grado').value = "";
     if(document.getElementById('admin-vamp-codice')) document.getElementById('admin-vamp-codice').value = "";
@@ -625,6 +714,7 @@ window.salvaPermessiGestioneMembro = async function() {
             permessiAdminAggiornatiAt: Date.now(),
             permessiAdminDa: currentUser.nome || 'GESTORE'
         }, { merge: true });
+        logSystemEvent('admin', 'permessi_gestione', `Permessi Gestione aggiornati per ${nome}: ${permessiAdmin.join(', ') || 'nessuno'}`, { nome, permessiAdmin });
         vampireToast(`Permessi Gestione aggiornati per ${nome} (${permessiAdmin.length} tab).`, 'success');
         window.onSelectMembroPermessiGestione();
         if (typeof window.renderAdminPermessiGestioneTable === 'function') {
@@ -705,6 +795,7 @@ window.archiviaVampiro = async (id) => {
             dataArchivio: Date.now(),
             aggiornatoArchivioDa: currentUser.nome || 'GESTORE'
         }, { merge: true });
+        logSystemEvent('membro', 'archivia', `Archiviato membro ${id}. Motivo: ${motivo}`, { id, motivo });
         vampireToast(`${id} archiviato. Motivo: ${motivo}`, "success");
     } catch (err) {
         console.error(err);
@@ -735,6 +826,7 @@ window.ripristinaVampiro = async (id) => {
             dataArchivio: null,
             ripristinatoAt: Date.now()
         }, { merge: true });
+        logSystemEvent('membro', 'ripristina', `Ripristinato membro ${id}`, { id });
         vampireToast(`${id} ripristinato tra i membri attivi.`, "success");
     } catch (err) {
         console.error(err);
@@ -755,6 +847,7 @@ window.eliminaVampiro = async (id) => {
     });
     if(res.isConfirmed) {
         await deleteDoc(doc(db, "membri", id));
+        logSystemEvent('membro', 'elimina', `Eliminato definitivamente membro ${id}`, { id });
         vampireToast("Vampiro rimosso dal registro.", "success");
     }
 };
@@ -1062,6 +1155,7 @@ window.registraVenditaMateriali = async () => {
             settimanaEtichetta: getWeekYearKey(now)
         };
         await addDoc(collection(db, "vendite_materiali"), matEntry);
+        logSystemEvent('materiali', 'registra', `Vendita materiali: ${matEntry.vampiro || '?'} · ${matEntry.materiale || '?'} x${matEntry.qty || 0} → ${matEntry.acquirente || '?'}`, { vampiro: matEntry.vampiro, materiale: matEntry.materiale, qty: matEntry.qty, acquirente: matEntry.acquirente });
         forceRefreshAfterWrite('materiali');
 
         vampireToast("Vendita registrata correttamente.", "success");
@@ -1202,7 +1296,8 @@ window.renderAdminMateriali = () => {
 window.adminDeleteMat = async (id) => {
     const res = await Swal.fire({ title: 'Elimina transazione materiale?', icon: 'warning', showCancelButton: true, confirmButtonColor: '#8b0000', background: '#111' });
     if(res.isConfirmed) { 
-        await deleteDoc(doc(db, "vendite_materiali", id)); 
+        await deleteDoc(doc(db, "vendite_materiali", id));
+        logSystemEvent('materiali', 'elimina', `Eliminata vendita materiali id ${id}`, { id }); 
         vampireToast("Record rimosso con successo.", "success"); 
     }
 };
@@ -1249,6 +1344,7 @@ window.avviaDungeon = async () => {
         dataStr: now.toLocaleDateString('it-IT'),
         oraStr: now.toLocaleTimeString('it-IT')
     });
+    logSystemEvent('dungeon', 'registra', `Dungeon/Nido registrato · lv ${livello} · ${esito}`, { livello, esito, squadra: squadraDungeonTemp });
 
     squadraDungeonTemp = [];
     renderSquadraTemp();
@@ -1357,6 +1453,7 @@ window.registraConquista = async () => {
         timestamp: Date.now(),
         dataStr: now.toLocaleDateString('it-IT') + " " + now.toLocaleTimeString('it-IT')
     });
+    logSystemEvent('conquista', 'registra', `Conquista: ${zona} · ${esito}`, { zona, esito, squadra: squadraConquistaTemp });
 
     squadraConquistaTemp = [];
     document.getElementById('conquista-zona').value = "";
@@ -1442,6 +1539,7 @@ window.adminDeleteDungeon = async (id) => {
     const res = await Swal.fire({ title: 'Eliminare Dungeon?', icon: 'warning', showCancelButton: true, confirmButtonColor: '#8b0000', background: '#111' });
     if(res.isConfirmed) {
         await deleteDoc(doc(db, "dungeon", id));
+        logSystemEvent('dungeon', 'elimina', `Eliminato dungeon/nido id ${id}`, { id });
         vampireToast("Dungeon eliminato.", "success");
     }
 };
@@ -1478,6 +1576,7 @@ window.adminDeleteConquista = async (id) => {
     const res = await Swal.fire({ title: 'Eliminare Conquista?', icon: 'warning', showCancelButton: true, confirmButtonColor: '#8b0000', background: '#111' });
     if(res.isConfirmed) {
         await deleteDoc(doc(db, "conquiste", id));
+        logSystemEvent('conquista', 'elimina', `Eliminata conquista id ${id}`, { id });
         vampireToast("Conquista eliminata.", "success");
     }
 };
@@ -1544,6 +1643,7 @@ window.movimentoSaldo = async () => {
         dataStr: now.toLocaleDateString('it-IT'), ora: now.toLocaleTimeString('it-IT')
     };
     await addDoc(collection(db, "saldo_logs"), logEntry);
+    logSystemEvent('saldo', logEntry.azione || 'movimento', `Saldo ${logEntry.azione || ''}: ${logEntry.nome || '?'} · ${logEntry.importo || 0} cr · ${logEntry.motivo || ''}`, { nome: logEntry.nome, importo: logEntry.importo, azione: logEntry.azione });
     // Aggiornamento ottimistico: UI subito, senza attendere idle del listener
     saldoGlobale = nuovoSaldo;
     saldoLogs = [logEntry, ...saldoLogs].slice(0, 80);
@@ -1755,6 +1855,7 @@ window.registraVendita = async () => {
         settimanaEtichetta: getWeekYearKey(now)
     };
     await addDoc(collection(db, "vendite"), vendEntry);
+    logSystemEvent('vendita', 'registra', `Vendita: ${vendEntry.vampiro || '?'} · ${vendEntry.materiale || vendEntry.tipo || '?'} x${vendEntry.qty || 0}`, { vampiro: vendEntry.vampiro, qty: vendEntry.qty, totale: vendEntry.totale });
     forceRefreshAfterWrite('vendite');
     vampireToast("Vendita sigillata nel registro.", "success");
     document.getElementById('vamp-qty').value = "";
@@ -1892,6 +1993,7 @@ window.openInvQuickAction = async (itemID) => {
             dataStr: now.toLocaleDateString('it-IT'), ora: now.toLocaleTimeString('it-IT')
         };
         await addDoc(collection(db, "logs"), logEntry);
+        logSystemEvent('inventario', logEntry.azione || 'movimento', `Inventario: ${logEntry.user || '?'} · ${logEntry.item || '?'} · ${logEntry.azione || ''} ${logEntry.qty || ''}`, { user: logEntry.user, item: logEntry.item, azione: logEntry.azione, qty: logEntry.qty });
         // Ottimistico: qty + log subito in memoria e in UI
         const idx = inventarioDati.findIndex(i => i.id === itemID);
         if (idx >= 0) inventarioDati[idx] = { ...inventarioDati[idx], qty: newQty };
@@ -1920,6 +2022,7 @@ window.adminUpdateSaldo = async () => {
     const v = parseInt(document.getElementById('admin-saldo-val').value);
     if (isNaN(v)) return vampireToast("Valore non valido.", "error");
     await setDoc(doc(db, "config", "saldo"), { valore: v }, { merge: true });
+    logSystemEvent('saldo', 'correzione', `Saldo forzato a ${v} cr (admin)`, { valore: v });
     saldoGlobale = v;
     forceRefreshAfterWrite('saldo');
     vampireToast("Saldo globale aggiornato manualmente.", "success");
@@ -2015,9 +2118,11 @@ window.adminUpdateItem = async () => {
         if (editId && editId !== n) {
             await setDoc(doc(db, "inventario", n), { qty: q, categoria: c, foto, imageFileName });
             await deleteDoc(doc(db, "inventario", editId));
+            logSystemEvent('inventario', 'rinomina', `Inventario: "${editId}" → "${n}" (qty ${q})`, { da: editId, a: n, qty: q, categoria: c });
             vampireToast(`Oggetto rinominato in "${n}" e aggiornato.`, "success");
         } else {
             await setDoc(doc(db, "inventario", n), { qty: q, categoria: c, foto, imageFileName }, { merge: true });
+            logSystemEvent('inventario', editId ? 'modifica' : 'crea', `Inventario ${editId ? 'aggiornato' : 'aggiunto'}: ${n} (qty ${q}, ${c})`, { nome: n, qty: q, categoria: c });
             vampireToast(editId ? "Elemento inventario aggiornato." : "Elemento inventario aggiunto.", "success");
         }
         window.resetFormInventarioAdmin();
@@ -2029,13 +2134,15 @@ window.adminUpdateItem = async () => {
 
 window.adminUpdateQty = async (item, val) => {
     await updateDoc(doc(db, "inventario", item), { qty: parseInt(val) });
+    logSystemEvent('inventario', 'qty', `Inventario qty: ${item} → ${val}`, { item, qty: parseInt(val) });
     vampireToast(`Quantità di ${item} modificata.`, "success");
 };
 
 window.adminDeleteItem = async (item) => {
     const res = await Swal.fire({ title: 'Eliminare?', icon: 'warning', showCancelButton: true, confirmButtonColor: '#8b0000', background: '#111' });
     if(res.isConfirmed) { 
-        await deleteDoc(doc(db, "inventario", item)); 
+        await deleteDoc(doc(db, "inventario", item));
+        logSystemEvent('inventario', 'elimina', `Eliminato oggetto inventario ${item}`, { item }); 
         if ((document.getElementById('admin-item-edit-id')?.value || '') === item) {
             window.resetFormInventarioAdmin();
         }
@@ -2046,7 +2153,8 @@ window.adminDeleteItem = async (item) => {
 window.adminDeleteVendita = async (id) => {
     const res = await Swal.fire({ title: 'Elimina Vendita', icon: 'question', showCancelButton: true, confirmButtonColor: '#8b0000', background: '#111' });
     if(res.isConfirmed) { 
-        await deleteDoc(doc(db, "vendite", id)); 
+        await deleteDoc(doc(db, "vendite", id));
+        logSystemEvent('vendita', 'elimina', `Eliminata vendita id ${id}`, { id }); 
         vampireToast("Record di vendita eliminato.", "success"); 
     }
 };
@@ -2054,7 +2162,8 @@ window.adminDeleteVendita = async (id) => {
 window.adminDeleteLog = async (id) => {
     const res = await Swal.fire({ title: 'Elimina Log', icon: 'warning', showCancelButton: true, confirmButtonColor: '#8b0000', background: '#111' });
     if(res.isConfirmed) { 
-        await deleteDoc(doc(db, "logs", id)); 
+        await deleteDoc(doc(db, "logs", id));
+        logSystemEvent('admin', 'elimina_log_inv', `Eliminato log inventario ${id}`, { id }); 
         vampireToast("Log di movimento epurato.", "success"); 
     }
 };
@@ -2062,7 +2171,8 @@ window.adminDeleteLog = async (id) => {
 window.adminDeleteSaldoLog = async (id) => {
     const res = await Swal.fire({ title: 'Rimuovi Log Saldo?', icon: 'warning', showCancelButton: true, confirmButtonColor: '#8b0000', background: '#111' });
     if(res.isConfirmed) { 
-        await deleteDoc(doc(db, "saldo_logs", id)); 
+        await deleteDoc(doc(db, "saldo_logs", id));
+        logSystemEvent('admin', 'elimina_log_saldo', `Eliminato log saldo ${id}`, { id }); 
         vampireToast("Log transazione rimosso.", "success"); 
     }
 };
@@ -2665,6 +2775,22 @@ function startFirestoreListeners() {
         );
 
         // Albero: solo dati in memoria finché non apri la tab
+        // Log di sistema: solo se gestore (evita errori rules + traffico inutile ai membri)
+        if (currentUser?.isAdmin) {
+            onSnapshot(
+                query(collection(db, "system_logs"), orderBy("timestamp", "desc"), limit(300)),
+                (snap) => {
+                    systemLogs = snap.docs.map(d => ({ id: d.id, ...d.data() }));
+                    if (typeof window.renderSystemLogs === 'function' && document.getElementById('admin-view-system-logs')?.style.display !== 'none') {
+                        window.renderSystemLogs();
+                    }
+                },
+                (err) => {
+                    console.warn('[system_logs]', err?.code || err?.message || err);
+                }
+            );
+        }
+
         onSnapshot(collection(db, "albero_genealogico"), (snapshot) => {
             alberoNodi = snapshot.docs.map(d => ({ id: d.id, ...d.data() }));
             window._alberoDirty = true;
@@ -2743,6 +2869,7 @@ window.deleteItemImage = async function(id, name) {
     if (!res.isConfirmed) return;
     try {
         await deleteDoc(doc(db, 'item_images', id));
+        logSystemEvent('inventario', 'elimina_immagine', `Eliminata immagine inventario ${id}`, { id });
         vampireToast('Immagine rimossa dalla libreria.', 'success');
     } catch (err) {
         vampireToast('Errore: ' + (err.message || err), 'error');
@@ -2966,6 +3093,7 @@ window.uploadItemImagesFromInput = async function() {
                     size,
                     createdAt: Date.now()
                 });
+                logSystemEvent('inventario', 'upload_img', `Immagine inventario caricata: ${baseName}`, { fileName: baseName, size });
                 existing.add(baseName.toLowerCase());
                 ok++;
             } catch (err) {
@@ -3069,11 +3197,13 @@ window.salvaTipoMateriale = async () => {
     try {
         if (editId) {
             await setDoc(doc(db, 'tipi_materiale', editId), data, { merge: true });
-            vampireToast('Tipo materiale aggiornato.', 'success');
+            logSystemEvent('materiali', 'modifica_tipo', 'Tipo materiale aggiornato', null);
+        vampireToast('Tipo materiale aggiornato.', 'success');
         } else {
             data.createdAt = Date.now();
             await addDoc(collection(db, 'tipi_materiale'), data);
-            vampireToast('Tipo materiale creato.', 'success');
+            logSystemEvent('materiali', 'crea_tipo', 'Tipo materiale creato', null);
+        vampireToast('Tipo materiale creato.', 'success');
         }
         window.resetFormTipoMateriale();
     } catch (err) {
@@ -3108,6 +3238,7 @@ window.eliminaTipoMateriale = async (id) => {
     if (!res.isConfirmed) return;
     try {
         await deleteDoc(doc(db, 'tipi_materiale', id));
+        logSystemEvent('materiali', 'elimina_tipo', `Eliminato tipo materiale ${id}`, { id });
         vampireToast('Tipo rimosso.', 'success');
     } catch (err) {
         vampireToast('Errore: ' + (err.message || err), 'error');
@@ -3411,11 +3542,13 @@ window.salvaTipoLavoro = async function() {
                     await updateDoc(doc(db, 'lavori_membri', m.id), { lavoroNome: nome });
                 }
             }
-            vampireToast('Tipo lavoro aggiornato.', 'success');
+            logSystemEvent('lavori', 'modifica_tipo', 'Tipo lavoro aggiornato', null);
+        vampireToast('Tipo lavoro aggiornato.', 'success');
         } else {
             data.createdAt = Date.now();
             await addDoc(collection(db, 'tipi_lavoro'), data);
-            vampireToast('Tipo lavoro creato.', 'success');
+            logSystemEvent('lavori', 'crea_tipo', 'Tipo lavoro creato', null);
+        vampireToast('Tipo lavoro creato.', 'success');
         }
         window.resetFormTipoLavoro();
         // onSnapshot aggiorna, ma forziamo subito UI
@@ -3462,6 +3595,7 @@ window.eliminaTipoLavoro = async function(id) {
     if (!res.isConfirmed) return;
     try {
         await deleteDoc(doc(db, 'tipi_lavoro', id));
+        logSystemEvent('lavori', 'elimina_tipo', `Eliminato tipo lavoro ${id}`, { id });
         vampireToast('Tipo lavoro eliminato.', 'success');
         const editId = document.getElementById('adm-tipo-lavoro-edit-id');
         if (editId && editId.value === id) window.resetFormTipoLavoro();
@@ -3570,7 +3704,8 @@ window.salvaLavoroMembro = async function() {
             } else {
                 data.createdAt = Date.now();
                 await addDoc(collection(db, 'lavori_membri'), data);
-                vampireToast('Lavoro assegnato.', 'success');
+                logSystemEvent('lavori', 'assegna', 'Lavoro assegnato/aggiornato a membro', null);
+        vampireToast('Lavoro assegnato.', 'success');
             }
         }
         document.getElementById('adm-lavoro-edit-id').value = '';
@@ -3610,6 +3745,7 @@ window.eliminaLavoroMembro = async function(id) {
     if (!res.isConfirmed) return;
     try {
         await deleteDoc(doc(db, 'lavori_membri', id));
+        logSystemEvent('lavori', 'elimina_assegnazione', `Eliminata assegnazione lavoro ${id}`, { id });
         vampireToast('Assegnazione rimossa.', 'success');
     } catch (err) {
         vampireToast('Errore: ' + (err.message || err), 'error');
@@ -4105,10 +4241,12 @@ window.salvaNodoAlbero = async () => {
 
         if (editId) {
             await setDoc(doc(db, 'albero_genealogico', editId), data, { merge: true });
+            logSystemEvent('albero', 'modifica', `Aggiornato nodo albero: ${nome} ${cognome}`.trim(), { id: editId, nome, cognome });
             vampireToast('Nodo aggiornato.', 'success');
         } else {
             data.createdAt = Date.now();
             await addDoc(collection(db, 'albero_genealogico'), data);
+            logSystemEvent('albero', 'crea', `Aggiunto nodo albero: ${nome} ${cognome}`.trim(), { nome, cognome, parentId });
             vampireToast('Nodo aggiunto all\'albero.', 'success');
         }
         window.resetFormAlbero();
@@ -4157,6 +4295,7 @@ window.eliminaNodoAlbero = async (id) => {
     if (!res.isConfirmed) return;
     try {
         await deleteDoc(doc(db, 'albero_genealogico', id));
+        logSystemEvent('albero', 'elimina', `Eliminato nodo albero ${id}`, { id });
         vampireToast('Nodo rimosso.', 'success');
     } catch (err) {
         vampireToast('Errore: ' + (err.message || err), 'error');
@@ -4179,6 +4318,7 @@ window.toggleStatoAlbero = async (id, campo) => {
             [campo]: nuovo,
             updatedAt: Date.now()
         }, { merge: true });
+        logSystemEvent('albero', 'stato', `${alberoNomeCompleto(n)}: ${labels[campo]} ${nuovo ? 'ON' : 'OFF'}`, { id, campo, valore: nuovo });
         vampireToast(`${alberoNomeCompleto(n)}: ${labels[campo]} ${nuovo ? 'attivato' : 'rimosso'}.`, 'success');
     } catch (err) {
         console.error(err);
@@ -4705,4 +4845,137 @@ window.downloadAlberoPNG = async () => {
         if (container2) container2.style.transform = `translate(${alberoPan.x}px, ${alberoPan.y}px) scale(${alberoPan.scale})`;
         vampireToast('Errore generazione PNG: ' + (err.message || err), 'error');
     }
+};
+
+
+// ========== LOG DI SISTEMA (UI + filtri) ==========
+function formatSystemLogDate(ts) {
+    if (!ts) return '—';
+    try {
+        return new Date(ts).toLocaleString('it-IT', {
+            day: '2-digit', month: '2-digit', year: 'numeric',
+            hour: '2-digit', minute: '2-digit', second: '2-digit'
+        });
+    } catch (_) {
+        return String(ts);
+    }
+}
+
+window.renderSystemLogs = function() {
+    const tbody = document.getElementById('system-logs-body');
+    if (!tbody) return;
+
+    const qText = (document.getElementById('syslog-search')?.value || '').toLowerCase().trim();
+    const qTipo = (document.getElementById('syslog-tipo')?.value || '').trim();
+    const qUser = (document.getElementById('syslog-utente')?.value || '').toLowerCase().trim();
+    const qFrom = document.getElementById('syslog-from')?.value || '';
+    const qTo = document.getElementById('syslog-to')?.value || '';
+
+    let fromTs = 0, toTs = Infinity;
+    if (qFrom) {
+        const d = new Date(qFrom + 'T00:00:00');
+        if (!isNaN(d)) fromTs = d.getTime();
+    }
+    if (qTo) {
+        const d = new Date(qTo + 'T23:59:59');
+        if (!isNaN(d)) toTs = d.getTime();
+    }
+
+    let list = Array.isArray(systemLogs) ? [...systemLogs] : [];
+    list.sort((a, b) => (b.timestamp || 0) - (a.timestamp || 0));
+
+    list = list.filter(e => {
+        const ts = e.timestamp || 0;
+        if (ts < fromTs || ts > toTs) return false;
+        if (qTipo && e.tipo !== qTipo) return false;
+        if (qUser && !(String(e.utente || '').toLowerCase().includes(qUser))) return false;
+        if (qText) {
+            const blob = [
+                e.tipo, e.azione, e.utente, e.ruolo, e.dettagli, e.ip, e.userAgent,
+                e.meta ? JSON.stringify(e.meta) : ''
+            ].join(' ').toLowerCase();
+            if (!blob.includes(qText)) return false;
+        }
+        return true;
+    });
+
+    const countEl = document.getElementById('syslog-count');
+    if (countEl) countEl.textContent = `${list.length} eventi` + (list.length !== systemLogs.length ? ` (su ${systemLogs.length} caricati)` : '');
+
+    if (!list.length) {
+        tbody.innerHTML = '<tr><td colspan="7" style="opacity:0.5;text-align:center;padding:24px;">Nessun evento corrisponde ai filtri.</td></tr>';
+        return;
+    }
+
+    const tipoColor = {
+        auth: '#60a5fa', admin: '#c5a059', membro: '#e8a0bf', vendita: '#2ecc71',
+        materiali: '#947a44', inventario: '#a78bfa', saldo: '#f59e0b', albero: '#34d399',
+        lavori: '#f472b6', dungeon: '#ef4444', conquista: '#fb923c', dinamico: '#38bdf8', altro: '#9ca3af'
+    };
+
+    tbody.innerHTML = list.map(e => {
+        const col = tipoColor[e.tipo] || '#9ca3af';
+        const metaStr = e.meta ? `<details style="margin-top:4px;"><summary style="cursor:pointer;font-size:0.65rem;color:#888;">meta</summary><pre style="font-size:0.6rem;white-space:pre-wrap;max-width:280px;margin:4px 0 0;opacity:0.8;">${String(JSON.stringify(e.meta, null, 0)).replace(/</g,'&lt;').slice(0,500)}</pre></details>` : '';
+        const uaShort = (e.userAgent || '').slice(0, 48) + ((e.userAgent || '').length > 48 ? '…' : '');
+        return `<tr>
+            <td style="white-space:nowrap;font-family:monospace;font-size:0.72rem;">${formatSystemLogDate(e.timestamp)}</td>
+            <td><span style="display:inline-block;padding:2px 8px;border:1px solid ${col};color:${col};border-radius:4px;font-size:0.65rem;text-transform:uppercase;letter-spacing:0.5px;">${e.tipo || '—'}</span></td>
+            <td style="font-size:0.75rem;font-weight:700;color:var(--gold-accent);">${e.azione || '—'}</td>
+            <td style="text-align:left;">
+                <strong>${e.utente || '—'}</strong>
+                <span style="display:block;font-size:0.6rem;opacity:0.55;text-transform:uppercase;">${e.ruolo || ''}</span>
+            </td>
+            <td style="text-align:left;font-size:0.78rem;max-width:340px;">${(e.dettagli || '—').replace(/</g,'&lt;')}${metaStr}</td>
+            <td style="font-family:monospace;font-size:0.72rem;white-space:nowrap;">${e.ip || '—'}</td>
+            <td style="font-size:0.6rem;opacity:0.55;max-width:140px;overflow:hidden;text-overflow:ellipsis;" title="${(e.userAgent || '').replace(/"/g,'&quot;')}">${uaShort || '—'}</td>
+        </tr>`;
+    }).join('');
+};
+
+window.resetSystemLogFilters = function() {
+    ['syslog-search','syslog-tipo','syslog-utente','syslog-from','syslog-to'].forEach(id => {
+        const el = document.getElementById(id);
+        if (el) el.value = '';
+    });
+    window.renderSystemLogs();
+};
+
+window.exportSystemLogsCSV = function() {
+    const qText = (document.getElementById('syslog-search')?.value || '').toLowerCase().trim();
+    const qTipo = (document.getElementById('syslog-tipo')?.value || '').trim();
+    const qUser = (document.getElementById('syslog-utente')?.value || '').toLowerCase().trim();
+    const qFrom = document.getElementById('syslog-from')?.value || '';
+    const qTo = document.getElementById('syslog-to')?.value || '';
+    let fromTs = 0, toTs = Infinity;
+    if (qFrom) { const d = new Date(qFrom + 'T00:00:00'); if (!isNaN(d)) fromTs = d.getTime(); }
+    if (qTo) { const d = new Date(qTo + 'T23:59:59'); if (!isNaN(d)) toTs = d.getTime(); }
+    let list = [...(systemLogs || [])].sort((a,b)=>(b.timestamp||0)-(a.timestamp||0));
+    list = list.filter(e => {
+        const ts = e.timestamp || 0;
+        if (ts < fromTs || ts > toTs) return false;
+        if (qTipo && e.tipo !== qTipo) return false;
+        if (qUser && !(String(e.utente||'').toLowerCase().includes(qUser))) return false;
+        if (qText) {
+            const blob = [e.tipo,e.azione,e.utente,e.ruolo,e.dettagli,e.ip,e.userAgent].join(' ').toLowerCase();
+            if (!blob.includes(qText)) return false;
+        }
+        return true;
+    });
+    const rows = [['Data','Tipo','Azione','Utente','Ruolo','Dettagli','IP','UserAgent']];
+    list.forEach(e => {
+        rows.push([
+            formatSystemLogDate(e.timestamp),
+            e.tipo||'', e.azione||'', e.utente||'', e.ruolo||'',
+            (e.dettagli||'').replace(/\n/g,' '),
+            e.ip||'', (e.userAgent||'').replace(/,/g,';')
+        ]);
+    });
+    const csv = rows.map(r => r.map(c => '"' + String(c).replace(/"/g,'""') + '"').join(',')).join('\n');
+    const blob = new Blob([csv], { type: 'text/csv;charset=utf-8' });
+    const a = document.createElement('a');
+    a.href = URL.createObjectURL(blob);
+    a.download = 'system-logs-' + new Date().toISOString().slice(0,10) + '.csv';
+    a.click();
+    URL.revokeObjectURL(a.href);
+    vampireToast('CSV esportato (' + list.length + ' righe).', 'success');
 };
