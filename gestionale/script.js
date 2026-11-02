@@ -24,10 +24,10 @@ let inventarioDati = [];
 let logs = [];
 let saldoLogs = [];
 let systemLogs = []; // log di sistema globali (auth, admin, scritture)
-let dungeonDati = [];
-let conquisteDati = [];
 let saldoGlobale = 0;
 let listaVampiri = [];
+let calendarioAvvento = [];
+let calendarioMesi = [];
 let comunicazioni = [];
 let documenti = [];
 let itemImagesLib = []; // { id, fileName, dataUrl, size, createdAt }
@@ -38,8 +38,6 @@ let lavoriMembri = []; // { id, vampiro, lavoroId, lavoroNome, livello } — pi�
 let _cachedClientIp = null;
 let _ipFetchPromise = null;
 
-let squadraDungeonTemp = [];
-let squadraConquistaTemp = [];
 
 // Utente loggato corrente (null se non autenticato)
 let currentUser = null; // { nome, grado, codice, password, permessi: [], permessiAdmin: [], isAdmin: false }
@@ -61,8 +59,7 @@ const SEZIONI = {
     saldo: { id: 'saldo', label: 'Saldo' },
     calcolo: { id: 'calcolo', label: 'Calcolo' },
     inventario: { id: 'inventario', label: 'Inventario' },
-    dungeon: { id: 'dungeon', label: 'Dungeon' },
-    conquiste: { id: 'conquiste', label: 'Conquiste' },
+    calendario: { id: 'calendario', label: 'Calendario' },
     gestione: { id: 'gestione', label: 'Gestione' },
     foto: { id: 'foto', label: 'Foto' }
 };
@@ -71,14 +68,14 @@ const SEZIONI = {
 const ADMIN_VIEWS = {
     comunicazioni: { id: 'comunicazioni', label: 'Comunicazioni & Link' },
     membri: { id: 'membri', label: 'Gestione Membri' },
-    dungeon: { id: 'dungeon', label: 'Dungeon & Nidi' },
     'storico-vendite': { id: 'storico-vendite', label: 'Storico Vendite' },
     classifiche: { id: 'classifiche', label: 'Classifiche' },
     finanze: { id: 'finanze', label: 'Gestione Finanze' },
     inventario: { id: 'inventario', label: 'Gestione Inventario' },
     materiali: { id: 'materiali', label: 'Tipi Materiale' },
     albero: { id: 'albero', label: 'Albero Genealogico' },
-    lavori: { id: 'lavori', label: 'Gestione Lavori' }
+    lavori: { id: 'lavori', label: 'Gestione Lavori' },
+    calendario: { id: 'calendario', label: 'Calendario' }
     // 'permessi-gestione' NON è assegnabile — solo gestore Firebase
 };
 
@@ -431,8 +428,6 @@ function refreshAdminUI() {
     window.renderArchivioGestione(); 
     window.renderAdminLogs(); 
     window.renderAdminSaldoLogs();
-    window.renderAdminDungeon(); 
-    window.renderAdminConquiste();
     window.renderAdminMateriali(); 
     if (typeof window.renderAdminTipiMateriale === 'function') window.renderAdminTipiMateriale();
     if (typeof window.renderAdminAlbero === 'function') window.renderAdminAlbero();
@@ -442,13 +437,12 @@ function refreshAdminUI() {
     if (typeof window.renderAdminClassifiche === 'function') window.renderAdminClassifiche({ refreshWeeks: true });
     if (typeof window.filterAdminMenuCards === 'function') window.filterAdminMenuCards();
     if (typeof window.renderAdminTipiLavoro === 'function') window.renderAdminTipiLavoro();
+    if (typeof window.renderAdminCalendario === 'function') window.renderAdminCalendario();
     if (typeof window.popolaSelectTipiLavoro === 'function') window.popolaSelectTipiLavoro();
     renderVampiriLists(); 
     renderDinamici(); 
     if (typeof window.renderSezioneLavori === 'function' && isSectionActive('lavori')) window.renderSezioneLavori();
     aggiornaStats(); 
-    aggiornaStatsDungeon();
-    aggiornaStatsConquiste();
 }
 
 window.logoutAdmin = async () => {
@@ -651,7 +645,7 @@ window.aggiungiVampiro = async () => {
     if(document.getElementById('admin-vamp-password')) document.getElementById('admin-vamp-password').value = "";
     // Reset checkboxes a default
     document.querySelectorAll('.perm-check').forEach(cb => {
-        cb.checked = ['albero','generale','lavori','vendite','materiali','saldo','inventario','dungeon','conquiste'].includes(cb.value);
+        cb.checked = ['albero','generale','lavori','vendite','materiali','saldo','inventario','calendario'].includes(cb.value);
     });
     
     vampireToast("Membro salvato correttamente.", "success");
@@ -1303,283 +1297,6 @@ window.adminDeleteMat = async (id) => {
 };
 
 // --- LOGICA MORSI ---
-// --- LOGICA DUNGEON ---
-window.aggiungiMembroSquadra = () => {
-    const nome = document.getElementById('dungeon-select-membro').value;
-    if(!nome) return;
-    if(squadraDungeonTemp.includes(nome)) return vampireToast("Membro già in squadra.", "error");
-    squadraDungeonTemp.push(nome);
-    renderSquadraTemp();
-};
-
-function renderSquadraTemp() {
-    const box = document.getElementById('squadra-temporanea');
-    if(!box) return;
-    box.innerHTML = squadraDungeonTemp.map(n => `
-        <div class="status-badge status-attivo" style="display:flex; align-items:center; gap:8px;">
-            ${n} <span onclick="window.rimuoviMembroSquadra('${n}')" style="cursor:pointer; font-weight:bold;">×</span>
-        </div>`).join('');
-}
-
-window.rimuoviMembroSquadra = (nome) => {
-    squadraDungeonTemp = squadraDungeonTemp.filter(n => n !== nome);
-    renderSquadraTemp();
-};
-
-window.avviaDungeon = async () => {
-    const livello = document.getElementById('dungeon-livello').value;
-    const esito = document.getElementById('dungeon-esito').value;
-    const bottino = (document.getElementById('dungeon-bottino')?.value || '').trim();
-    if(squadraDungeonTemp.length === 0) return vampireToast("Seleziona almeno un membro.", "error");
-
-    const now = new Date();
-    const oraInizio = Date.now();
-    await addDoc(collection(db, "dungeon"), {
-        squadra: squadraDungeonTemp,
-        livello: livello,
-        esito: esito,
-        bottino: bottino,
-        inizio: oraInizio,
-        scadenza: oraInizio + (30 * 60 * 1000),
-        dataStr: now.toLocaleDateString('it-IT'),
-        oraStr: now.toLocaleTimeString('it-IT')
-    });
-    logSystemEvent('dungeon', 'registra', `Dungeon/Nido registrato · lv ${livello} · ${esito}`, { livello, esito, squadra: squadraDungeonTemp });
-
-    squadraDungeonTemp = [];
-    renderSquadraTemp();
-    if (document.getElementById('dungeon-bottino')) document.getElementById('dungeon-bottino').value = '';
-    vampireToast("Incursione registrata con successo.", "success");
-};
-
-window.renderDungeon = () => {
-    updateDungeonTimers();
-    aggiornaStatsDungeon();
-};
-
-function aggiornaStatsDungeon() {
-    const total = dungeonDati.length;
-    const success = dungeonDati.filter(d => d.esito === 'successo').length;
-    const fail = dungeonDati.filter(d => d.esito === 'fallimento').length;
-
-    if(document.getElementById('stat-dungeon-tot')) document.getElementById('stat-dungeon-tot').innerText = total;
-    if(document.getElementById('stat-dungeon-vittorie')) document.getElementById('stat-dungeon-vittorie').innerText = success;
-    if(document.getElementById('stat-dungeon-sconfitte')) document.getElementById('stat-dungeon-sconfitte').innerText = fail;
-
-    if(document.getElementById('admin-stat-dungeon-tot')) document.getElementById('admin-stat-dungeon-tot').innerText = total;
-    if(document.getElementById('admin-stat-dungeon-vittorie')) document.getElementById('admin-stat-dungeon-vittorie').innerText = success;
-    if(document.getElementById('admin-stat-dungeon-sconfitte')) document.getElementById('admin-stat-dungeon-sconfitte').innerText = fail;
-}
-
-function updateDungeonTimers() {
-    const tbody = document.getElementById('lista-dungeon');
-    if(!tbody) return;
-    const searchTerm = document.getElementById('search-dungeon').value.toLowerCase();
-
-    tbody.innerHTML = dungeonDati
-        .filter(d => {
-            const sq = (d.squadra || []).join(' ').toLowerCase();
-            const liv = (d.livello || '').toString();
-            const bot = (d.bottino || '').toLowerCase();
-            return sq.includes(searchTerm) || liv.includes(searchTerm) || bot.includes(searchTerm);
-        })
-        .sort((a,b) => b.inizio - a.inizio)
-        .map(d => {
-            const oraAttuale = Date.now();
-            const diff = (d.scadenza || 0) - oraAttuale;
-            let timerHTML = "";
-
-            if(diff > 0) {
-                const min = Math.floor(diff / 60000);
-                const sec = Math.floor((diff % 60000) / 1000);
-                timerHTML = `<span class="status-badge status-attivo">${min}m ${sec}s</span>`;
-            } else {
-                timerHTML = `<span class="status-badge status-passato">Concluso</span>`;
-            }
-
-            const esitoText = d.esito ? d.esito.toUpperCase() : "N/D";
-            const esitoClass = d.esito === 'successo' ? 'status-attivo' : 'status-passato';
-            const bottinoText = d.bottino ? d.bottino : '—';
-
-            return `
-                <tr>
-                    <td><span class="ts-label">${d.dataStr || ''}</span> <strong>${(d.squadra || []).join(', ')}</strong></td>
-                    <td>Livello ${d.livello || '?'}</td>
-                    <td><span class="status-badge ${esitoClass}">${esitoText}</span></td>
-                    <td style="font-size:0.75rem; color:var(--gold-dim); max-width:180px; word-break:break-word;">${bottinoText}</td>
-                    <td>${timerHTML}</td>
-                    <td style="font-size:0.7rem; opacity:0.6;">${d.oraStr || new Date(d.inizio || 0).toLocaleTimeString()}</td>
-                </tr>`;
-        }).join('');
-}
-
-setInterval(updateDungeonTimers, 1000);
-
-// --- LOGICA CONQUISTE ---
-window.aggiungiMembroConquista = () => {
-    const nome = document.getElementById('conquista-select-membro').value;
-    if(!nome) return;
-    if(squadraConquistaTemp.includes(nome)) return vampireToast("Membro già in squadra.", "error");
-    squadraConquistaTemp.push(nome);
-    renderSquadraConquistaTemp();
-};
-
-function renderSquadraConquistaTemp() {
-    const box = document.getElementById('squadra-conquista-temporanea');
-    if(!box) return;
-    box.innerHTML = squadraConquistaTemp.map(n => `
-        <div class="status-badge status-attivo" style="display:flex; align-items:center; gap:8px; border-color: var(--gold-accent);">
-            ${n} <span onclick="window.rimuoviMembroConquista('${n}')" style="cursor:pointer; font-weight:bold;">×</span>
-        </div>`).join('');
-}
-
-window.rimuoviMembroConquista = (nome) => {
-    squadraConquistaTemp = squadraConquistaTemp.filter(n => n !== nome);
-    renderSquadraConquistaTemp();
-};
-
-window.registraConquista = async () => {
-    const zona = document.getElementById('conquista-zona').value.trim();
-    const esito = document.getElementById('conquista-esito').value;
-    const bottino = (document.getElementById('conquista-bottino')?.value || '').trim();
-    if(squadraConquistaTemp.length === 0 || !zona) return vampireToast("Inserire squadra e zona.", "error");
-
-    const now = new Date();
-    await addDoc(collection(db, "conquiste"), {
-        squadra: squadraConquistaTemp,
-        zona: zona,
-        esito: esito,
-        bottino: bottino,
-        timestamp: Date.now(),
-        dataStr: now.toLocaleDateString('it-IT') + " " + now.toLocaleTimeString('it-IT')
-    });
-    logSystemEvent('conquista', 'registra', `Conquista: ${zona} · ${esito}`, { zona, esito, squadra: squadraConquistaTemp });
-
-    squadraConquistaTemp = [];
-    document.getElementById('conquista-zona').value = "";
-    if (document.getElementById('conquista-bottino')) document.getElementById('conquista-bottino').value = '';
-    renderSquadraConquistaTemp();
-    vampireToast("Operazione di conquista registrata.", "success");
-};
-
-window.renderConquiste = () => {
-    const tbody = document.getElementById('lista-conquiste');
-    if(!tbody) return;
-    const searchTerm = document.getElementById('search-conquiste').value.toLowerCase();
-
-    tbody.innerHTML = conquisteDati
-        .filter(c => {
-            const sq = (c.squadra || []).join(' ').toLowerCase();
-            const zona = (c.zona || '').toLowerCase();
-            const bot = (c.bottino || '').toLowerCase();
-            return sq.includes(searchTerm) || zona.includes(searchTerm) || bot.includes(searchTerm);
-        })
-        .sort((a,b) => b.timestamp - a.timestamp)
-        .map(c => {
-            const esitoText = c.esito ? c.esito.toUpperCase() : "N/D";
-            const esitoClass = c.esito === 'successo' ? 'status-attivo' : 'status-passato';
-            const bottinoText = c.bottino ? c.bottino : '—';
-            return `
-            <tr>
-                <td style="font-size:0.7rem;">${c.dataStr || ''}</td>
-                <td>${(c.squadra || []).join(', ')}</td>
-                <td style="color: var(--gold-accent);">${c.zona || ''}</td>
-                <td><span class="status-badge ${esitoClass}">${esitoText}</span></td>
-                <td style="font-size:0.75rem; color:var(--gold-dim); max-width:180px; word-break:break-word;">${bottinoText}</td>
-            </tr>`;
-        }).join('');
-
-    aggiornaStatsConquiste();
-};
-
-function aggiornaStatsConquiste() {
-    const total = conquisteDati.length;
-    const success = conquisteDati.filter(c => c.esito === 'successo').length;
-    const fail = conquisteDati.filter(c => c.esito === 'fallimento').length;
-
-    if(document.getElementById('stat-conquista-tot')) document.getElementById('stat-conquista-tot').innerText = total;
-    if(document.getElementById('stat-conquista-vittorie')) document.getElementById('stat-conquista-vittorie').innerText = success;
-    if(document.getElementById('stat-conquista-sconfitte')) document.getElementById('stat-conquista-sconfitte').innerText = fail;
-
-    if(document.getElementById('admin-stat-conquista-tot')) document.getElementById('admin-stat-conquista-tot').innerText = total;
-    if(document.getElementById('admin-stat-conquista-vittorie')) document.getElementById('admin-stat-conquista-vittorie').innerText = success;
-    if(document.getElementById('admin-stat-conquista-sconfitte')) document.getElementById('admin-stat-conquista-sconfitte').innerText = fail;
-}
-
-// --- LOGICA ADMIN ---
-window.renderAdminDungeon = () => {
-    const container = document.getElementById('admin-dungeon-body');
-    if(!container) return;
-    const searchTerm = document.getElementById('search-admin-dungeon').value.toLowerCase();
-
-    container.innerHTML = dungeonDati
-        .filter(d => {
-            const sq = (d.squadra || []).join(' ').toLowerCase();
-            const liv = (d.livello || '').toString();
-            const bot = (d.bottino || '').toLowerCase();
-            return sq.includes(searchTerm) || liv.includes(searchTerm) || bot.includes(searchTerm);
-        })
-        .sort((a,b) => b.inizio - a.inizio)
-        .map(d => {
-            const esitoText = d.esito ? d.esito.toUpperCase() : "N/D";
-            const bottinoText = d.bottino ? d.bottino : '—';
-            return `
-            <tr>
-                <td style="font-size:0.65rem;">${d.dataStr || ''}<br>${d.oraStr || ''}</td>
-                <td>${(d.squadra || []).join(', ')}</td>
-                <td>Liv ${d.livello || ''}</td>
-                <td><small>${esitoText}</small></td>
-                <td style="font-size:0.65rem; color:var(--gold-dim); max-width:140px; word-break:break-word;">${bottinoText}</td>
-                <td><button class="btn-delete" onclick="window.adminDeleteDungeon('${d.id}')">X</button></td>
-            </tr>`;
-        }).join('');
-};
-
-window.adminDeleteDungeon = async (id) => {
-    const res = await Swal.fire({ title: 'Eliminare Dungeon?', icon: 'warning', showCancelButton: true, confirmButtonColor: '#8b0000', background: '#111' });
-    if(res.isConfirmed) {
-        await deleteDoc(doc(db, "dungeon", id));
-        logSystemEvent('dungeon', 'elimina', `Eliminato dungeon/nido id ${id}`, { id });
-        vampireToast("Dungeon eliminato.", "success");
-    }
-};
-
-window.renderAdminConquiste = () => {
-    const container = document.getElementById('admin-conquiste-body');
-    if(!container) return;
-    const searchTerm = document.getElementById('search-admin-conquiste').value.toLowerCase();
-
-    container.innerHTML = conquisteDati
-        .filter(c => {
-            const sq = (c.squadra || []).join(' ').toLowerCase();
-            const zona = (c.zona || '').toLowerCase();
-            const bot = (c.bottino || '').toLowerCase();
-            return sq.includes(searchTerm) || zona.includes(searchTerm) || bot.includes(searchTerm);
-        })
-        .sort((a,b) => b.timestamp - a.timestamp)
-        .map(c => {
-            const esitoText = c.esito ? c.esito.toUpperCase() : "N/D";
-            const bottinoText = c.bottino ? c.bottino : '—';
-            return `
-            <tr>
-                <td style="font-size:0.65rem;">${c.dataStr || ''}</td>
-                <td>${(c.squadra || []).join(', ')}</td>
-                <td>${c.zona || ''}</td>
-                <td><small>${esitoText}</small></td>
-                <td style="font-size:0.65rem; color:var(--gold-dim); max-width:140px; word-break:break-word;">${bottinoText}</td>
-                <td><button class="btn-delete" onclick="window.adminDeleteConquista('${c.id}')">X</button></td>
-            </tr>`;
-        }).join('');
-};
-
-window.adminDeleteConquista = async (id) => {
-    const res = await Swal.fire({ title: 'Eliminare Conquista?', icon: 'warning', showCancelButton: true, confirmButtonColor: '#8b0000', background: '#111' });
-    if(res.isConfirmed) {
-        await deleteDoc(doc(db, "conquiste", id));
-        logSystemEvent('conquista', 'elimina', `Eliminata conquista id ${id}`, { id });
-        vampireToast("Conquista eliminata.", "success");
-    }
-};
 
 
 // --- CLASSIFICHE VENDITE / MATERIALI (separate) ---
@@ -2586,13 +2303,10 @@ window.refreshActiveSectionUI = () => {
             window.renderLogs?.();
             window.popolaSelectOggetti?.();
             break;
-        case 'dungeon':
-            window.renderDungeon?.();
+        case 'calendario':
+            window.renderCalendarioSezione?.();
             break;
-        case 'conquiste':
-            window.renderConquiste?.();
-            break;
-        case 'albero':
+case 'albero':
             if (window._alberoDirty) {
                 window._alberoDirty = false;
                 window.renderAlbero?.({ forceCenter: true });
@@ -2625,6 +2339,7 @@ function startFirestoreListeners() {
         try {
             if (typeof window.popolaSelectTipiLavoro === 'function') window.popolaSelectTipiLavoro();
             if (typeof window.renderAdminTipiLavoro === 'function') window.renderAdminTipiLavoro();
+    if (typeof window.renderAdminCalendario === 'function') window.renderAdminCalendario();
             if (typeof window.renderAdminLavoriMembri === 'function') window.renderAdminLavoriMembri();
             if (isSectionActive('lavori') && typeof window.renderSezioneLavori === 'function') window.renderSezioneLavori();
         } catch (e) { console.error('[lavori] render tipi', e); }
@@ -2723,19 +2438,19 @@ function startFirestoreListeners() {
 
     // --- FASE 3: secondari ---
     setTimeout(() => {
-        onSnapshot(collection(db, "dungeon"), (snapshot) => {
-            dungeonDati = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
+
+        onSnapshot(collection(db, "calendario_avvento"), (snapshot) => {
+            calendarioAvvento = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
             scheduleUI(() => {
-                if (isSectionActive('dungeon')) window.renderDungeon?.();
-                if (isAdminVisible()) window.renderAdminDungeon?.();
+                if (isSectionActive('calendario')) window.renderCalendarioSezione?.();
+                if (isAdminVisible()) window.renderAdminCalendario?.();
             });
         });
-
-        onSnapshot(collection(db, "conquiste"), (snapshot) => {
-            conquisteDati = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
+        onSnapshot(collection(db, "calendario_mesi"), (snapshot) => {
+            calendarioMesi = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
             scheduleUI(() => {
-                if (isSectionActive('conquiste')) window.renderConquiste?.();
-                if (isAdminVisible()) window.renderAdminConquiste?.();
+                if (isSectionActive('calendario')) window.renderCalendarioSezione?.();
+                if (isAdminVisible()) window.renderAdminCalendario?.();
             });
         });
 
@@ -3554,6 +3269,7 @@ window.salvaTipoLavoro = async function() {
         // onSnapshot aggiorna, ma forziamo subito UI
         setTimeout(() => {
             if (typeof window.renderAdminTipiLavoro === 'function') window.renderAdminTipiLavoro();
+    if (typeof window.renderAdminCalendario === 'function') window.renderAdminCalendario();
             if (typeof window.popolaSelectTipiLavoro === 'function') window.popolaSelectTipiLavoro();
         }, 150);
     } catch (err) {
@@ -3617,6 +3333,7 @@ window.ricaricaLavoriFromDb = async function() {
         console.log('[lavori] ricarica forzata', tipiLavoro.length, lavoriMembri.length);
         if (typeof window.popolaSelectTipiLavoro === 'function') window.popolaSelectTipiLavoro();
         if (typeof window.renderAdminTipiLavoro === 'function') window.renderAdminTipiLavoro();
+    if (typeof window.renderAdminCalendario === 'function') window.renderAdminCalendario();
         if (typeof window.renderAdminLavoriMembri === 'function') window.renderAdminLavoriMembri();
         if (typeof window.renderSezioneLavori === 'function') window.renderSezioneLavori();
         return { tipi: tipiLavoro.length, membri: lavoriMembri.length };
@@ -4910,7 +4627,7 @@ window.renderSystemLogs = function() {
     const tipoColor = {
         auth: '#60a5fa', admin: '#c5a059', membro: '#e8a0bf', vendita: '#2ecc71',
         materiali: '#947a44', inventario: '#a78bfa', saldo: '#f59e0b', albero: '#34d399',
-        lavori: '#f472b6', dungeon: '#ef4444', conquista: '#fb923c', dinamico: '#38bdf8', altro: '#9ca3af'
+        lavori: '#f472b6', calendario: '#c084fc', dinamico: '#38bdf8', altro: '#9ca3af'
     };
 
     tbody.innerHTML = list.map(e => {
@@ -4979,3 +4696,426 @@ window.exportSystemLogsCSV = function() {
     URL.revokeObjectURL(a.href);
     vampireToast('CSV esportato (' + list.length + ' righe).', 'success');
 };
+
+
+
+// ========== CALENDARIO (Avvento + Mesi multi-anno) ==========
+const CAL_MESI_NOMI = ['', 'Gennaio', 'Febbraio', 'Marzo', 'Aprile', 'Maggio', 'Giugno', 'Luglio', 'Agosto', 'Settembre', 'Ottobre', 'Novembre', 'Dicembre'];
+
+/** Anno visualizzato (membri) e anno in modifica (admin) */
+let calAnnoView = null;   // null = anno corrente
+let calAnnoAdmin = null;
+
+function calOggi() {
+    const d = new Date();
+    return { y: d.getFullYear(), m: d.getMonth() + 1, day: d.getDate() };
+}
+
+function calAnnoCorrente() {
+    return new Date().getFullYear();
+}
+
+/** Lista anni disponibili: da dati + corrente ± range */
+function calAnniDisponibili() {
+    const set = new Set();
+    const yNow = calAnnoCorrente();
+    for (let y = yNow - 1; y <= yNow + 3; y++) set.add(y);
+    (calendarioMesi || []).forEach(e => {
+        const a = Number(e.anno);
+        if (a >= 2000 && a <= 2100) set.add(a);
+    });
+    return [...set].sort((a, b) => a - b);
+}
+
+function getCalAnnoView() {
+    if (calAnnoView == null) calAnnoView = calAnnoCorrente();
+    return calAnnoView;
+}
+
+function getCalAnnoAdmin() {
+    if (calAnnoAdmin == null) calAnnoAdmin = calAnnoCorrente();
+    return calAnnoAdmin;
+}
+
+function escapeHtmlCal(s) {
+    return String(s || '').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;');
+}
+
+function popolaSelectAnniCalendario() {
+    const anni = calAnniDisponibili();
+    const yView = getCalAnnoView();
+    const yAdm = getCalAnnoAdmin();
+    const selView = document.getElementById('cal-anno-view');
+    if (selView) {
+        const cur = selView.value;
+        selView.innerHTML = anni.map(y =>
+            `<option value="${y}">${y}${y === calAnnoCorrente() ? ' · corrente' : ''}</option>`
+        ).join('');
+        selView.value = String(anni.includes(Number(cur)) ? cur : yView);
+        calAnnoView = Number(selView.value);
+    }
+    const selAdm = document.getElementById('adm-cal-anno');
+    if (selAdm) {
+        const cur = selAdm.value;
+        // Admin: stessi anni + possibilità di aggiungere anno futuro non ancora in lista
+        const extra = [...anni];
+        const yMax = Math.max(...anni, calAnnoCorrente());
+        for (let y = yMax + 1; y <= yMax + 2; y++) {
+            if (!extra.includes(y)) extra.push(y);
+        }
+        selAdm.innerHTML = extra.map(y =>
+            `<option value="${y}">${y}${y === calAnnoCorrente() ? ' · corrente' : ''}</option>`
+        ).join('');
+        selAdm.value = String(extra.includes(Number(cur)) ? cur : yAdm);
+        calAnnoAdmin = Number(selAdm.value);
+    }
+    // Aggiorna label tab
+    const tabMe = document.getElementById('cal-tab-mesi');
+    if (tabMe) tabMe.textContent = `📆 Calendario ${getCalAnnoView()}`;
+    const tabAdm = document.getElementById('adm-cal-tab-mesi');
+    if (tabAdm) tabAdm.textContent = `📆 Mesi ${getCalAnnoAdmin()}`;
+    const labelAdm = document.getElementById('adm-cal-mesi-title');
+    if (labelAdm) labelAdm.textContent = `Mese ${getCalAnnoAdmin()}`;
+}
+
+window.onCalAnnoViewChange = function() {
+    const v = Number(document.getElementById('cal-anno-view')?.value);
+    if (v) calAnnoView = v;
+    const tabMe = document.getElementById('cal-tab-mesi');
+    if (tabMe) tabMe.textContent = `📆 Calendario ${getCalAnnoView()}`;
+    renderMesiGrid(calOggi());
+};
+
+window.onCalAnnoAdminChange = function() {
+    const v = Number(document.getElementById('adm-cal-anno')?.value);
+    if (v) calAnnoAdmin = v;
+    const tabAdm = document.getElementById('adm-cal-tab-mesi');
+    if (tabAdm) tabAdm.textContent = `📆 Mesi ${getCalAnnoAdmin()}`;
+    const labelAdm = document.getElementById('adm-cal-mesi-title');
+    if (labelAdm) labelAdm.textContent = `Mese ${getCalAnnoAdmin()}`;
+    window.resetFormMese();
+    window.renderAdminCalendario();
+};
+
+window.switchCalendarioTab = function(tab) {
+    const av = document.getElementById('cal-panel-avvento');
+    const me = document.getElementById('cal-panel-mesi');
+    const bAv = document.getElementById('cal-tab-avvento');
+    const bMe = document.getElementById('cal-tab-mesi');
+    if (!av || !me) return;
+    const isAv = tab === 'avvento';
+    av.style.display = isAv ? 'block' : 'none';
+    me.style.display = isAv ? 'none' : 'block';
+    if (bAv) bAv.classList.toggle('is-active', isAv);
+    if (bMe) bMe.classList.toggle('is-active', !isAv);
+    try { localStorage.setItem('cal_tab', tab); } catch (_) {}
+    window.renderCalendarioSezione();
+};
+
+window.renderCalendarioSezione = function() {
+    const oggi = calOggi();
+    const live = document.getElementById('cal-live-date');
+    if (live) {
+        live.textContent = new Date().toLocaleDateString('it-IT', { weekday: 'long', year: 'numeric', month: 'long', day: 'numeric' });
+    }
+    popolaSelectAnniCalendario();
+    renderAvventoGrid(oggi);
+    renderMesiGrid(oggi);
+};
+
+function renderAvventoGrid(oggi) {
+    const grid = document.getElementById('cal-avvento-grid');
+    if (!grid) return;
+    const q = (document.getElementById('cal-avvento-search')?.value || '').toLowerCase().trim();
+    const byDay = {};
+    (calendarioAvvento || []).forEach(e => {
+        const g = Number(e.giorno);
+        if (g >= 1 && g <= 31) byDay[g] = e;
+    });
+    let html = '';
+    for (let g = 1; g <= 31; g++) {
+        const e = byDay[g] || {};
+        const titolo = e.titolo || '';
+        const premio = e.premio || '';
+        const foto = e.fotoUrl || '';
+        const blob = `${titolo} ${premio} ${e.note || ''}`.toLowerCase();
+        if (q && !blob.includes(q) && String(g) !== q) continue;
+        const isToday = oggi.m === 12 && oggi.day === g;
+        const hasContent = !!(foto || premio || titolo);
+        html += `<div class="cal-day-card${isToday ? ' is-today' : ''}${hasContent ? ' has-content' : ''}" data-day="${g}">
+            <div class="cal-day-num">${g}</div>
+            <div class="cal-day-media">${foto ? `<img src="${String(foto).replace(/"/g,'&quot;')}" alt="" loading="lazy" onerror="this.style.display='none'">` : `<div class="cal-day-empty">🦇</div>`}</div>
+            <div class="cal-day-body">
+                ${titolo ? `<div class="cal-day-title">${escapeHtmlCal(titolo)}</div>` : ''}
+                ${premio ? `<div class="cal-day-premio">🎁 ${escapeHtmlCal(premio)}</div>` : `<div class="cal-day-premio muted">—</div>`}
+            </div>
+            ${isToday ? '<span class="cal-badge-oggi">Oggi</span>' : ''}
+        </div>`;
+    }
+    grid.innerHTML = html || '<p class="cal-empty">Nessun giorno corrisponde al filtro.</p>';
+}
+
+const _calMeseFotoIdx = {};
+
+function renderMesiGrid(oggi) {
+    const grid = document.getElementById('cal-mesi-grid');
+    if (!grid) return;
+    const anno = getCalAnnoView();
+    const q = (document.getElementById('cal-mesi-search')?.value || '').toLowerCase().trim();
+    const byMese = {};
+    (calendarioMesi || []).forEach(e => {
+        if (Number(e.anno) !== anno) return;
+        const m = Number(e.mese);
+        if (m >= 1 && m <= 12) byMese[m] = e;
+    });
+    let html = '';
+    for (let m = 1; m <= 12; m++) {
+        const e = byMese[m] || {};
+        const nome = e.nome || CAL_MESI_NOMI[m];
+        const fotos = Array.isArray(e.foto) ? e.foto.filter(f => f && f.url) : [];
+        if (q && !nome.toLowerCase().includes(q) && !String(m).includes(q)) continue;
+        const isCurrentMonth = oggi.y === anno && oggi.m === m;
+        const isPast = (oggi.y > anno) || (oggi.y === anno && oggi.m > m);
+        const idxKey = `${anno}-${m}`;
+        const idx = Math.min(_calMeseFotoIdx[idxKey] || 0, Math.max(0, fotos.length - 1));
+        _calMeseFotoIdx[idxKey] = idx;
+        const cur = fotos[idx];
+        const multi = fotos.length > 1;
+        html += `<div class="cal-mese-card${isCurrentMonth ? ' is-current' : ''}${isPast ? ' is-past' : ''}" data-mese="${m}">
+            <div class="cal-mese-head"><span class="cal-mese-nome">${escapeHtmlCal(nome)}</span><span class="cal-mese-num">${anno}</span></div>
+            <div class="cal-mese-media">
+                ${cur ? `<img src="${String(cur.url).replace(/"/g,'&quot;')}" alt="" loading="lazy" onerror="this.style.display='none'">` : `<div class="cal-day-empty">🌙</div>`}
+                ${multi ? `<button type="button" class="cal-foto-nav prev" onclick="window.calMeseFotoNav(${m}, -1)" aria-label="Foto precedente">‹</button>
+                    <button type="button" class="cal-foto-nav next" onclick="window.calMeseFotoNav(${m}, 1)" aria-label="Foto successiva">›</button>
+                    <span class="cal-foto-dots">${idx + 1}/${fotos.length}</span>` : ''}
+            </div>
+            ${cur && cur.caption ? `<div class="cal-mese-caption">${escapeHtmlCal(cur.caption)}</div>` : ''}
+            ${isCurrentMonth ? `<span class="cal-badge-oggi">Mese corrente · giorno ${oggi.day}</span>` : ''}
+        </div>`;
+    }
+    grid.innerHTML = html || '<p class="cal-empty">Nessun mese corrisponde al filtro.</p>';
+}
+
+window.calMeseFotoNav = function(mese, delta) {
+    const anno = getCalAnnoView();
+    const e = (calendarioMesi || []).find(x => Number(x.mese) === mese && Number(x.anno) === anno);
+    const fotos = e && Array.isArray(e.foto) ? e.foto.filter(f => f && f.url) : [];
+    if (!fotos.length) return;
+    const idxKey = `${anno}-${mese}`;
+    const cur = _calMeseFotoIdx[idxKey] || 0;
+    _calMeseFotoIdx[idxKey] = (cur + delta + fotos.length) % fotos.length;
+    renderMesiGrid(calOggi());
+};
+
+window.switchAdminCalTab = function(tab) {
+    const av = document.getElementById('adm-cal-avvento');
+    const me = document.getElementById('adm-cal-mesi');
+    const bAv = document.getElementById('adm-cal-tab-avvento');
+    const bMe = document.getElementById('adm-cal-tab-mesi');
+    if (!av || !me) return;
+    const isAv = tab === 'avvento';
+    av.style.display = isAv ? 'block' : 'none';
+    me.style.display = isAv ? 'none' : 'block';
+    if (bAv) bAv.classList.toggle('is-active', isAv);
+    if (bMe) bMe.classList.toggle('is-active', !isAv);
+};
+
+window.renderAdminCalendario = function() {
+    popolaSelectAnniCalendario();
+    const tbody = document.getElementById('adm-cal-avvento-body');
+    if (tbody) {
+        const byDay = {};
+        (calendarioAvvento || []).forEach(e => { byDay[Number(e.giorno)] = e; });
+        let rows = '';
+        for (let g = 1; g <= 31; g++) {
+            const e = byDay[g];
+            if (!e) {
+                rows += `<tr><td>${g}</td><td colspan="3" style="opacity:0.4;">— vuoto —</td>
+                <td><button type="button" class="btn-delete" style="border-color:var(--gold-accent);color:var(--gold-accent);" onclick="window.caricaAvventoGiorno(${g})">Modifica</button></td></tr>`;
+                continue;
+            }
+            const thumb = e.fotoUrl ? `<img src="${String(e.fotoUrl).replace(/"/g,'&quot;')}" style="width:36px;height:36px;object-fit:cover;border-radius:4px;" onerror="this.style.display='none'">` : '—';
+            rows += `<tr>
+                <td><strong>${g}</strong></td>
+                <td>${thumb}</td>
+                <td style="text-align:left;">${escapeHtmlCal(e.titolo || '—')}<br><span style="opacity:0.6;font-size:0.65rem;">${escapeHtmlCal(e.premio || '')}</span></td>
+                <td style="font-size:0.65rem;max-width:120px;word-break:break-word;">${escapeHtmlCal(e.note || '')}</td>
+                <td style="white-space:nowrap;">
+                    <button type="button" class="btn-delete" style="border-color:var(--gold-accent);color:var(--gold-accent);" onclick="window.caricaAvventoGiorno(${g})">Modifica</button>
+                    <button type="button" class="btn-delete" onclick="window.eliminaAvventoGiorno('${e.id}')">X</button>
+                </td>
+            </tr>`;
+        }
+        tbody.innerHTML = rows;
+    }
+    const tbodyM = document.getElementById('adm-cal-mesi-body');
+    if (tbodyM) {
+        const anno = getCalAnnoAdmin();
+        const byMese = {};
+        (calendarioMesi || []).forEach(e => {
+            if (Number(e.anno) !== anno) return;
+            byMese[Number(e.mese)] = e;
+        });
+        let rows = '';
+        for (let m = 1; m <= 12; m++) {
+            const e = byMese[m];
+            const nome = (e && e.nome) || CAL_MESI_NOMI[m];
+            const fotos = (e && Array.isArray(e.foto)) ? e.foto.filter(f => f && f.url) : [];
+            const thumbs = fotos.slice(0, 3).map(f => `<img src="${String(f.url).replace(/"/g,'&quot;')}" style="width:28px;height:28px;object-fit:cover;border-radius:3px;margin:1px;" onerror="this.style.display='none'">`).join('') || '—';
+            rows += `<tr>
+                <td><strong>${CAL_MESI_NOMI[m]}</strong></td>
+                <td style="text-align:left;">${escapeHtmlCal(nome)}</td>
+                <td>${thumbs}${fotos.length > 3 ? ` <span style="opacity:0.6;">+${fotos.length-3}</span>` : ''}</td>
+                <td>${fotos.length}</td>
+                <td style="white-space:nowrap;">
+                    <button type="button" class="btn-delete" style="border-color:var(--gold-accent);color:var(--gold-accent);" onclick="window.caricaMeseCal(${m})">Modifica</button>
+                    ${e ? `<button type="button" class="btn-delete" onclick="window.eliminaMeseCal('${e.id}')">X</button>` : ''}
+                </td>
+            </tr>`;
+        }
+        tbodyM.innerHTML = rows;
+    }
+};
+
+window.caricaAvventoGiorno = function(giorno) {
+    const e = (calendarioAvvento || []).find(x => Number(x.giorno) === Number(giorno));
+    document.getElementById('adm-av-giorno').value = String(giorno);
+    document.getElementById('adm-av-titolo').value = e?.titolo || '';
+    document.getElementById('adm-av-premio').value = e?.premio || '';
+    document.getElementById('adm-av-foto').value = e?.fotoUrl || '';
+    document.getElementById('adm-av-note').value = e?.note || '';
+    document.getElementById('adm-av-edit-id').value = e?.id || '';
+    window.switchAdminCalTab('avvento');
+};
+
+window.resetFormAvvento = function() {
+    ['adm-av-titolo','adm-av-premio','adm-av-foto','adm-av-note','adm-av-edit-id'].forEach(id => {
+        const el = document.getElementById(id);
+        if (el) el.value = '';
+    });
+};
+
+window.salvaAvventoGiorno = async function() {
+    if (!hasAdminPerm('calendario') && !currentUser?.isAdmin) return vampireToast('Non hai il permesso Calendario.', 'error');
+    const giorno = Number(document.getElementById('adm-av-giorno')?.value);
+    if (!giorno || giorno < 1 || giorno > 31) return vampireToast('Seleziona un giorno valido (1-31).', 'error');
+    const data = {
+        giorno,
+        titolo: (document.getElementById('adm-av-titolo')?.value || '').trim(),
+        premio: (document.getElementById('adm-av-premio')?.value || '').trim(),
+        fotoUrl: (document.getElementById('adm-av-foto')?.value || '').trim(),
+        note: (document.getElementById('adm-av-note')?.value || '').trim(),
+        updatedAt: Date.now()
+    };
+    try {
+        await setDoc(doc(db, 'calendario_avvento', String(giorno)), data, { merge: true });
+        logSystemEvent('calendario', 'avvento_salva', `Avvento giorno ${giorno}`, { giorno });
+        vampireToast(`Giorno ${giorno} salvato.`, 'success');
+        window.resetFormAvvento();
+    } catch (err) {
+        vampireToast('Errore: ' + (err.message || err), 'error');
+    }
+};
+
+window.eliminaAvventoGiorno = async function(id) {
+    if (!hasAdminPerm('calendario') && !currentUser?.isAdmin) return vampireToast('Non hai il permesso Calendario.', 'error');
+    const res = await Swal.fire({ title: 'Rimuovere giorno avvento?', icon: 'warning', showCancelButton: true, confirmButtonColor: '#8b0000', background: '#111', color: '#fff' });
+    if (!res.isConfirmed) return;
+    try {
+        await deleteDoc(doc(db, 'calendario_avvento', id));
+        logSystemEvent('calendario', 'avvento_elimina', `Eliminato giorno avvento ${id}`, { id });
+        vampireToast('Giorno rimosso.', 'success');
+    } catch (err) {
+        vampireToast('Errore: ' + (err.message || err), 'error');
+    }
+};
+
+let _admMeseFotoTemp = [];
+
+window.caricaMeseCal = function(mese) {
+    const anno = getCalAnnoAdmin();
+    const e = (calendarioMesi || []).find(x => Number(x.mese) === Number(mese) && Number(x.anno) === anno);
+    document.getElementById('adm-mese-num').value = String(mese);
+    document.getElementById('adm-mese-nome').value = e?.nome || CAL_MESI_NOMI[mese];
+    document.getElementById('adm-mese-edit-id').value = e?.id || '';
+    _admMeseFotoTemp = (e && Array.isArray(e.foto)) ? e.foto.map(f => ({ url: f.url || '', caption: f.caption || '' })) : [];
+    renderAdmMeseFotoTemp();
+    window.switchAdminCalTab('mesi');
+};
+
+window.resetFormMese = function() {
+    const n = document.getElementById('adm-mese-nome'); if (n) n.value = '';
+    const e = document.getElementById('adm-mese-edit-id'); if (e) e.value = '';
+    const u = document.getElementById('adm-mese-foto-url'); if (u) u.value = '';
+    const c = document.getElementById('adm-mese-foto-caption'); if (c) c.value = '';
+    _admMeseFotoTemp = [];
+    renderAdmMeseFotoTemp();
+};
+
+function renderAdmMeseFotoTemp() {
+    const box = document.getElementById('adm-mese-foto-lista');
+    if (!box) return;
+    if (!_admMeseFotoTemp.length) {
+        box.innerHTML = '<p style="opacity:0.5;font-size:0.75rem;">Nessuna foto. Aggiungine una sotto.</p>';
+        return;
+    }
+    box.innerHTML = _admMeseFotoTemp.map((f, i) => `
+        <div class="adm-cal-foto-row">
+            <img src="${String(f.url).replace(/"/g,'&quot;')}" alt="" onerror="this.style.opacity=0.2">
+            <div style="flex:1;min-width:0;">
+                <div style="font-size:0.7rem;word-break:break-all;opacity:0.8;">${escapeHtmlCal(f.url)}</div>
+                <div style="font-size:0.75rem;color:var(--gold-dim);">${escapeHtmlCal(f.caption || '—')}</div>
+            </div>
+            <button type="button" class="btn-delete" onclick="window.rimuoviFotoMeseTemp(${i})">X</button>
+        </div>`).join('');
+}
+
+window.aggiungiFotoMeseTemp = function() {
+    const url = (document.getElementById('adm-mese-foto-url')?.value || '').trim();
+    const caption = (document.getElementById('adm-mese-foto-caption')?.value || '').trim();
+    if (!url) return vampireToast('Inserisci URL foto.', 'error');
+    _admMeseFotoTemp.push({ url, caption });
+    document.getElementById('adm-mese-foto-url').value = '';
+    document.getElementById('adm-mese-foto-caption').value = '';
+    renderAdmMeseFotoTemp();
+};
+
+window.rimuoviFotoMeseTemp = function(i) {
+    _admMeseFotoTemp.splice(i, 1);
+    renderAdmMeseFotoTemp();
+};
+
+window.salvaMeseCal = async function() {
+    if (!hasAdminPerm('calendario') && !currentUser?.isAdmin) return vampireToast('Non hai il permesso Calendario.', 'error');
+    const mese = Number(document.getElementById('adm-mese-num')?.value);
+    if (!mese || mese < 1 || mese > 12) return vampireToast('Seleziona un mese valido.', 'error');
+    const anno = getCalAnnoAdmin();
+    const nome = (document.getElementById('adm-mese-nome')?.value || '').trim() || CAL_MESI_NOMI[mese];
+    const data = { anno, mese, nome, foto: _admMeseFotoTemp.filter(f => f.url), updatedAt: Date.now() };
+    try {
+        const id = `${anno}-${String(mese).padStart(2, '0')}`;
+        await setDoc(doc(db, 'calendario_mesi', id), data, { merge: true });
+        logSystemEvent('calendario', 'mese_salva', `Mese ${CAL_MESI_NOMI[mese]} ${anno}`, { anno, mese, nFoto: data.foto.length });
+        vampireToast(`${CAL_MESI_NOMI[mese]} ${anno} salvato.`, 'success');
+        window.resetFormMese();
+    } catch (err) {
+        vampireToast('Errore: ' + (err.message || err), 'error');
+    }
+};
+
+window.eliminaMeseCal = async function(id) {
+    if (!hasAdminPerm('calendario') && !currentUser?.isAdmin) return vampireToast('Non hai il permesso Calendario.', 'error');
+    const res = await Swal.fire({ title: 'Rimuovere dati del mese?', icon: 'warning', showCancelButton: true, confirmButtonColor: '#8b0000', background: '#111', color: '#fff' });
+    if (!res.isConfirmed) return;
+    try {
+        await deleteDoc(doc(db, 'calendario_mesi', id));
+        logSystemEvent('calendario', 'mese_elimina', `Eliminato mese ${id}`, { id });
+        vampireToast('Mese rimosso.', 'success');
+    } catch (err) {
+        vampireToast('Errore: ' + (err.message || err), 'error');
+    }
+};
+
+setInterval(() => {
+    if (typeof isSectionActive === 'function' && isSectionActive('calendario')) window.renderCalendarioSezione?.();
+}, 60000);
