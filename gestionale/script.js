@@ -3787,10 +3787,7 @@ document.onkeydown = function(e) {
     if (e.ctrlKey && e.keyCode == 'U'.charCodeAt(0)) return false; 
 };
 
-setInterval(function() {
-    debugger;
-}, 100);
-// --- ALBERO GENEALOGICO ---
+// --- ALBERO GENEALOGICO (layout a coordinate + SVG) ---
 const PLACEHOLDER_FOTO = "data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='72' height='72' viewBox='0 0 72 72'%3E%3Crect fill='%231a1a1a' width='72' height='72'/%3E%3Ccircle cx='36' cy='28' r='12' fill='%23c5a059' opacity='0.4'/%3E%3Cpath d='M12 62c0-13 11-24 24-24s24 11 24 24' fill='%23c5a059' opacity='0.35'/%3E%3C/svg%3E";
 
 function alberoNomeCompleto(n) {
@@ -3818,7 +3815,6 @@ window.popolaSelectParentAlbero = () => {
         if (prev && [...sel.options].some(o => o.value === prev)) sel.value = prev;
     });
 
-    // Multi-select fratelli
     const fratSel = document.getElementById('adm-albero-fratelli');
     if (fratSel) {
         const prevMulti = [...fratSel.selectedOptions].map(o => o.value);
@@ -3827,29 +3823,20 @@ window.popolaSelectParentAlbero = () => {
             const opt = [...fratSel.options].find(o => o.value === v);
             if (opt) opt.selected = true;
         });
-        // Applica filtro ricerca se presente
         if (typeof window.filtraSelectFratelliAlbero === 'function') {
             window.filtraSelectFratelliAlbero();
         }
     }
 };
 
-/** Filtra le opzioni del multi-select Fratelli in base al testo di ricerca */
 window.filtraSelectFratelliAlbero = () => {
     const searchEl = document.getElementById('adm-albero-fratelli-search');
     const fratSel = document.getElementById('adm-albero-fratelli');
     if (!fratSel) return;
     const q = (searchEl?.value || '').trim().toLowerCase();
     [...fratSel.options].forEach(opt => {
-        if (!q) {
-            opt.hidden = false;
-            opt.style.display = '';
-            return;
-        }
         const hay = (opt.getAttribute('data-search') || opt.textContent || '').toLowerCase();
-        const match = hay.includes(q);
-        opt.hidden = !match;
-        opt.style.display = match ? '' : 'none';
+        opt.hidden = q ? !hay.includes(q) : false;
     });
 };
 
@@ -3865,11 +3852,32 @@ window.resetFormAlbero = () => {
     });
     const fratSel = document.getElementById('adm-albero-fratelli');
     if (fratSel) [...fratSel.options].forEach(o => { o.selected = false; });
-    const searchFrat = document.getElementById('adm-albero-fratelli-search');
-    if (searchFrat) searchFrat.value = '';
-    const fileEl = document.getElementById('adm-albero-foto-file');
-    if (fileEl) fileEl.value = '';
+    const fileInput = document.getElementById('adm-albero-foto-file');
+    if (fileInput) fileInput.value = '';
     window.popolaSelectParentAlbero();
+};
+
+window.caricaNodoAlberoPerEdit = (id) => {
+    const n = alberoNodi.find(x => x.id === id);
+    if (!n) return vampireToast('Nodo non trovato.', 'error');
+    document.getElementById('adm-albero-edit-id').value = n.id;
+    document.getElementById('adm-albero-nome').value = n.nome || '';
+    document.getElementById('adm-albero-cognome').value = n.cognome || '';
+    document.getElementById('adm-albero-clan').value = n.clan || '';
+    document.getElementById('adm-albero-anno').value = n.anno || '';
+    document.getElementById('adm-albero-ordine').value = n.ordine ?? 0;
+    document.getElementById('adm-albero-foto-url').value = n.foto || '';
+    document.getElementById('adm-albero-note').value = n.note || '';
+    document.getElementById('adm-albero-relazione').value = n.relazione || '';
+    window.popolaSelectParentAlbero();
+    if (document.getElementById('adm-albero-parent')) document.getElementById('adm-albero-parent').value = n.parentId || '';
+    if (document.getElementById('adm-albero-parent2')) document.getElementById('adm-albero-parent2').value = n.parent2Id || '';
+    if (document.getElementById('adm-albero-spouse')) document.getElementById('adm-albero-spouse').value = n.spouseId || '';
+    const fratSel = document.getElementById('adm-albero-fratelli');
+    if (fratSel && Array.isArray(n.fratelliIds)) {
+        [...fratSel.options].forEach(o => { o.selected = n.fratelliIds.includes(o.value); });
+    }
+    document.getElementById('adm-albero-nome')?.scrollIntoView({ behavior: 'smooth', block: 'center' });
 };
 
 window.salvaNodoAlbero = async () => {
@@ -3909,18 +3917,15 @@ window.salvaNodoAlbero = async () => {
         return vampireToast('Il coniuge non può essere anche nella lista fratelli.', 'error');
     }
 
-    // Etichetta automatica se manca: radice → Originario, con genitore → Figlio
     let relazioneFinal = relazione;
     if (!relazioneFinal) {
         relazioneFinal = parentId ? 'Figlio' : 'Originario';
     }
 
-    // Avviso utile: altri figli dello stesso genitore = fratelli
     if (parentId) {
         const fratelli = alberoNodi.filter(n => n.parentId === parentId && n.id !== editId);
         if (fratelli.length) {
             const nomi = fratelli.map(f => alberoNomeCompleto(f)).join(', ');
-            // solo info, non blocca
             setTimeout(() => vampireToast(`Fratelli/sorelle con stesso genitore: ${nomi}`, 'info'), 600);
         }
     }
@@ -3934,7 +3939,6 @@ window.salvaNodoAlbero = async () => {
             foto = await readFileAsDataURL(file);
         }
 
-        // Se stiamo modificando e c'era già una foto base64 e non ne carichiamo una nuova/URL, mantienila
         if (editId && !foto) {
             const existing = alberoNodi.find(x => x.id === editId);
             if (existing?.foto) foto = existing.foto;
@@ -3973,32 +3977,6 @@ window.salvaNodoAlbero = async () => {
     }
 };
 
-window.caricaNodoAlberoPerEdit = (id) => {
-    const n = alberoNodi.find(x => x.id === id);
-    if (!n) return;
-    document.getElementById('adm-albero-edit-id').value = n.id;
-    document.getElementById('adm-albero-nome').value = n.nome || '';
-    document.getElementById('adm-albero-cognome').value = n.cognome || '';
-    document.getElementById('adm-albero-clan').value = n.clan || '';
-    document.getElementById('adm-albero-anno').value = n.anno || '';
-    document.getElementById('adm-albero-ordine').value = n.ordine ?? 0;
-    document.getElementById('adm-albero-note').value = n.note || '';
-    document.getElementById('adm-albero-foto-url').value = (n.foto && !n.foto.startsWith('data:')) ? n.foto : '';
-    if (document.getElementById('adm-albero-relazione')) {
-        document.getElementById('adm-albero-relazione').value = n.relazione || '';
-    }
-    window.popolaSelectParentAlbero();
-    if (document.getElementById('adm-albero-parent')) document.getElementById('adm-albero-parent').value = n.parentId || '';
-    if (document.getElementById('adm-albero-parent2')) document.getElementById('adm-albero-parent2').value = n.parent2Id || '';
-    if (document.getElementById('adm-albero-spouse')) document.getElementById('adm-albero-spouse').value = n.spouseId || '';
-    const fratSel = document.getElementById('adm-albero-fratelli');
-    if (fratSel) {
-        const ids = Array.isArray(n.fratelliIds) ? n.fratelliIds : [];
-        [...fratSel.options].forEach(o => { o.selected = ids.includes(o.value); });
-    }
-    vampireToast('Dati caricati. Modifica e premi Salva persona.', 'info');
-};
-
 window.eliminaNodoAlbero = async (id) => {
     const res = await Swal.fire({
         title: 'Eliminare questo nodo?',
@@ -4019,27 +3997,16 @@ window.eliminaNodoAlbero = async (id) => {
     }
 };
 
-/** Toggle stato speciale: morto | reietto | ritoCarne */
-window.toggleStatoAlbero = async (id, campo) => {
-    if (!hasAdminPerm('albero')) {
-        return vampireToast('Non hai il permesso Albero Genealogico.', 'error');
-    }
-    const allowed = ['morto', 'reietto', 'ritoCarne'];
-    if (!allowed.includes(campo)) return;
+window.toggleStatoAlbero = async (id, field) => {
+    if (!hasAdminPerm('albero')) return vampireToast('Non hai il permesso Albero Genealogico.', 'error');
     const n = alberoNodi.find(x => x.id === id);
-    if (!n) return vampireToast('Persona non trovata.', 'error');
-    const nuovo = !n[campo];
-    const labels = { morto: 'Morto', reietto: 'Reietto', ritoCarne: 'Rito della Carne' };
+    if (!n) return;
+    const next = !n[field];
     try {
-        await setDoc(doc(db, 'albero_genealogico', id), {
-            [campo]: nuovo,
-            updatedAt: Date.now()
-        }, { merge: true });
-        logSystemEvent('albero', 'stato', `${alberoNomeCompleto(n)}: ${labels[campo]} ${nuovo ? 'ON' : 'OFF'}`, { id, campo, valore: nuovo });
-        vampireToast(`${alberoNomeCompleto(n)}: ${labels[campo]} ${nuovo ? 'attivato' : 'rimosso'}.`, 'success');
+        await setDoc(doc(db, 'albero_genealogico', id), { [field]: next, updatedAt: Date.now() }, { merge: true });
+        logSystemEvent('albero', 'stato', `${field} → ${next} per ${alberoNomeCompleto(n)}`, { id, field, next });
     } catch (err) {
-        console.error(err);
-        vampireToast('Errore aggiornamento stato.', 'error');
+        vampireToast('Errore: ' + (err.message || err), 'error');
     }
 };
 
@@ -4055,12 +4022,8 @@ window.renderAdminAlbero = () => {
             const p2 = n.parent2Id ? alberoNomeCompleto(alberoNodi.find(x => x.id === n.parent2Id)) : '';
             const spouse = n.spouseId ? alberoNomeCompleto(alberoNodi.find(x => x.id === n.spouseId)) : '';
             return full.includes(search) ||
-                (n.nome || '').toLowerCase().includes(search) ||
-                (n.cognome || '').toLowerCase().includes(search) ||
                 (n.clan || '').toLowerCase().includes(search) ||
                 (n.relazione || '').toLowerCase().includes(search) ||
-                (n.note || '').toLowerCase().includes(search) ||
-                (n.anno || '').toLowerCase().includes(search) ||
                 p1.toLowerCase().includes(search) ||
                 p2.toLowerCase().includes(search) ||
                 spouse.toLowerCase().includes(search);
@@ -4102,263 +4065,464 @@ window.renderAdminAlbero = () => {
     }).join('') || '<tr><td colspan="6" style="opacity:0.5;text-align:center;">Nessun nodo trovato.</td></tr>';
 };
 
-function buildAlberoTree(nodes) {
-    const byId = {};
+/* ============================================================
+   LAYOUT ENGINE v5 — sottoalberi: i figli stanno SOTTO il genitore
+   Appartenenza chiara per posizione + colore linea famiglia
+   ============================================================ */
+const ALBERO_LAYOUT = {
+    NODE_W: 108,
+    NODE_H: 152,
+    H_GAP: 14,       // tra fratelli / sottoalberi affiancati
+    V_GAP: 68,       // tra genitore e figli
+    COUPLE_GAP: 8,
+    PAD: 28,
+    FOREST_GAP: 36   // tra alberi radice distinti
+};
+
+/** Palette linee per famiglia (ciclo) — aiuta a distinguere i rami */
+const ALBERO_EDGE_COLORS = [
+    '#c5a059', '#e74c3c', '#5dade2', '#58d68d',
+    '#af7ac5', '#f5b041', '#48c9b0', '#ec7063'
+];
+
+const alberoCollapsed = new Set();
+let alberoCollapseSeeded = true;
+
+function alberoSeedCollapsedDefault(nodes) {
+    alberoCollapsed.clear();
+    if (!nodes || !nodes.length) return;
+    const byId = Object.create(null);
     nodes.forEach(n => { byId[n.id] = n; });
-
-    // Grafo fratelli (bidirezionale): stesso parentId + fratelliIds dichiarati
-    const sibAdj = {};
-    nodes.forEach(n => { sibAdj[n.id] = new Set(); });
     nodes.forEach(n => {
-        const listed = Array.isArray(n.fratelliIds) ? n.fratelliIds : [];
-        listed.forEach(fid => {
-            if (!byId[fid] || fid === n.id) return;
-            sibAdj[n.id].add(fid);
-            sibAdj[fid].add(n.id);
-        });
+        if (n.parentId && byId[n.parentId]) alberoCollapsed.add(n.parentId);
+        if (n.parent2Id && byId[n.parent2Id]) alberoCollapsed.add(n.parent2Id);
     });
-    // Stesso genitore principale = fratelli automatici
-    const byParent = {};
-    nodes.forEach(n => {
-        const pid = n.parentId || '__root__';
-        if (!byParent[pid]) byParent[pid] = [];
-        byParent[pid].push(n);
-    });
-    Object.keys(byParent).forEach(k => {
-        const list = byParent[k];
-        list.sort((a, b) => (a.ordine ?? 0) - (b.ordine ?? 0) || alberoNomeCompleto(a).localeCompare(alberoNomeCompleto(b), 'it'));
-        if (k === '__root__') return;
-        for (let i = 0; i < list.length; i++) {
-            for (let j = i + 1; j < list.length; j++) {
-                sibAdj[list[i].id].add(list[j].id);
-                sibAdj[list[j].id].add(list[i].id);
-            }
-        }
-    });
-
-    function siblingGroupOf(id) {
-        const group = [];
-        const seen = new Set();
-        const stack = [id];
-        while (stack.length) {
-            const cur = stack.pop();
-            if (seen.has(cur) || !byId[cur]) continue;
-            seen.add(cur);
-            group.push(byId[cur]);
-            (sibAdj[cur] || new Set()).forEach(nb => {
-                if (!seen.has(nb)) stack.push(nb);
-            });
-        }
-        group.sort((a, b) => (a.ordine ?? 0) - (b.ordine ?? 0) || alberoNomeCompleto(a).localeCompare(alberoNomeCompleto(b), 'it'));
-        return group;
-    }
-
-    const rendered = new Set();
-
-    function siblingLabel(siblings) {
-        if (siblings.length < 2) return '';
-        return `<div class="albero-siblings-label">Fratelli / Sorelle (${siblings.length})</div>`;
-    }
-
-    function cardHtml(n, extraClass) {
-        const fotoSrc = n.foto || PLACEHOLDER_FOTO;
-        const p1 = n.parentId ? byId[n.parentId] : null;
-        const p2 = n.parent2Id ? byId[n.parent2Id] : null;
-        const parentHint = [p1, p2].filter(Boolean).map(alberoNomeCompleto).join(' · ');
-        const sibs = siblingGroupOf(n.id).filter(s => s.id !== n.id);
-        const sibHint = sibs.length
-            ? `<div class="nodo-siblings">⇄ ${sibs.map(s => s.nome || alberoNomeCompleto(s)).join(', ')}</div>`
-            : '';
-        const isMorto = !!n.morto;
-        const isReietto = !!n.reietto;
-        const isRito = !!n.ritoCarne;
-        const statiHtml = [
-            isMorto ? '<span class="nodo-stato" title="Morto">💀</span>' : '',
-            isReietto ? '<span class="nodo-stato" title="Reietto (disconosciuto)">🐀</span>' : '',
-            isRito ? '<span class="nodo-stato" title="Rito della Carne">🥩</span>' : ''
-        ].filter(Boolean).join('');
-        const mortoClass = isMorto ? ' is-morto' : '';
-        const reiettoClass = isReietto ? ' is-reietto' : '';
-        return `<div class="albero-nodo ${extraClass || ''}${mortoClass}${reiettoClass}" data-id="${n.id}">
-            <span class="nodo-bat" title="Vampiro">🦇</span>
-            <img class="nodo-foto" src="${fotoSrc}" alt="" loading="lazy" decoding="async" onerror="this.src='${PLACEHOLDER_FOTO}'">
-            <div class="nodo-nome">${n.nome || ''}</div>
-            <div class="nodo-cognome">${n.cognome || ''}</div>
-            ${statiHtml ? `<div class="nodo-stati">${statiHtml}</div>` : ''}
-            ${n.relazione ? `<div class="nodo-relazione">${n.relazione}</div>` : ''}
-            ${n.clan ? `<div class="nodo-clan">${n.clan}</div>` : ''}
-            ${n.anno ? `<div class="nodo-anno">${n.anno}</div>` : ''}
-            ${n.note ? `<div class="nodo-note" title="${String(n.note).replace(/"/g, '&quot;')}">${n.note}</div>` : ''}
-            ${parentHint ? `<div class="nodo-parents">↳ figlio/a di ${parentHint}</div>` : ''}
-            ${sibHint}
-        </div>`;
-    }
-
-    function renderPersonUnit(n) {
-        if (rendered.has(n.id)) return '';
-        rendered.add(n.id);
-
-        const spouse = n.spouseId ? byId[n.spouseId] : null;
-        let pairSpouse = null;
-        if (spouse && !rendered.has(spouse.id)) {
-            pairSpouse = spouse;
-            rendered.add(spouse.id);
-        }
-
-        let unit = '';
-        if (pairSpouse) {
-            unit = `<div class="albero-couple">
-                ${cardHtml(n)}
-                <div class="albero-heart" title="Coniugi / Compagni">♥</div>
-                ${cardHtml(pairSpouse, 'nodo-spouse')}
-            </div>`;
-        } else {
-            unit = cardHtml(n);
-        }
-
-        // Figli REALI (hanno questo genitore) — la barra e gli steli li collegano al padre
-        const trueKidMap = {};
-        (byParent[n.id] || []).forEach(k => { trueKidMap[k.id] = k; });
-        if (pairSpouse) {
-            (byParent[pairSpouse.id] || []).forEach(k => { trueKidMap[k.id] = k; });
-        }
-        const trueKids = Object.values(trueKidMap).sort((a, b) =>
-            (a.ordine ?? 0) - (b.ordine ?? 0) || alberoNomeCompleto(a).localeCompare(alberoNomeCompleto(b), 'it')
-        );
-
-        // Fratelli dichiarati SENZA questo genitore: stessa riga, ma staccati (niente legame al padre)
-        const detachedMap = {};
-        trueKids.forEach(k => {
-            siblingGroupOf(k.id).forEach(s => {
-                if (rendered.has(s.id) || trueKidMap[s.id]) return;
-                const isChildOfThis = s.parentId === n.id || (pairSpouse && s.parentId === pairSpouse.id);
-                if (isChildOfThis) return;
-                detachedMap[s.id] = s;
-            });
-        });
-        const detached = Object.values(detachedMap).sort((a, b) =>
-            (a.ordine ?? 0) - (b.ordine ?? 0) || alberoNomeCompleto(a).localeCompare(alberoNomeCompleto(b), 'it')
-        );
-
-        let html = `<div class="albero-branch">
-            <div class="albero-node-wrap">${unit}</div>`;
-
-        if (trueKids.length || detached.length) {
-            if (trueKids.length) {
-                html += `<div class="albero-stem"></div>`;
-            }
-            const rowPeers = [...trueKids, ...detached];
-            html += `<div class="albero-children">
-                ${siblingLabel(rowPeers)}
-                <div class="albero-children-row">`;
-            if (trueKids.length) {
-                html += `<div class="albero-true-kids-group">
-                    <div class="albero-children-bar"></div>
-                    <div class="albero-true-kids-row">`;
-                trueKids.forEach(k => {
-                    html += `<div class="albero-child-slot">
-                        <div class="albero-child-stem"></div>
-                        ${renderPersonUnit(k)}
-                    </div>`;
-                });
-                html += `</div></div>`;
-            }
-            if (detached.length) {
-                html += `<div class="albero-peer-link" title="Fratelli / stesso livello">⇄</div>`;
-                html += `<div class="albero-detached-group">
-                    <div class="albero-children-bar albero-bar-invisible"></div>
-                    <div class="albero-detached-row">`;
-                detached.forEach(k => {
-                    html += `<div class="albero-child-slot albero-detached-sibling">
-                        <div class="albero-child-stem albero-stem-invisible"></div>
-                        ${renderPersonUnit(k)}
-                    </div>`;
-                });
-                html += `</div></div>`;
-            }
-            html += `</div></div>`;
-        }
-        html += `</div>`;
-        return html;
-    }
-
-    /** Solo radici (senza genitore valido) sulla stessa riga — non tira su i figli di altri */
-    function renderSiblingRow(seedList) {
-        const rowMap = {};
-        seedList.forEach(n => {
-            siblingGroupOf(n.id).forEach(s => {
-                if (rendered.has(s.id)) return;
-                // Solo chi non ha genitore (o genitore inesistente): non spostare chi è figlio di qualcuno
-                if (s.parentId && byId[s.parentId]) return;
-                rowMap[s.id] = s;
-            });
-        });
-        const row = Object.values(rowMap).sort((a, b) =>
-            (a.ordine ?? 0) - (b.ordine ?? 0) || alberoNomeCompleto(a).localeCompare(alberoNomeCompleto(b), 'it')
-        );
-        if (!row.length) return '';
-        let html = '';
-        if (row.length > 1) {
-            html += `<div class="albero-children" style="margin-bottom:12px;">
-                ${siblingLabel(row)}
-                <div class="albero-children-bar"></div>
-                <div class="albero-children-row">`;
-            row.forEach(k => {
-                html += `<div class="albero-child-slot">${renderPersonUnit(k)}</div>`;
-            });
-            html += `</div></div>`;
-        } else {
-            html += renderPersonUnit(row[0]);
-        }
-        return html;
-    }
-
-    if (!nodes.length) {
-        return '<p style="text-align:center;opacity:0.5;padding:40px;">Albero vuoto. Il gestore può aggiungere nodi da Gestione → Albero Genealogico.</p>';
-    }
-
-    const roots = byParent['__root__'] || [];
-    const orphanIds = new Set(nodes.filter(n => n.parentId && !byId[n.parentId]).map(n => n.id));
-    const extraRoots = nodes.filter(n => orphanIds.has(n.id));
-
-    if (!roots.length && !extraRoots.length) {
-        return '<p style="text-align:center;opacity:0.6;padding:30px;">Nodi presenti ma senza legami validi. Controlla i genitori in Gestione.</p>';
-    }
-
-    let out = '<div class="albero-title-clan">Clan Drakòvič · Dè Lùne</div>';
-    out += '<div class="albero-legend">♥ Coniugi &nbsp;·&nbsp; ⇄ Fratelli/Sorelle &nbsp;·&nbsp; ↳ Figlio/a di &nbsp;·&nbsp; 💀 Morto &nbsp;·&nbsp; 🐀 Reietto &nbsp;·&nbsp; 🥩 Rito della Carne</div>';
-    out += '<div class="albero-roots-row">';
-
-    // Radici "differite": senza genitore ma fratelli di qualcuno che HA un genitore
-    // → non in cima: andranno staccati sulla riga dei fratelli sotto quel genitore
-    function isDeferredRoot(n) {
-        if (n.parentId && byId[n.parentId]) return false;
-        return siblingGroupOf(n.id).some(s => s.id !== n.id && s.parentId && byId[s.parentId]);
-    }
-
-    const rootSeeds = [...roots, ...extraRoots].filter(r => !isDeferredRoot(r));
-    const rootSeenGroup = new Set();
-    rootSeeds.forEach(r => {
-        if (rendered.has(r.id) || rootSeenGroup.has(r.id)) return;
-        const group = siblingGroupOf(r.id);
-        group.forEach(g => rootSeenGroup.add(g.id));
-        out += renderSiblingRow(group);
-    });
-
-    // Nodi mai disegnati (es. differiti se il fratello genitorato non era raggiungibile)
-    nodes.forEach(n => {
-        if (!rendered.has(n.id)) out += renderPersonUnit(n);
-    });
-
-    out += '</div>';
-    return out;
 }
 
-// --- PAN / ZOOM ALBERO ---
+function alberoEscape(s) {
+    return String(s || '')
+        .replace(/&/g, '&amp;')
+        .replace(/</g, '&lt;')
+        .replace(/>/g, '&gt;')
+        .replace(/"/g, '&quot;');
+}
+
+function alberoSortNodes(arr) {
+    return arr.slice().sort((a, b) =>
+        (a.ordine ?? 0) - (b.ordine ?? 0) ||
+        alberoNomeCompleto(a).localeCompare(alberoNomeCompleto(b), 'it')
+    );
+}
+
+/**
+ * Unità = persona singola oppure coppia (coniugi).
+ * I figli si agganciano all'unità del genitore e vengono centrati sotto di essa.
+ */
+
+/** Indice relazioni per le card (genitori, figli, fratelli, coniuge) */
+function alberoBuildRelIndex(nodes) {
+    const byId = Object.create(null);
+    nodes.forEach(n => { byId[n.id] = n; });
+
+    const childrenOf = Object.create(null);
+    nodes.forEach(n => {
+        [n.parentId, n.parent2Id].forEach(pid => {
+            if (pid && byId[pid]) {
+                if (!childrenOf[pid]) childrenOf[pid] = [];
+                if (!childrenOf[pid].includes(n)) childrenOf[pid].push(n);
+            }
+        });
+    });
+    Object.keys(childrenOf).forEach(k => {
+        childrenOf[k] = alberoSortNodes(childrenOf[k]);
+    });
+
+    const rels = Object.create(null);
+    nodes.forEach(n => {
+        const parents = [];
+        if (n.parentId && byId[n.parentId]) parents.push(byId[n.parentId]);
+        if (n.parent2Id && byId[n.parent2Id] && n.parent2Id !== n.parentId) parents.push(byId[n.parent2Id]);
+
+        const spouse = (n.spouseId && byId[n.spouseId]) ? byId[n.spouseId] : null;
+        const children = childrenOf[n.id] || [];
+
+        // Fratelli: stesso parentId / parent2Id, oppure fratelliIds espliciti
+        const sibSet = new Set();
+        const addSibsFromParent = (pid) => {
+            if (!pid || !childrenOf[pid]) return;
+            childrenOf[pid].forEach(s => {
+                if (s.id !== n.id) sibSet.add(s.id);
+            });
+        };
+        addSibsFromParent(n.parentId);
+        addSibsFromParent(n.parent2Id);
+        if (Array.isArray(n.fratelliIds)) {
+            n.fratelliIds.forEach(fid => {
+                if (fid !== n.id && byId[fid]) sibSet.add(fid);
+            });
+        }
+        const siblings = alberoSortNodes([...sibSet].map(id => byId[id]).filter(Boolean));
+
+        rels[n.id] = {
+            parents: parents.map(alberoNomeCompleto),
+            spouse: spouse ? alberoNomeCompleto(spouse) : null,
+            children: children.map(alberoNomeCompleto),
+            siblings: siblings.map(alberoNomeCompleto)
+        };
+    });
+    return rels;
+}
+
+function alberoFormatRelList(names, maxShow) {
+    maxShow = maxShow || 2;
+    if (!names || !names.length) return '';
+    if (names.length <= maxShow) return names.join(', ');
+    return names.slice(0, maxShow).join(', ') + ' +' + (names.length - maxShow);
+}
+
+function alberoComputeLayout(nodes) {
+    const L = ALBERO_LAYOUT;
+    if (!nodes || !nodes.length) {
+        return { width: 400, height: 200, nodes: [], edges: [], couples: [] };
+    }
+
+    const relIndex = alberoBuildRelIndex(nodes);
+    const byId = Object.create(null);
+    nodes.forEach(n => { byId[n.id] = n; });
+
+    // --- Costruisci unità (coppie / singoli) ---
+    const used = new Set();
+    const units = []; // { id, members, personIds:Set, children:[], parent:null, ...layout }
+    const personToUnit = Object.create(null);
+
+    function makeUnit(members) {
+        const u = {
+            id: 'u_' + members.map(m => m.id).join('_'),
+            members,
+            personIds: new Set(members.map(m => m.id)),
+            children: [],
+            parent: null,
+            // layout
+            x: 0, y: 0, width: 0, height: 0,
+            headW: 0, headH: L.NODE_H, headX: 0, headY: 0,
+            collapsed: false,
+            colorIdx: 0
+        };
+        units.push(u);
+        members.forEach(m => { personToUnit[m.id] = u; });
+        return u;
+    }
+
+    alberoSortNodes(nodes).forEach(n => {
+        if (used.has(n.id)) return;
+        const sp = n.spouseId && byId[n.spouseId] ? byId[n.spouseId] : null;
+        if (sp && !used.has(sp.id)
+            && n.parentId !== sp.id && sp.parentId !== n.id) {
+            used.add(n.id);
+            used.add(sp.id);
+            makeUnit(alberoSortNodes([n, sp]));
+        } else {
+            used.add(n.id);
+            makeUnit([n]);
+        }
+    });
+
+    // --- Collegamenti genitore → figlio (via parentId) ---
+    nodes.forEach(n => {
+        if (!n.parentId || !byId[n.parentId]) return;
+        const childU = personToUnit[n.id];
+        const parentU = personToUnit[n.parentId];
+        if (!childU || !parentU || childU === parentU) return;
+
+        // evita cicli
+        let p = parentU;
+        const seen = new Set();
+        while (p) {
+            if (p === childU || seen.has(p.id)) return;
+            seen.add(p.id);
+            p = p.parent;
+        }
+
+        if (!parentU.children.includes(childU)) {
+            parentU.children.push(childU);
+            childU.parent = parentU;
+        }
+    });
+
+    // Ordina figli
+    units.forEach(u => {
+        u.children.sort((a, b) => {
+            const na = a.members[0], nb = b.members[0];
+            return (na.ordine ?? 0) - (nb.ordine ?? 0) ||
+                alberoNomeCompleto(na).localeCompare(alberoNomeCompleto(nb), 'it');
+        });
+    });
+
+    const roots = units.filter(u => !u.parent);
+
+    // --- Layout ricorsivo: misura ---
+    function measure(u, visiting) {
+        visiting = visiting || new Set();
+        if (visiting.has(u.id)) {
+            u.width = L.NODE_W;
+            u.height = L.NODE_H;
+            u.headW = L.NODE_W;
+            u._kids = [];
+            return;
+        }
+        visiting.add(u.id);
+
+        u.collapsed = u.members.some(m => alberoCollapsed.has(m.id));
+        u.headW = u.members.length === 2
+            ? L.NODE_W * 2 + L.COUPLE_GAP
+            : L.NODE_W;
+        u.headH = L.NODE_H;
+
+        const kids = u.collapsed ? [] : u.children.filter(c => !visiting.has(c.id));
+        kids.forEach(c => measure(c, visiting));
+        u._kids = kids;
+
+        if (!kids.length) {
+            u.width = u.headW;
+            u.height = u.headH;
+            return;
+        }
+        const kidsW = kids.reduce((s, c, i) => s + c.width + (i ? L.H_GAP : 0), 0);
+        u.width = Math.max(u.headW, kidsW);
+        const kidsH = Math.max(...kids.map(c => c.height));
+        u.height = u.headH + L.V_GAP + kidsH;
+    }
+
+    // --- Layout ricorsivo: posiziona ---
+    function place(u, x, y, colorIdx) {
+        u.x = x;
+        u.y = y;
+        u.colorIdx = colorIdx;
+        u.headX = x + (u.width - u.headW) / 2;
+        u.headY = y;
+
+        const kids = u._kids || [];
+        if (!kids.length) return;
+
+        const kidsW = kids.reduce((s, c, i) => s + c.width + (i ? L.H_GAP : 0), 0);
+        let cx = x + (u.width - kidsW) / 2;
+        const cy = y + u.headH + L.V_GAP;
+
+        kids.forEach((c, i) => {
+            // ogni sotto-famiglia ha un colore derivato
+            place(c, cx, cy, (colorIdx + 1 + i) % ALBERO_EDGE_COLORS.length);
+            cx += c.width + L.H_GAP;
+        });
+    }
+
+    const placedUnits = new Set();
+    function markPlaced(u) {
+        placedUnits.add(u.id);
+        (u._kids || []).forEach(markPlaced);
+    }
+
+    roots.forEach((r, i) => measure(r));
+    let xOff = L.PAD;
+    roots.forEach((r, i) => {
+        place(r, xOff, L.PAD, i % ALBERO_EDGE_COLORS.length);
+        markPlaced(r);
+        xOff += r.width + L.FOREST_GAP;
+    });
+
+    // Unità isolate non raggiunte
+    units.forEach(u => {
+        if (placedUnits.has(u.id)) return;
+        measure(u);
+        place(u, xOff, L.PAD, 0);
+        markPlaced(u);
+        xOff += u.width + L.FOREST_GAP;
+    });
+
+    // --- Card positions ---
+    const placed = [];
+    const couples = [];
+    const unitBox = Object.create(null); // personId -> {cx, top, bottom, colorIdx}
+
+    units.forEach(u => {
+        if (!placedUnits.has(u.id)) return;
+
+        const hasKids = u.children.length > 0;
+        const childCount = u.children.length;
+        const collapsed = u.collapsed;
+
+        if (u.members.length === 2) {
+            const a = u.members[0];
+            const b = u.members[1];
+            const ax = u.headX;
+            const bx = u.headX + L.NODE_W + L.COUPLE_GAP;
+            const y = u.headY;
+            placed.push({
+                id: a.id, x: ax, y, w: L.NODE_W, h: L.NODE_H, data: a,
+                hasKids, childCount, collapsed, role: 'left', rels: relIndex[a.id] || null
+            });
+            placed.push({
+                id: b.id, x: bx, y, w: L.NODE_W, h: L.NODE_H, data: b,
+                hasKids, childCount, collapsed, role: 'right', rels: relIndex[b.id] || null
+            });
+            couples.push({
+                x1: ax + L.NODE_W,
+                x2: bx,
+                y: y + L.NODE_H * 0.4
+            });
+            const cx = u.headX + u.headW / 2;
+            const box = { cx, top: y, bottom: y + L.NODE_H, colorIdx: u.colorIdx };
+            unitBox[a.id] = unitBox[b.id] = box;
+        } else if (u.members.length === 1) {
+            const m = u.members[0];
+            const y = u.headY;
+            placed.push({
+                id: m.id, x: u.headX, y, w: L.NODE_W, h: L.NODE_H, data: m,
+                hasKids, childCount, collapsed, role: 'single', rels: relIndex[m.id] || null
+            });
+            unitBox[m.id] = {
+                cx: u.headX + L.NODE_W / 2,
+                top: y,
+                bottom: y + L.NODE_H,
+                colorIdx: u.colorIdx
+            };
+        }
+    });
+
+    // --- Edge per ogni unità genitore → i suoi _kids (già centrati sotto) ---
+    const edges = [];
+    units.forEach(u => {
+        const kids = u._kids || [];
+        if (!kids.length) return;
+        const parentCx = u.headX + u.headW / 2;
+        const parentBottom = u.headY + L.NODE_H;
+        const drops = kids.map(k => ({
+            x: k.headX + k.headW / 2,
+            y: k.headY
+        })).sort((a, b) => a.x - b.x);
+
+        const barY = parentBottom + (drops[0].y - parentBottom) * 0.5;
+        const xs = drops.map(d => d.x).concat([parentCx]);
+        const barX1 = Math.min(...xs);
+        const barX2 = Math.max(...xs);
+
+        edges.push({
+            kind: 'family',
+            color: ALBERO_EDGE_COLORS[u.colorIdx % ALBERO_EDGE_COLORS.length],
+            parentX: parentCx,
+            parentY: parentBottom,
+            barY,
+            barX1,
+            barX2,
+            drops
+        });
+    });
+
+    let finalW = L.PAD;
+    let finalH = L.PAD;
+    placed.forEach(p => {
+        finalW = Math.max(finalW, p.x + p.w + L.PAD);
+        finalH = Math.max(finalH, p.y + p.h + L.PAD);
+    });
+
+    return {
+        width: Math.ceil(Math.max(finalW, 280)),
+        height: Math.ceil(Math.max(finalH, 160)),
+        nodes: placed,
+        edges,
+        couples
+    };
+}
+
+function alberoCardHtml(nMeta) {
+    const n = nMeta.data;
+    const fotoSrc = n.foto || PLACEHOLDER_FOTO;
+    const morto = n.morto ? ' is-morto' : '';
+    const reietto = n.reietto ? ' is-reietto' : '';
+    const badges = [];
+    if (n.morto) badges.push('<span title="Morto">💀</span>');
+    if (n.reietto) badges.push('<span title="Reietto">🐀</span>');
+    if (n.ritoCarne) badges.push('<span title="Rito della Carne">🥩</span>');
+    const childHint = nMeta.childCount ? ` (${nMeta.childCount})` : '';
+    const collapseBtn = nMeta.hasKids
+        ? `<button type="button" class="albero-collapse-btn ${nMeta.collapsed ? 'is-closed' : 'is-open'}" data-collapse-id="${alberoEscape(n.id)}" title="${nMeta.collapsed ? 'Espandi' + childHint : 'Comprimi'}">${nMeta.collapsed ? '+' : '−'}</button>`
+        : '';
+
+    // Relazioni compatte (tooltip con elenco completo)
+    const r = nMeta.rels || {};
+    const famLines = [];
+    if (r.parents && r.parents.length) {
+        famLines.push(`<div class="nodo-fam" title="Genitori: ${alberoEscape(r.parents.join(', '))}">↑ ${alberoEscape(alberoFormatRelList(r.parents, 2))}</div>`);
+    }
+    if (r.spouse) {
+        famLines.push(`<div class="nodo-fam nodo-fam-spouse" title="Coniuge: ${alberoEscape(r.spouse)}">♥ ${alberoEscape(r.spouse)}</div>`);
+    }
+    if (r.children && r.children.length) {
+        famLines.push(`<div class="nodo-fam" title="Figli (${r.children.length}): ${alberoEscape(r.children.join(', '))}">↓ ${alberoEscape(alberoFormatRelList(r.children, 2))}</div>`);
+    }
+    if (r.siblings && r.siblings.length) {
+        famLines.push(`<div class="nodo-fam" title="Fratelli/Sorelle (${r.siblings.length}): ${alberoEscape(r.siblings.join(', '))}">⇄ ${alberoEscape(alberoFormatRelList(r.siblings, 2))}</div>`);
+    }
+
+    return `<div class="albero-nodo${morto}${reietto}" data-id="${alberoEscape(n.id)}" style="left:${Math.round(nMeta.x)}px;top:${Math.round(nMeta.y)}px;width:${nMeta.w}px;height:${nMeta.h}px;">
+        ${collapseBtn}
+        <div class="nodo-foto-wrap"><img class="nodo-foto" src="${alberoEscape(fotoSrc)}" alt="" loading="lazy" decoding="async" onerror="this.src='${PLACEHOLDER_FOTO}'"></div>
+        <div class="nodo-nome">${alberoEscape(n.nome || '—')}</div>
+        <div class="nodo-cognome">${alberoEscape(n.cognome || '')}</div>
+        ${n.clan ? `<div class="nodo-clan">${alberoEscape(n.clan)}</div>` : ''}
+        ${n.anno ? `<div class="nodo-anno">${alberoEscape(n.anno)}</div>` : ''}
+        ${n.relazione ? `<div class="nodo-relazione">${alberoEscape(n.relazione)}</div>` : ''}
+        ${famLines.length ? `<div class="nodo-fam-box">${famLines.join('')}</div>` : ''}
+        ${badges.length ? `<div class="nodo-stati">${badges.join('')}</div>` : ''}
+    </div>`;
+}
+
+function alberoSvgEdges(layout) {
+    const parts = [];
+    (layout.edges || []).forEach(e => {
+        const color = e.color || '#c5a059';
+        const style = `stroke="${color}"`;
+        if (e.kind === 'family') {
+            const px = +e.parentX, py = +e.parentY, by = +e.barY;
+            // stelo
+            parts.push(`<path class="albero-edge-parent" ${style} d="M ${px.toFixed(1)} ${py.toFixed(1)} V ${by.toFixed(1)}" fill="none"/>`);
+            // barra continua genitore ↔ figli
+            const bx1 = +e.barX1, bx2 = +e.barX2;
+            if (Math.abs(bx2 - bx1) > 0.5) {
+                parts.push(`<path class="albero-edge-parent albero-edge-bar" ${style} d="M ${bx1.toFixed(1)} ${by.toFixed(1)} H ${bx2.toFixed(1)}" fill="none"/>`);
+            }
+            // discese
+            (e.drops || []).forEach(d => {
+                parts.push(`<path class="albero-edge-parent" ${style} d="M ${(+d.x).toFixed(1)} ${by.toFixed(1)} V ${(+d.y).toFixed(1)}" fill="none"/>`);
+            });
+        }
+    });
+    (layout.couples || []).forEach(c => {
+        const mid = (c.x1 + c.x2) / 2;
+        parts.push(`<line class="albero-edge-spouse" x1="${c.x1}" y1="${c.y}" x2="${c.x2}" y2="${c.y}"/>`);
+        parts.push(`<text class="albero-heart-svg" x="${mid}" y="${c.y - 4}" text-anchor="middle">♥</text>`);
+    });
+    return parts.join('');
+}
+
+function buildAlberoTree(nodes) {
+    if (!nodes || !nodes.length) {
+        return '<p class="albero-empty">Albero vuoto. Il gestore può aggiungere nodi da Gestione → Albero Genealogico.</p>';
+    }
+
+    const layout = alberoComputeLayout(nodes);
+    const cards = layout.nodes.map(alberoCardHtml).join('');
+    const svg = `<svg class="albero-edges-svg" width="${layout.width}" height="${layout.height}" viewBox="0 0 ${layout.width} ${layout.height}" xmlns="http://www.w3.org/2000/svg">${alberoSvgEdges(layout)}</svg>`;
+
+    return `<div class="albero-canvas" style="width:${layout.width}px;height:${layout.height}px;" data-w="${layout.width}" data-h="${layout.height}">
+        ${svg}
+        <div class="albero-nodes-layer">${cards}</div>
+    </div>`;
+}
+
+// --- PAN / ZOOM ---
 let alberoPan = { x: 0, y: 0, scale: 1, dragging: false, startX: 0, startY: 0, originX: 0, originY: 0, inited: false, userMoved: false };
-let alberoCenterTimer = null;
 let alberoLastSignature = '';
-window._alberoDirty = true;
+let alberoCenterTimer = null;
 
 function applyAlberoTransform() {
     const el = document.getElementById('albero-container');
@@ -4366,60 +4530,48 @@ function applyAlberoTransform() {
     el.style.transform = `translate(${alberoPan.x}px, ${alberoPan.y}px) scale(${alberoPan.scale})`;
 }
 
-function measureAlberoContentSize(content) {
-    const treeRoot = document.getElementById('albero-tree-root');
-    let cw = 0, ch = 0;
-    if (treeRoot) {
-        cw = Math.max(treeRoot.scrollWidth || 0, treeRoot.offsetWidth || 0);
-        ch = Math.max(treeRoot.scrollHeight || 0, treeRoot.offsetHeight || 0);
-    }
-    const cs = window.getComputedStyle(content);
-    const padX = (parseFloat(cs.paddingLeft) || 0) + (parseFloat(cs.paddingRight) || 0);
-    const padY = (parseFloat(cs.paddingTop) || 0) + (parseFloat(cs.paddingBottom) || 0);
-    cw = Math.max(cw + padX, content.scrollWidth || 0, content.offsetWidth || 0);
-    ch = Math.max(ch + padY, content.scrollHeight || 0, content.offsetHeight || 0);
-    return { cw: Math.ceil(cw), ch: Math.ceil(ch) };
-}
-
 function centerAlberoView() {
     const viewport = document.getElementById('albero-viewport');
-    const content = document.getElementById('albero-container');
-    if (!viewport || !content) return;
-    if (!document.getElementById('albero')?.classList.contains('active')) return;
+    const container = document.getElementById('albero-container');
+    const canvas = container?.querySelector('.albero-canvas');
+    if (!viewport || !container) return;
 
-    alberoPan.scale = 1;
-    content.style.transform = 'translate(0px, 0px) scale(1)';
+    const vw = viewport.clientWidth;
+    const vh = viewport.clientHeight;
+    const cw = canvas ? (parseFloat(canvas.dataset.w) || canvas.offsetWidth) : container.scrollWidth;
+    const ch = canvas ? (parseFloat(canvas.dataset.h) || canvas.offsetHeight) : container.scrollHeight;
 
-    requestAnimationFrame(() => {
-        const vw = viewport.clientWidth;
-        const vh = viewport.clientHeight;
-        if (vw < 20 || vh < 20) return;
-        const { cw, ch } = measureAlberoContentSize(content);
-        const pad = 24;
-        // Sempre scala 1 all'apertura: box leggibili subito (niente rimpicciolimento)
-        alberoPan.scale = 1;
-        // Centra in orizzontale rispetto alla larghezza reale dell'albero
-        alberoPan.x = Math.round((vw - cw) / 2);
-        // Parte sempre dall'alto (radice / primo nodo)
-        alberoPan.y = pad;
-        alberoPan.userMoved = false;
-        applyAlberoTransform();
-    });
+    // Adatta l'albero al riquadro (usa quasi tutto lo spazio disponibile)
+    const margin = 8;
+    const sx = (vw - margin * 2) / Math.max(cw, 1);
+    const sy = (vh - margin * 2) / Math.max(ch, 1);
+    // Preferisci scala più alta: fino a 1.25x se l'albero è piccolo
+    const scaleFit = Math.min(1.25, Math.max(0.1, Math.min(sx, sy)));
+    alberoPan.scale = scaleFit;
+    alberoPan.x = Math.round((vw - cw * scaleFit) / 2);
+    alberoPan.y = Math.round((vh - ch * scaleFit) / 2);
+    alberoPan.userMoved = false;
+    applyAlberoTransform();
+    updateAlberoZoomLabel();
 }
 
-/** Un solo centraggio + un ritocco leggero se le foto finiscono di caricare */
 function centerAlberoViewReliable() {
-    if (alberoCenterTimer) clearTimeout(alberoCenterTimer);
+    clearTimeout(alberoCenterTimer);
     centerAlberoView();
-    alberoCenterTimer = setTimeout(() => centerAlberoView(), 120);
-
-    const content = document.getElementById('albero-container');
-    if (!content) return;
+    alberoCenterTimer = setTimeout(() => centerAlberoView(), 80);
+    // Wait for images
+    const container = document.getElementById('albero-container');
+    if (!container) return;
+    const imgs = container.querySelectorAll('img');
     let pending = 0;
-    content.querySelectorAll('img').forEach(img => {
+    imgs.forEach(img => {
         if (img.complete) return;
         pending++;
         img.addEventListener('load', () => {
+            pending--;
+            if (pending <= 0 && !alberoPan.userMoved) centerAlberoView();
+        }, { once: true });
+        img.addEventListener('error', () => {
             pending--;
             if (pending <= 0 && !alberoPan.userMoved) centerAlberoView();
         }, { once: true });
@@ -4427,13 +4579,16 @@ function centerAlberoViewReliable() {
 }
 
 function alberoDataSignature(nodes) {
-    // Firma leggera senza base64 foto (evita lag e confronti enormi)
     return nodes.map(n => [
-        n.id, n.nome, n.cognome, n.clan, n.anno, n.parentId, n.parent2Id,
-        n.spouseId, (Array.isArray(n.fratelliIds) ? n.fratelliIds.join(',') : ''),
-        n.relazione, n.ordine, n.foto ? (n.foto.length + ':' + n.foto.slice(0, 24)) : '',
-        n.morto ? 1 : 0, n.reietto ? 1 : 0, n.ritoCarne ? 1 : 0
-    ].join('|')).join('~');
+        n.id, n.parentId || '', n.parent2Id || '', n.spouseId || '',
+        n.ordine ?? 0, n.nome || '', n.cognome || '', n.morto ? 1 : 0, n.reietto ? 1 : 0,
+        (n.fratelliIds || []).join(','), n.foto ? 1 : 0, n.relazione || ''
+    ].join(':')).sort().join('|') + '#c:' + [...alberoCollapsed].sort().join(',');
+}
+
+function updateAlberoZoomLabel() {
+    const el = document.getElementById('albero-zoom-label');
+    if (el) el.textContent = Math.round(alberoPan.scale * 100) + '%';
 }
 
 function initAlberoPanZoom() {
@@ -4443,13 +4598,14 @@ function initAlberoPanZoom() {
 
     viewport.addEventListener('pointerdown', (e) => {
         if (e.button !== 0) return;
+        if (e.target.closest('.albero-collapse-btn, button, a, input')) return;
         alberoPan.dragging = true;
         alberoPan.startX = e.clientX;
         alberoPan.startY = e.clientY;
         alberoPan.originX = alberoPan.x;
         alberoPan.originY = alberoPan.y;
         viewport.classList.add('is-dragging');
-        viewport.setPointerCapture?.(e.pointerId);
+        try { viewport.setPointerCapture(e.pointerId); } catch (_) {}
     });
 
     viewport.addEventListener('pointermove', (e) => {
@@ -4477,33 +4633,73 @@ function initAlberoPanZoom() {
         const my = e.clientY - rect.top;
         const oldScale = alberoPan.scale;
         const delta = e.deltaY > 0 ? 0.9 : 1.1;
-        const newScale = Math.min(2.5, Math.max(0.35, oldScale * delta));
+        const newScale = Math.min(2.8, Math.max(0.2, oldScale * delta));
         alberoPan.x = mx - (mx - alberoPan.x) * (newScale / oldScale);
         alberoPan.y = my - (my - alberoPan.y) * (newScale / oldScale);
         alberoPan.scale = newScale;
         alberoPan.userMoved = true;
         applyAlberoTransform();
+        updateAlberoZoomLabel();
     }, { passive: false });
 
     viewport.addEventListener('dblclick', (e) => {
+        if (e.target.closest('.albero-collapse-btn, button')) return;
         e.preventDefault();
-        alberoPan.scale = 1;
         alberoPan.userMoved = false;
         centerAlberoViewReliable();
     });
+
+    // Collapse / expand
+    viewport.addEventListener('click', (e) => {
+        const btn = e.target.closest('.albero-collapse-btn');
+        if (!btn) return;
+        e.stopPropagation();
+        const id = btn.getAttribute('data-collapse-id');
+        if (!id) return;
+        if (alberoCollapsed.has(id)) alberoCollapsed.delete(id);
+        else alberoCollapsed.add(id);
+        window.renderAlbero({ forceCenter: true });
+    });
 }
 
-/**
- * @param {{ preservePan?: boolean, forceCenter?: boolean }} opts
- */
+window.alberoZoom = function(dir) {
+    const viewport = document.getElementById('albero-viewport');
+    if (!viewport) return;
+    const rect = viewport.getBoundingClientRect();
+    const mx = rect.width / 2;
+    const my = rect.height / 2;
+    const oldScale = alberoPan.scale;
+    const newScale = Math.min(2.8, Math.max(0.2, oldScale * (dir > 0 ? 1.15 : 0.87)));
+    alberoPan.x = mx - (mx - alberoPan.x) * (newScale / oldScale);
+    alberoPan.y = my - (my - alberoPan.y) * (newScale / oldScale);
+    alberoPan.scale = newScale;
+    alberoPan.userMoved = true;
+    applyAlberoTransform();
+    updateAlberoZoomLabel();
+};
+
+window.alberoFitView = function() {
+    alberoPan.userMoved = false;
+    centerAlberoViewReliable();
+};
+
+window.alberoExpandAll = function() {
+    alberoCollapsed.clear();
+    window.renderAlbero({ forceCenter: true });
+};
+
+window.alberoCollapseAll = function() {
+    alberoSeedCollapsedDefault(alberoNodi || []);
+    window.renderAlbero({ forceCenter: true });
+};
+
 window.renderAlbero = (opts = {}) => {
     const root = document.getElementById('albero-tree-root');
     if (!root) return;
 
     const sig = alberoDataSignature(alberoNodi);
     const dataChanged = sig !== alberoLastSignature;
-    if (!dataChanged && !opts.forceCenter && root.querySelector('.albero-nodo, .albero-roots-row, p')) {
-        // Nessun cambio dati: evita reflow / scatti
+    if (!dataChanged && !opts.forceCenter && root.querySelector('.albero-canvas, .albero-empty')) {
         if (opts.forceCenter) centerAlberoViewReliable();
         return;
     }
@@ -4512,11 +4708,12 @@ window.renderAlbero = (opts = {}) => {
     root.innerHTML = buildAlberoTree(alberoNodi);
     initAlberoPanZoom();
 
+    // All'apertura e al cambio dati: fit completo nel riquadro
     if (opts.forceCenter || !opts.preservePan || !alberoPan.userMoved) {
         centerAlberoViewReliable();
     } else {
-        // Mantieni posizione corrente dopo update dati
         applyAlberoTransform();
+        updateAlberoZoomLabel();
     }
 };
 
@@ -4534,7 +4731,6 @@ window.downloadAlberoPNG = async () => {
             document.querySelectorAll('.section').forEach(s => s.classList.remove('active'));
             section.classList.add('active');
         }
-        // Temporarily reset transform so full tree is captured cleanly
         const prevTransform = container.style.transform;
         container.style.transform = 'translate(0,0) scale(1)';
         await new Promise(r => setTimeout(r, 200));
@@ -4552,7 +4748,7 @@ window.downloadAlberoPNG = async () => {
         if (wasHidden) section.classList.remove('active');
 
         const link = document.createElement('a');
-        link.download = 'albero-genealogico-vampiri-' + new Date().toISOString().slice(0,10) + '.png';
+        link.download = 'albero-genealogico-vampiri-' + new Date().toISOString().slice(0, 10) + '.png';
         link.href = canvas.toDataURL('image/png');
         link.click();
         vampireToast('PNG scaricato!', 'success');

@@ -326,14 +326,22 @@
                 <p style="font-size:0.75rem; color:var(--text-dim); margin-bottom:12px; text-align:center;">
                     Dinastia Vampiri · Clan Drakòvič · Dè Lùne
                 </p>
+                <div class="albero-toolbar">
+                    <button type="button" onclick="window.alberoZoom(-1)" title="Riduci zoom">−</button>
+                    <span id="albero-zoom-label" class="albero-zoom-label">100%</span>
+                    <button type="button" onclick="window.alberoZoom(1)" title="Aumenta zoom">+</button>
+                    <button type="button" onclick="window.alberoFitView()" title="Adatta alla vista">⊡ Adatta</button>
+                    <button type="button" onclick="window.alberoExpandAll()" title="Espandi tutti i rami">⊞ Espandi</button>
+                    <button type="button" onclick="window.alberoCollapseAll()" title="Comprimi tutti i rami">⊟ Comprimi</button>
+                    <button type="button" id="btn-download-albero-tb" onclick="window.downloadAlberoPNG()" title="Scarica PNG">📥 PNG</button>
+                </div>
                 <p style="font-size:0.65rem; color:var(--gold-dim); margin-bottom:12px; text-align:center; opacity:0.8;">
-                    🖱️ Trascina per muoverti · 🔍 Rotella del mouse per zoom · Doppio click per reset
+                    Albero intero adattato al riquadro · Trascina per muoverti · Rotella per zoom · «Adatta» per ricentrare · −/+ opzionale sui rami
                 </p>
                 <div id="albero-viewport" class="albero-viewport">
                     <div id="albero-container" class="albero-parchment albero-pannable">
                         <div id="albero-tree-root" class="albero-tree">
-                            <!-- Renderizzato da JS -->
-                            <p style="text-align:center; opacity:0.5; padding:40px;">Caricamento albero...</p>
+                            <p class="albero-empty">Caricamento albero...</p>
                         </div>
                     </div>
                 </div>
