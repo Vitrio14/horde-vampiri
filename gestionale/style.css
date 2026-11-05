@@ -1930,3 +1930,57 @@ footer:hover strong { color: var(--blood-red); }
 .albero-nodo .nodo-fam-spouse {
     color: #c5a059;
 }
+
+
+/* SweetAlert sopra overlay login (z-index 9999) */
+.swal2-container {
+    z-index: 100000 !important;
+}
+
+/* Tasto Foto flottante — angolo basso destra */
+#btn-foto-float {
+    position: fixed !important;
+    right: 22px !important;
+    bottom: 22px !important;
+    left: auto !important;
+    top: auto !important;
+    z-index: 1200 !important;
+    display: none;
+    align-items: center;
+    justify-content: center;
+    gap: 6px;
+    width: auto !important;
+    min-width: 0 !important;
+    padding: 12px 16px !important;
+    border-radius: 999px !important;
+    border: 1px solid rgba(197, 160, 89, 0.55) !important;
+    background: rgba(12, 10, 10, 0.85) !important;
+    color: var(--gold-accent, #c5a059) !important;
+    font-family: 'Quicksand', sans-serif !important;
+    font-size: 0.75rem !important;
+    font-weight: 700 !important;
+    letter-spacing: 1px !important;
+    text-transform: uppercase !important;
+    text-decoration: none !important;
+    box-shadow: 0 8px 24px rgba(0,0,0,0.55), 0 0 12px rgba(139,0,0,0.25) !important;
+    backdrop-filter: blur(6px);
+    -webkit-backdrop-filter: blur(6px);
+    transition: transform 0.2s ease, border-color 0.2s ease, box-shadow 0.2s ease;
+}
+#btn-foto-float:hover {
+    transform: translateY(-2px);
+    border-color: var(--gold-accent, #c5a059) !important;
+    color: #fff !important;
+    box-shadow: 0 10px 28px rgba(0,0,0,0.65), 0 0 16px rgba(139,0,0,0.35) !important;
+}
+#btn-foto-float::before {
+    display: none !important;
+}
+@media (max-width: 600px) {
+    #btn-foto-float {
+        right: 14px !important;
+        bottom: 14px !important;
+        padding: 10px 12px !important;
+        font-size: 0.7rem !important;
+    }
+}

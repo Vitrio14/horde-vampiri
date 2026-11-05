@@ -1,5 +1,5 @@
 import { initializeApp } from "https://www.gstatic.com/firebasejs/10.7.1/firebase-app.js";
-import { getFirestore, collection, addDoc, onSnapshot, doc, updateDoc, setDoc, deleteDoc, query, orderBy, limit, getDocs, where } from "https://www.gstatic.com/firebasejs/10.7.1/firebase-firestore.js";
+import { getFirestore, collection, addDoc, onSnapshot, doc, updateDoc, setDoc, deleteDoc, query, orderBy, limit, getDocs, getDoc, where } from "https://www.gstatic.com/firebasejs/10.7.1/firebase-firestore.js";
 import { getAuth, signInWithEmailAndPassword, onAuthStateChanged, signOut } from "https://www.gstatic.com/firebasejs/10.7.1/firebase-auth.js";
 
 // --- CONFIGURAZIONE FIREBASE ---
@@ -34,7 +34,8 @@ let itemImagesLib = []; // { id, fileName, dataUrl, size, createdAt }
 let tipiMateriale = []; // { id, nome, prezzoUnitario, percPropria, percDinastia, percEkaton, sezioni:[], attivo }
 let alberoNodi = []; // { id, nome, cognome, clan, anno, parentId, foto, note, ordine, morto, reietto, ritoCarne, createdAt }
 let tipiLavoro = []; // { id, nome, sblocchi: [{ livello, item, ingredienti, strumenti }], createdAt }
-let lavoriMembri = []; // { id, vampiro, lavoroId, lavoroNome, livello } — più record per stesso vampiro
+let lavoriMembri = []; // legacy (sezione rimossa)
+let richiesteMembri = []; // { id, nome, grado, codice, password, stato, timestamp }
 let _cachedClientIp = null;
 let _ipFetchPromise = null;
 
@@ -53,7 +54,6 @@ const VALORE_UNITARIO = 30; // fallback legacy
 const SEZIONI = {
     albero: { id: 'albero', label: 'Albero' },
     generale: { id: 'generale', label: 'Generale' },
-    lavori: { id: 'lavori', label: 'Lavori' },
     vendite: { id: 'vendite', label: 'Vendite' },
     materiali: { id: 'materiali', label: 'Vendita Materiali' },
     saldo: { id: 'saldo', label: 'Saldo' },
@@ -74,7 +74,6 @@ const ADMIN_VIEWS = {
     inventario: { id: 'inventario', label: 'Gestione Inventario' },
     materiali: { id: 'materiali', label: 'Tipi Materiale' },
     albero: { id: 'albero', label: 'Albero Genealogico' },
-    lavori: { id: 'lavori', label: 'Gestione Lavori' },
     calendario: { id: 'calendario', label: 'Calendario' }
     // 'permessi-gestione' NON è assegnabile — solo gestore Firebase
 };
@@ -303,17 +302,209 @@ window.checkAccess = async () => {
     }
 };
 
-// --- Switch tra login membro / gestore sulla schermata principale ---
+// --- Switch tra login membro / gestore / registrazione sulla schermata principale ---
+function _hideAllLoginBoxes() {
+    const ids = ['login-membro-box', 'login-gestore-box', 'login-registrazione-box'];
+    ids.forEach(id => {
+        const el = document.getElementById(id);
+        if (el) el.style.display = 'none';
+    });
+}
+
 window.mostraLoginGestore = () => {
-    document.getElementById('login-membro-box').style.display = 'none';
+    _hideAllLoginBoxes();
     document.getElementById('login-gestore-box').style.display = 'block';
     setTimeout(() => document.getElementById('global-admin-pass')?.focus(), 50);
 };
 
 window.mostraLoginMembro = () => {
-    document.getElementById('login-gestore-box').style.display = 'none';
+    _hideAllLoginBoxes();
     document.getElementById('login-membro-box').style.display = 'block';
     setTimeout(() => document.getElementById('global-codice')?.focus(), 50);
+};
+
+window.mostraRegistrazioneMembro = () => {
+    _hideAllLoginBoxes();
+    const box = document.getElementById('login-registrazione-box');
+    if (box) box.style.display = 'block';
+    const g = document.getElementById('reg-grado');
+    if (g) g.value = 'Neonato';
+    setTimeout(() => document.getElementById('reg-nome')?.focus(), 50);
+};
+
+/** Permessi standard per un nuovo Neonato (tutte le sezioni membro + extra foto) */
+const PERMESSI_NUOVO_MEMBRO = [
+    'albero', 'generale', 'vendite', 'materiali',
+    'saldo', 'calcolo', 'inventario', 'calendario', 'foto'
+];
+
+/**
+ * Registrazione pubblica: crea profilo in membri con grado Neonato e permessi completi.
+ * Controlla unicità nome, codice e password.
+ */
+window.registraRichiestaMembro = async () => {
+    const nome = (document.getElementById('reg-nome')?.value || '').trim();
+    const grado = 'Neonato';
+    const codice = (document.getElementById('reg-codice')?.value || '').trim();
+    const password = (document.getElementById('reg-password')?.value || '').trim();
+
+    if (!nome) return vampireToast('Inserisci il nome.', 'error');
+    if (nome.length < 2) return vampireToast('Il nome deve avere almeno 2 caratteri.', 'error');
+    if (!codice || codice.length !== 4 || !/^\d{4}$/.test(codice)) {
+        return vampireToast('Il codice deve essere esattamente 4 cifre numeriche.', 'error');
+    }
+    if (!password) return vampireToast('Inserisci una password numerica.', 'error');
+    if (!/^\d+$/.test(password)) {
+        return vampireToast('La password deve essere solo numerica.', 'error');
+    }
+    if (password.length < 4) {
+        return vampireToast('La password deve avere almeno 4 cifre.', 'error');
+    }
+
+    const btn = document.querySelector('#login-registrazione-box button');
+    if (btn) { btn.disabled = true; btn.textContent = 'Invio in corso...'; }
+
+    try {
+        // Nome già membro?
+        try {
+            const existingDoc = await getDoc(doc(db, 'membri', nome));
+            if (existingDoc.exists()) {
+                return vampireToast('Questo nome è già registrato come membro. Scegline un altro.', 'error');
+            }
+        } catch (e) {
+            console.warn('check nome', e);
+        }
+
+        // Codice già in uso tra i membri
+        try {
+            const qCod = query(collection(db, 'membri'), where('codice', '==', codice));
+            const snapCod = await getDocs(qCod);
+            if (!snapCod.empty) {
+                return vampireToast('Questo codice è già usato. Scegline un altro.', 'error');
+            }
+        } catch (e) {
+            console.warn('check codice', e);
+        }
+
+        // Password già in uso tra i membri
+        try {
+            const allSnap = await getDocs(collection(db, 'membri'));
+            let passUsed = false;
+            allSnap.forEach(d => {
+                const p = d.data()?.password;
+                if (p != null && String(p) === password) passUsed = true;
+            });
+            if (passUsed) {
+                return vampireToast('Questa password è già usata. Scegline un\'altra.', 'error');
+            }
+        } catch (e) {
+            console.warn('check password', e);
+        }
+
+        // Duplicati in richieste pending (se la collezione esiste / è leggibile)
+        try {
+            const reqSnap = await getDocs(collection(db, 'richieste_membri'));
+            let dupNome = false, dupCod = false, dupPass = false;
+            reqSnap.forEach(d => {
+                const r = d.data() || {};
+                if ((r.stato || 'pending') !== 'pending') return;
+                if (String(r.nome || '') === nome) dupNome = true;
+                if (String(r.codice || '') === codice) dupCod = true;
+                if (String(r.password || '') === password) dupPass = true;
+            });
+            if (dupNome) return vampireToast('Esiste già una richiesta in attesa con questo nome.', 'error');
+            if (dupCod) return vampireToast('Questo codice è già usato in una richiesta in attesa.', 'error');
+            if (dupPass) return vampireToast('Questa password è già usata in una richiesta in attesa.', 'error');
+        } catch (e) {
+            console.warn('check richieste esistenti', e);
+        }
+
+        await addDoc(collection(db, 'richieste_membri'), {
+            nome,
+            grado,
+            codice,
+            password,
+            stato: 'pending',
+            timestamp: Date.now()
+        });
+
+        try {
+            logSystemEvent('membro', 'richiesta_credenziali', `Richiesta accesso inviata: ${nome} (Neonato)`, {
+                nome, codice
+            }, { utente: nome, ruolo: 'anonimo' });
+        } catch (_) {}
+
+        ['reg-nome', 'reg-codice', 'reg-password'].forEach(id => {
+            const el = document.getElementById(id);
+            if (el) el.value = '';
+        });
+        const g = document.getElementById('reg-grado');
+        if (g) g.value = 'Neonato';
+
+        const guidaUrl = 'https://docs.google.com/document/d/1vSXHmDLpVMzRoNS0kCvdsoXwqgBKENyd/edit?usp=sharing&ouid=101888068339212887667&rtpof=true&sd=true';
+
+        await Swal.fire({
+            title: 'Richiesta inviata',
+            icon: 'info',
+            html: `
+                <p style="margin-bottom:12px;font-size:0.9rem;">La tua richiesta è stata inviata al <strong style="color:#c5a059;">gestore</strong>.</p>
+                <p style="margin-bottom:12px;font-size:0.85rem;line-height:1.45;">
+                    <strong>Non puoi ancora accedere</strong>: il gestore deve prima <strong style="color:#c5a059;">accettare</strong> la richiesta.
+                    Solo dopo l'approvazione il tuo account sarà attivo e potrai entrare con codice e password.
+                </p>
+                <div style="background:rgba(0,0,0,0.35);border:1px solid rgba(197,160,89,0.35);border-radius:8px;padding:14px;text-align:left;margin-bottom:14px;font-size:0.85rem;">
+                    <div style="margin-bottom:6px;"><strong style="color:#c5a059;">Nome:</strong> ${String(nome).replace(/</g,'&lt;')}</div>
+                    <div style="margin-bottom:6px;"><strong style="color:#c5a059;">Grado:</strong> Neonato</div>
+                    <div style="margin-bottom:6px;"><strong style="color:#c5a059;">Codice:</strong> <span style="font-family:monospace;letter-spacing:2px;font-size:1.05rem;">${codice}</span></div>
+                    <div><strong style="color:#c5a059;">Password:</strong> <span style="font-family:monospace;letter-spacing:1px;">${String(password).replace(/</g,'&lt;')}</span></div>
+                </div>
+                <p style="font-size:0.8rem;opacity:0.9;margin-bottom:10px;"><strong>Memorizza e salva</strong> questi dati: ti serviranno quando il gestore avrà accettato.</p>
+                <p style="font-size:0.8rem;margin-bottom:4px;">Nel frattempo leggi la guida del gestionale, è un passaggio obbligatorio:</p>
+                <p style="margin-bottom:8px;"><a href="${guidaUrl}" target="_blank" rel="noopener" style="color:#c5a059;font-weight:700;text-decoration:underline;">Apri la guida del gestionale</a></p>
+            `,
+            confirmButtonText: 'Torna al login',
+            confirmButtonColor: '#8b0000',
+            background: '#111',
+            color: '#fff',
+            allowOutsideClick: false,
+            heightAuto: false,
+            didOpen: () => {
+                const c = document.querySelector('.swal2-container');
+                if (c) c.style.zIndex = '100000';
+            }
+        });
+
+        window.mostraLoginMembro();
+        const codEl = document.getElementById('global-codice');
+        const passEl = document.getElementById('global-pass');
+        if (codEl) codEl.value = '';
+        if (passEl) passEl.value = '';
+        setTimeout(() => codEl?.focus(), 80);
+    } catch (err) {
+        console.error('[registraRichiestaMembro]', err);
+        const code = err?.code || '';
+        const msg = String(err?.message || err || '');
+        if (code === 'permission-denied' || msg.includes('permission') || msg.includes('Missing or insufficient')) {
+            vampireToast('Permesso negato su Firestore: aggiungi le regole per la collezione richieste_membri.', 'error');
+            await Swal.fire({
+                title: 'Errore permessi Firebase',
+                icon: 'error',
+                html: `<p style="font-size:0.85rem;line-height:1.45;">La scrittura su <code>richieste_membri</code> è bloccata dalle Security Rules.</p>
+                <p style="font-size:0.8rem;margin-top:10px;text-align:left;">Aggiungi in Firebase Console → Firestore → Rules:</p>
+                <pre style="text-align:left;font-size:0.7rem;background:#000;padding:10px;overflow:auto;">match /richieste_membri/{doc} {
+  allow read, create: if true;
+  allow update, delete: if true;
+}</pre>`,
+                confirmButtonColor: '#8b0000',
+                background: '#111',
+                color: '#fff'
+            });
+        } else {
+            vampireToast('Errore durante la richiesta: ' + (msg || code || 'sconosciuto'), 'error');
+        }
+    } finally {
+        if (btn) { btn.disabled = false; btn.textContent = 'Registra richiesta'; }
+    }
 };
 
 window.unlockGestore = async () => {
@@ -467,6 +658,7 @@ window.logoutAdmin = async () => {
 
 // --- LOGICA SEZIONI ---
 window.showSection = (id) => {
+    if (id === 'lavori') id = 'generale';
     document.querySelectorAll('.section').forEach(s => s.classList.remove('active'));
     document.querySelectorAll('.nav-link').forEach(l => l.classList.remove('active'));
     const target = document.getElementById(id);
@@ -534,7 +726,7 @@ function filterAdminMenuCards() {
         const viewId = card.getAttribute('data-admin-view');
         if (!viewId) return;
         // Solo il gestore pieno vede la card "Permessi Gestione"
-        if (viewId === 'permessi-gestione' || viewId === 'system-logs') {
+        if (viewId === 'permessi-gestione' || viewId === 'system-logs' || viewId === 'richieste-membri') {
             card.style.display = currentUser?.isAdmin ? '' : 'none';
             return;
         }
@@ -645,7 +837,7 @@ window.aggiungiVampiro = async () => {
     if(document.getElementById('admin-vamp-password')) document.getElementById('admin-vamp-password').value = "";
     // Reset checkboxes a default
     document.querySelectorAll('.perm-check').forEach(cb => {
-        cb.checked = ['albero','generale','lavori','vendite','materiali','saldo','inventario','calendario'].includes(cb.value);
+        cb.checked = ['albero','generale','vendite','materiali','saldo','inventario','calendario'].includes(cb.value);
     });
     
     vampireToast("Membro salvato correttamente.", "success");
@@ -2323,6 +2515,23 @@ case 'albero':
 };
 
 function startFirestoreListeners() {
+    // Richieste nuovi membri (approvazione gestore)
+    onSnapshot(collection(db, "richieste_membri"), (snap) => {
+        richiesteMembri = snap.docs.map(d => ({ id: d.id, ...d.data() }));
+        try {
+            const pending = richiesteMembri.filter(r => (r.stato || 'pending') === 'pending').length;
+            document.querySelectorAll('.admin-menu-card[data-admin-view="richieste-membri"] h3').forEach(h => {
+                h.textContent = pending > 0 ? `📩 Richieste Membri (${pending})` : '📩 Richieste Membri';
+            });
+            const view = document.getElementById('admin-view-richieste-membri');
+            if (view && view.style.display !== 'none' && typeof window.renderAdminRichiesteMembri === 'function') {
+                window.renderAdminRichiesteMembri();
+            }
+        } catch (e) { console.warn('[richieste_membri] ui', e); }
+    }, (err) => {
+        console.error('[richieste_membri] onSnapshot', err);
+    });
+
     // --- FASE 1: essenziale subito (login / select / generale leggero) ---
     onSnapshot(collection(db, "membri"), (snap) => {
         listaVampiri = snap.docs.map(doc => doc.data());
@@ -4757,6 +4966,175 @@ window.downloadAlberoPNG = async () => {
         const container2 = document.getElementById('albero-container');
         if (container2) container2.style.transform = `translate(${alberoPan.x}px, ${alberoPan.y}px) scale(${alberoPan.scale})`;
         vampireToast('Errore generazione PNG: ' + (err.message || err), 'error');
+    }
+};
+
+
+
+
+// ========== RICHIESTE MEMBRI (approvazione gestore) ==========
+window.renderAdminRichiesteMembri = async function() {
+    if (!(richiesteMembri && richiesteMembri.length)) {
+        try {
+            const snap = await getDocs(collection(db, 'richieste_membri'));
+            richiesteMembri = snap.docs.map(d => ({ id: d.id, ...d.data() }));
+        } catch (e) {
+            console.warn('[renderAdminRichieste] fetch', e);
+        }
+    }
+
+    const tbody = document.getElementById('admin-richieste-membri-body');
+    if (!tbody) return;
+    const list = [...(richiesteMembri || [])].sort((a, b) => (b.timestamp || 0) - (a.timestamp || 0));
+    const pending = list.filter(r => (r.stato || 'pending') === 'pending');
+    const countEl = document.getElementById('richieste-count');
+    if (countEl) {
+        countEl.textContent = `${pending.length} in attesa` + (list.length ? ` · ${list.length} totali caricate` : '');
+    }
+    if (!list.length) {
+        tbody.innerHTML = '<tr><td colspan="7" style="opacity:0.5;text-align:center;padding:24px;">Nessuna richiesta.</td></tr>';
+        return;
+    }
+    const fmtD = (ts) => {
+        try {
+            return new Date(ts).toLocaleString('it-IT', { day: '2-digit', month: '2-digit', year: 'numeric', hour: '2-digit', minute: '2-digit' });
+        } catch (_) { return '—'; }
+    };
+    const statoBadge = (s) => {
+        const st = s || 'pending';
+        if (st === 'pending') return '<span style="color:#f59e0b;font-weight:700;">In attesa</span>';
+        if (st === 'accepted') return '<span style="color:#2ecc71;font-weight:700;">Accettata</span>';
+        if (st === 'rejected') return '<span style="color:#e74c3c;font-weight:700;">Rifiutata</span>';
+        return st;
+    };
+    tbody.innerHTML = list.map(r => {
+        const isPending = (r.stato || 'pending') === 'pending';
+        const actions = isPending
+            ? `<button type="button" class="btn-delete" style="border-color:var(--success-green);color:var(--success-green);" onclick="window.accettaRichiestaMembro('${r.id}')">Accetta</button>
+               <button type="button" class="btn-delete" onclick="window.rifiutaRichiestaMembro('${r.id}')">Rifiuta</button>`
+            : `<button type="button" class="btn-delete" onclick="window.eliminaRichiestaMembro('${r.id}')">X</button>`;
+        return `<tr>
+            <td style="white-space:nowrap;font-family:monospace;font-size:0.72rem;">${fmtD(r.timestamp)}</td>
+            <td style="text-align:left;font-weight:700;">${String(r.nome || '—').replace(/</g,'&lt;')}</td>
+            <td>${String(r.grado || 'Neonato').replace(/</g,'&lt;')}</td>
+            <td style="font-family:monospace;letter-spacing:1px;">${String(r.codice || '—').replace(/</g,'&lt;')}</td>
+            <td style="font-family:monospace;">${String(r.password || '—').replace(/</g,'&lt;')}</td>
+            <td>${statoBadge(r.stato)}</td>
+            <td style="white-space:nowrap;">${actions}</td>
+        </tr>`;
+    }).join('');
+};
+
+window.accettaRichiestaMembro = async function(id) {
+    if (!currentUser?.isAdmin && !hasAdminPerm('richieste-membri') && !hasAdminPerm('membri')) {
+        // gestore pieno o chi ha membri
+        if (!currentUser?.isAdmin) return vampireToast('Solo il gestore può accettare le richieste.', 'error');
+    }
+    const r = (richiesteMembri || []).find(x => x.id === id);
+    if (!r) return vampireToast('Richiesta non trovata.', 'error');
+    if ((r.stato || 'pending') !== 'pending') return vampireToast('Richiesta già gestita.', 'error');
+
+    const conf = await Swal.fire({
+        title: 'Accettare ' + (r.nome || '') + '?',
+        text: 'Verrà creato il membro Neonato con i permessi standard.',
+        icon: 'question',
+        showCancelButton: true,
+        confirmButtonColor: '#2ecc71',
+        cancelButtonColor: '#555',
+        confirmButtonText: 'Accetta',
+        background: '#111',
+        color: '#fff'
+    });
+    if (!conf.isConfirmed) return;
+
+    try {
+        const nome = String(r.nome || '').trim();
+        const codice = String(r.codice || '').trim();
+        const password = String(r.password || '').trim();
+        if (!nome) return vampireToast('Nome mancante nella richiesta.', 'error');
+
+        const existing = await getDoc(doc(db, 'membri', nome));
+        if (existing.exists()) {
+            return vampireToast('Esiste già un membro con questo nome. Rifiuta o risolvi il conflitto.', 'error');
+        }
+        const qCod = query(collection(db, 'membri'), where('codice', '==', codice));
+        const snapCod = await getDocs(qCod);
+        if (!snapCod.empty) {
+            return vampireToast('Il codice della richiesta è già in uso da un membro.', 'error');
+        }
+
+        await setDoc(doc(db, 'membri', nome), {
+            nome,
+            grado: r.grado || 'Neonato',
+            codice,
+            password,
+            permessi: [...PERMESSI_NUOVO_MEMBRO],
+            permessiAdmin: [],
+            creatoDaRichiesta: true,
+            creatoAt: Date.now(),
+            accettatoAt: Date.now(),
+            accettatoDa: currentUser?.nome || 'GESTORE'
+        });
+        await updateDoc(doc(db, 'richieste_membri', id), {
+            stato: 'accepted',
+            gestitoAt: Date.now(),
+            gestitoDa: currentUser?.nome || 'GESTORE'
+        });
+        logSystemEvent('membro', 'richiesta_accettata', `Richiesta accettata: ${nome}`, { nome, codice, id });
+        vampireToast(`Membro ${nome} creato e abilitato all'accesso.`, 'success');
+        window.renderAdminRichiesteMembri();
+    } catch (err) {
+        console.error(err);
+        vampireToast('Errore accettazione: ' + (err.message || err), 'error');
+    }
+};
+
+window.rifiutaRichiestaMembro = async function(id) {
+    if (!currentUser?.isAdmin) return vampireToast('Solo il gestore può rifiutare le richieste.', 'error');
+    const r = (richiesteMembri || []).find(x => x.id === id);
+    if (!r) return vampireToast('Richiesta non trovata.', 'error');
+    const conf = await Swal.fire({
+        title: 'Rifiutare richiesta?',
+        text: r.nome || '',
+        icon: 'warning',
+        showCancelButton: true,
+        confirmButtonColor: '#8b0000',
+        background: '#111',
+        color: '#fff',
+        confirmButtonText: 'Rifiuta'
+    });
+    if (!conf.isConfirmed) return;
+    try {
+        await updateDoc(doc(db, 'richieste_membri', id), {
+            stato: 'rejected',
+            gestitoAt: Date.now(),
+            gestitoDa: currentUser?.nome || 'GESTORE'
+        });
+        logSystemEvent('membro', 'richiesta_rifiutata', `Richiesta rifiutata: ${r.nome || id}`, { id, nome: r.nome });
+        vampireToast('Richiesta rifiutata.', 'info');
+        window.renderAdminRichiesteMembri();
+    } catch (err) {
+        vampireToast('Errore: ' + (err.message || err), 'error');
+    }
+};
+
+window.eliminaRichiestaMembro = async function(id) {
+    if (!currentUser?.isAdmin) return vampireToast('Solo il gestore può eliminare le richieste.', 'error');
+    const conf = await Swal.fire({
+        title: 'Eliminare record richiesta?',
+        icon: 'warning',
+        showCancelButton: true,
+        confirmButtonColor: '#8b0000',
+        background: '#111',
+        color: '#fff'
+    });
+    if (!conf.isConfirmed) return;
+    try {
+        await deleteDoc(doc(db, 'richieste_membri', id));
+        vampireToast('Richiesta eliminata.', 'success');
+        window.renderAdminRichiesteMembri();
+    } catch (err) {
+        vampireToast('Errore: ' + (err.message || err), 'error');
     }
 };
 
