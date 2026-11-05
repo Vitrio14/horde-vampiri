@@ -594,8 +594,9 @@ onAuthStateChanged(auth, (user) => {
             }
             
             applyPermissions();
-            window.showSection('gestione'); 
-            refreshAdminUI();
+            // Solo Generale al login (anche gestore): dati pesanti on-demand
+            window.showSection('generale');
+            try { renderVampiriLists?.(); renderDinamici?.(); } catch (_) {}
         }
         // Non gestiamo più vampiri@horde.it
     } else {
@@ -659,6 +660,8 @@ window.logoutAdmin = async () => {
 // --- LOGICA SEZIONI ---
 window.showSection = (id) => {
     if (id === 'lavori') id = 'generale';
+    const prevId = document.querySelector('.section.active')?.id || null;
+
     document.querySelectorAll('.section').forEach(s => s.classList.remove('active'));
     document.querySelectorAll('.nav-link').forEach(l => l.classList.remove('active'));
     const target = document.getElementById(id);
@@ -667,20 +670,30 @@ window.showSection = (id) => {
     if (link) link.classList.add('active');
     window.scrollTo(0, 0);
 
-    // Lazy: storico completo solo se serve (classifiche "sempre", calcolo totale, gestione)
+    // Stacca listener della sezione precedente (tiene i dati in memoria)
+    if (typeof window.releaseSectionData === 'function' && prevId && prevId !== id) {
+        window.releaseSectionData(prevId, id);
+    }
+    // Attacca solo i dati della sezione corrente
+    if (typeof window.ensureSectionData === 'function') {
+        window.ensureSectionData(id);
+    }
+
+    // Storico completo solo se serve
     if (id === 'generale' || id === 'calcolo' || id === 'gestione') {
         window.loadStoricoVenditeIfNeeded?.();
         window.loadStoricoMaterialiIfNeeded?.();
     }
 
-    // Disegna la sezione solo quando la apri (dati già in memoria)
     if (typeof window.refreshActiveSectionUI === 'function') {
         scheduleUI(() => window.refreshActiveSectionUI());
     }
 
-    // Accesso delegato a Gestione: membro con permessiAdmin vede le card abilitate
     if (id === 'gestione') {
         setupGestionePanelForCurrentUser();
+        if (typeof refreshAdminUI === 'function' && currentUser?.isAdmin) {
+            scheduleUI(() => refreshAdminUI(), { priority: 'normal' });
+        }
     }
 
     if (id === 'albero') {
@@ -2490,7 +2503,63 @@ case 'albero':
 };
 
 function startFirestoreListeners() {
-    // ---- stato listener settimanali (riattacco al cambio settimana) ----
+    // =====================================================================
+    // OTTIMIZZAZIONE FIRESTORE (v2)
+    // - Login: SOLO core Generale (membri, comunicazioni, documenti, saldo,
+    //   vendite/materiali settimana)
+    // - Altre sezioni: attach on-demand + detach all'uscita
+    // - Dati restano in memoria → rientro sezione istantaneo, zero lag
+    // =====================================================================
+
+    const _unsubs = {
+        inventario: null,
+        logs: null,
+        saldoLogs: null,
+        calendarioAvvento: null,
+        calendarioMesi: null,
+        albero: null,
+        tipiMateriale: null,
+        tipiLavoro: null,
+        lavoriMembri: null,
+        richieste: null,
+        systemLogs: null
+    };
+
+    // Ref-count: quanti "contenuti" tengono aperto un listener (sezione o admin view)
+    const _refs = {
+        inventario: 0,
+        logs: 0,
+        saldoLogs: 0,
+        calendario: 0,
+        albero: 0,
+        tipiMateriale: 0,
+        tipiLavoro: 0,
+        lavoriMembri: 0,
+        richieste: 0,
+        systemLogs: 0
+    };
+
+    function _safeUnsub(key) {
+        const fn = _unsubs[key];
+        if (typeof fn === 'function') {
+            try { fn(); } catch (_) {}
+        }
+        _unsubs[key] = null;
+    }
+
+    function _acquire(key, attachFn) {
+        _refs[key] = (_refs[key] || 0) + 1;
+        if (_refs[key] === 1) attachFn();
+    }
+
+    function _release(key, unsubKeys) {
+        _refs[key] = Math.max(0, (_refs[key] || 0) - 1);
+        if (_refs[key] === 0) {
+            (unsubKeys || [key]).forEach(k => _safeUnsub(k));
+        }
+    }
+
+    // ---- listener settimanali vendite (CORE, restano sempre) ----
     let _unsubVendite = null;
     let _unsubMat = null;
     let _liveWeekKey = null;
@@ -2502,8 +2571,6 @@ function startFirestoreListeners() {
         if (typeof _unsubMat === 'function') { try { _unsubMat(); } catch (_) {} }
         _liveWeekKey = weekKey;
 
-        // Query SOLO su settimanaEtichetta (niente orderBy → nessun indice composito obbligatorio).
-        // Ordine per timestamp fatto in client.
         const applyVendite = (snapshot) => {
             const live = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
             live.sort((a, b) => (b.timestamp || 0) - (a.timestamp || 0));
@@ -2550,21 +2617,15 @@ function startFirestoreListeners() {
         _unsubVendite = onSnapshot(
             query(collection(db, "vendite"), where("settimanaEtichetta", "==", weekKey), limit(300)),
             applyVendite,
-            (err) => {
-                console.warn('[vendite] listener settimana:', err?.code || err?.message || err);
-            }
+            (err) => console.warn('[vendite] listener settimana:', err?.code || err?.message || err)
         );
-
         _unsubMat = onSnapshot(
             query(collection(db, "vendite_materiali"), where("settimanaEtichetta", "==", weekKey), limit(300)),
             applyMateriali,
-            (err) => {
-                console.warn('[vendite_materiali] listener settimana:', err?.code || err?.message || err);
-            }
+            (err) => console.warn('[vendite_materiali] listener settimana:', err?.code || err?.message || err)
         );
     }
 
-    // Controllo cambio settimana (lunedì 00:00) senza ricaricare tutta la pagina
     setInterval(() => {
         try {
             const k = getWeekYearKey(new Date());
@@ -2572,63 +2633,23 @@ function startFirestoreListeners() {
         } catch (_) {}
     }, 60000);
 
-    // Richieste nuovi membri (approvazione gestore)
-    onSnapshot(collection(db, "richieste_membri"), (snap) => {
-        richiesteMembri = snap.docs.map(d => ({ id: d.id, ...d.data() }));
-        try {
-            const pending = richiesteMembri.filter(r => (r.stato || 'pending') === 'pending').length;
-            document.querySelectorAll('.admin-menu-card[data-admin-view="richieste-membri"] h3').forEach(h => {
-                h.textContent = pending > 0 ? `📩 Richieste Membri (${pending})` : '📩 Richieste Membri';
-            });
-            const view = document.getElementById('admin-view-richieste-membri');
-            if (view && view.style.display !== 'none' && typeof window.renderAdminRichiesteMembri === 'function') {
-                window.renderAdminRichiesteMembri();
-            }
-        } catch (e) { console.warn('[richieste_membri] ui', e); }
-    }, (err) => {
-        console.error('[richieste_membri] onSnapshot', err);
-    });
-
-    // --- FASE 1: essenziale subito (login / select / generale leggero) ---
+    // ========== CORE (sempre attivi dopo login) ==========
     onSnapshot(collection(db, "membri"), (snap) => {
         listaVampiri = snap.docs.map(doc => doc.data());
         scheduleUI(() => {
             renderVampiriLists();
-            if (isSectionActive('lavori') && typeof window.renderSezioneLavori === 'function') window.renderSezioneLavori();
+            if (isSectionActive('generale')) renderClassifiche?.();
         });
     });
 
-    onSnapshot(collection(db, "tipi_lavoro"), (snap) => {
-        tipiLavoro = snap.docs.map(d => ({ id: d.id, ...d.data() }));
-        try {
-            if (typeof window.popolaSelectTipiLavoro === 'function') window.popolaSelectTipiLavoro();
-            if (typeof window.renderAdminTipiLavoro === 'function') window.renderAdminTipiLavoro();
-            if (typeof window.renderAdminLavoriMembri === 'function') window.renderAdminLavoriMembri();
-            if (isSectionActive('lavori') && typeof window.renderSezioneLavori === 'function') window.renderSezioneLavori();
-        } catch (e) { console.error('[lavori] render tipi', e); }
-    }, (err) => {
-        console.error('[lavori] onSnapshot tipi_lavoro', err);
-        vampireToast('Errore lettura tipi lavoro: ' + (err.code || err.message || err), 'error');
+    onSnapshot(query(collection(db, "comunicazioni"), orderBy("timestamp", "desc"), limit(40)), (snap) => {
+        comunicazioni = snap.docs.map(d => ({ id: d.id, ...d.data() }));
+        if (isSectionActive('generale') || isAdminVisible()) scheduleUI(() => renderDinamici());
     });
-
-    onSnapshot(collection(db, "lavori_membri"), (snap) => {
-        lavoriMembri = snap.docs.map(d => ({ id: d.id, ...d.data() }));
-        try {
-            if (typeof window.renderAdminLavoriMembri === 'function') window.renderAdminLavoriMembri();
-            if (isSectionActive('lavori') && typeof window.renderSezioneLavori === 'function') window.renderSezioneLavori();
-        } catch (e) { console.error('[lavori] render membri', e); }
+    onSnapshot(query(collection(db, "documenti"), orderBy("timestamp", "desc"), limit(40)), (snap) => {
+        documenti = snap.docs.map(d => ({ id: d.id, ...d.data() }));
+        if (isSectionActive('generale') || isAdminVisible()) scheduleUI(() => renderDinamici());
     });
-
-    onSnapshot(collection(db, "tipi_materiale"), (snapshot) => {
-        tipiMateriale = snapshot.docs.map(d => ({ id: d.id, ...d.data() }));
-        scheduleUI(() => {
-            if (typeof window.popolaSelectTipiMateriale === 'function') window.popolaSelectTipiMateriale();
-            if (typeof window.renderAdminTipiMateriale === 'function') window.renderAdminTipiMateriale();
-            if (document.getElementById('vamp-tipo-mat')) window.onVenditaTipoChange?.();
-            if (document.getElementById('mat-tipo-select')) window.onMatTipoChange?.();
-        });
-    });
-
     onSnapshot(doc(db, "config", "saldo"), (docSnap) => {
         if (docSnap.exists()) {
             const v = docSnap.data()?.valore;
@@ -2644,21 +2665,47 @@ function startFirestoreListeners() {
         }, { priority: 'high' });
     });
 
-    // comunicazioni / documenti: limitati
-    onSnapshot(query(collection(db, "comunicazioni"), orderBy("timestamp", "desc"), limit(40)), (snap) => {
-        comunicazioni = snap.docs.map(d => ({ id: d.id, ...d.data() }));
-        if (isSectionActive('generale') || isAdminVisible()) scheduleUI(() => renderDinamici());
-    });
-    onSnapshot(query(collection(db, "documenti"), orderBy("timestamp", "desc"), limit(40)), (snap) => {
-        documenti = snap.docs.map(d => ({ id: d.id, ...d.data() }));
-        if (isSectionActive('generale') || isAdminVisible()) scheduleUI(() => renderDinamici());
-    });
+    attachWeeklyVenditeListeners();
 
-    // --- FASE 2: vendite/materiali settimanali + inventario ---
-    setTimeout(() => {
-        attachWeeklyVenditeListeners();
+    // ========== LAZY ATTACH ==========
+    function attachTipiMateriale() {
+        if (_unsubs.tipiMateriale) return;
+        _unsubs.tipiMateriale = onSnapshot(collection(db, "tipi_materiale"), (snapshot) => {
+            tipiMateriale = snapshot.docs.map(d => ({ id: d.id, ...d.data() }));
+            scheduleUI(() => {
+                if (typeof window.popolaSelectTipiMateriale === 'function') window.popolaSelectTipiMateriale();
+                if (typeof window.renderAdminTipiMateriale === 'function') window.renderAdminTipiMateriale();
+                if (document.getElementById('vamp-tipo-mat')) window.onVenditaTipoChange?.();
+                if (document.getElementById('mat-tipo-select')) window.onMatTipoChange?.();
+            });
+        });
+    }
 
-        onSnapshot(collection(db, "inventario"), (snapshot) => {
+    function attachTipiLavoro() {
+        if (_unsubs.tipiLavoro) return;
+        _unsubs.tipiLavoro = onSnapshot(collection(db, "tipi_lavoro"), (snap) => {
+            tipiLavoro = snap.docs.map(d => ({ id: d.id, ...d.data() }));
+            try {
+                if (typeof window.popolaSelectTipiLavoro === 'function') window.popolaSelectTipiLavoro();
+                if (typeof window.renderAdminTipiLavoro === 'function') window.renderAdminTipiLavoro();
+                if (typeof window.renderAdminLavoriMembri === 'function') window.renderAdminLavoriMembri();
+            } catch (e) { console.error('[lavori] render tipi', e); }
+        }, (err) => console.error('[lavori] onSnapshot tipi_lavoro', err));
+    }
+
+    function attachLavoriMembri() {
+        if (_unsubs.lavoriMembri) return;
+        _unsubs.lavoriMembri = onSnapshot(collection(db, "lavori_membri"), (snap) => {
+            lavoriMembri = snap.docs.map(d => ({ id: d.id, ...d.data() }));
+            try {
+                if (typeof window.renderAdminLavoriMembri === 'function') window.renderAdminLavoriMembri();
+            } catch (e) { console.error('[lavori] render membri', e); }
+        });
+    }
+
+    function attachInventario() {
+        if (_unsubs.inventario) return;
+        _unsubs.inventario = onSnapshot(collection(db, "inventario"), (snapshot) => {
             inventarioDati = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
             const prio = (isSectionActive('inventario') || isAdminVisible()) ? 'high' : 'normal';
             scheduleUI(() => {
@@ -2670,29 +2717,10 @@ function startFirestoreListeners() {
                 if (isAdminVisible()) window.renderAdminTable?.();
             }, { priority: prio });
         });
-    }, 80);
+    }
 
-    // --- FASE 3: secondari ---
-    setTimeout(() => {
-        onSnapshot(collection(db, "calendario_avvento"), (snapshot) => {
-            calendarioAvvento = snapshot.docs.map(d => ({ id: d.id, ...d.data() }));
-            if (isSectionActive('calendario') || isAdminVisible()) {
-                scheduleUI(() => {
-                    window.renderCalendarioSezione?.();
-                    window.renderAdminCalendario?.();
-                });
-            }
-        });
-        onSnapshot(collection(db, "calendario_mesi"), (snapshot) => {
-            calendarioMesi = snapshot.docs.map(d => ({ id: d.id, ...d.data() }));
-            if (isSectionActive('calendario') || isAdminVisible()) {
-                scheduleUI(() => {
-                    window.renderCalendarioSezione?.();
-                    window.renderAdminCalendario?.();
-                });
-            }
-        });
-
+    function attachLogs() {
+        if (_unsubs.logs) return;
         const applyLogsSnap = (snap) => {
             logs = snap.docs.map(d => ({ id: d.id, ...d.data() }));
             scheduleUI(() => {
@@ -2700,15 +2728,18 @@ function startFirestoreListeners() {
                 if (isAdminVisible()) window.renderAdminLogs?.();
             }, { priority: 'high' });
         };
-        onSnapshot(
+        _unsubs.logs = onSnapshot(
             query(collection(db, "logs"), orderBy("timestamp", "desc"), limit(80)),
             applyLogsSnap,
             (err) => {
-                console.warn('[logs] orderBy fallito, fallback senza orderBy:', err?.code || err);
-                onSnapshot(query(collection(db, "logs"), limit(80)), applyLogsSnap);
+                console.warn('[logs] orderBy fallito, fallback:', err?.code || err);
+                _unsubs.logs = onSnapshot(query(collection(db, "logs"), limit(80)), applyLogsSnap);
             }
         );
+    }
 
+    function attachSaldoLogs() {
+        if (_unsubs.saldoLogs) return;
         const applySaldoLogsSnap = (snap) => {
             saldoLogs = snap.docs.map(d => ({ id: d.id, ...d.data() }));
             scheduleUI(() => {
@@ -2716,32 +2747,44 @@ function startFirestoreListeners() {
                 if (isAdminVisible()) window.renderAdminSaldoLogs?.();
             }, { priority: 'high' });
         };
-        onSnapshot(
+        _unsubs.saldoLogs = onSnapshot(
             query(collection(db, "saldo_logs"), orderBy("timestamp", "desc"), limit(80)),
             applySaldoLogsSnap,
             (err) => {
-                console.warn('[saldo_logs] orderBy fallito, fallback senza orderBy:', err?.code || err);
-                onSnapshot(query(collection(db, "saldo_logs"), limit(80)), applySaldoLogsSnap);
+                console.warn('[saldo_logs] orderBy fallito, fallback:', err?.code || err);
+                _unsubs.saldoLogs = onSnapshot(query(collection(db, "saldo_logs"), limit(80)), applySaldoLogsSnap);
             }
         );
+    }
 
-        // Log di sistema: solo gestore + limite ridotto
-        if (currentUser?.isAdmin) {
-            onSnapshot(
-                query(collection(db, "system_logs"), orderBy("timestamp", "desc"), limit(150)),
-                (snap) => {
-                    systemLogs = snap.docs.map(d => ({ id: d.id, ...d.data() }));
-                    if (typeof window.renderSystemLogs === 'function' && document.getElementById('admin-view-system-logs')?.style.display !== 'none') {
-                        window.renderSystemLogs();
-                    }
-                },
-                (err) => {
-                    console.warn('[system_logs]', err?.code || err?.message || err);
+    function attachCalendario() {
+        if (!_unsubs.calendarioAvvento) {
+            _unsubs.calendarioAvvento = onSnapshot(collection(db, "calendario_avvento"), (snapshot) => {
+                calendarioAvvento = snapshot.docs.map(d => ({ id: d.id, ...d.data() }));
+                if (isSectionActive('calendario') || isAdminVisible()) {
+                    scheduleUI(() => {
+                        window.renderCalendarioSezione?.();
+                        window.renderAdminCalendario?.();
+                    });
                 }
-            );
+            });
         }
+        if (!_unsubs.calendarioMesi) {
+            _unsubs.calendarioMesi = onSnapshot(collection(db, "calendario_mesi"), (snapshot) => {
+                calendarioMesi = snapshot.docs.map(d => ({ id: d.id, ...d.data() }));
+                if (isSectionActive('calendario') || isAdminVisible()) {
+                    scheduleUI(() => {
+                        window.renderCalendarioSezione?.();
+                        window.renderAdminCalendario?.();
+                    });
+                }
+            });
+        }
+    }
 
-        onSnapshot(collection(db, "albero_genealogico"), (snapshot) => {
+    function attachAlbero() {
+        if (_unsubs.albero) return;
+        _unsubs.albero = onSnapshot(collection(db, "albero_genealogico"), (snapshot) => {
             alberoNodi = snapshot.docs.map(d => ({ id: d.id, ...d.data() }));
             window._alberoDirty = true;
             if (isSectionActive('albero')) {
@@ -2754,12 +2797,171 @@ function startFirestoreListeners() {
                 });
             }
         });
-    }, 200);
+    }
 
-    // FASE 4: NESSUN listener globale su item_images (base64 pesanti).
-    // Si caricano on-demand con loadItemImagesOnce() aprendo Gestione Inventario.
+    function attachRichieste() {
+        if (!currentUser?.isAdmin) return;
+        if (_unsubs.richieste) return;
+        _unsubs.richieste = onSnapshot(collection(db, "richieste_membri"), (snap) => {
+            richiesteMembri = snap.docs.map(d => ({ id: d.id, ...d.data() }));
+            try {
+                const pending = richiesteMembri.filter(r => (r.stato || 'pending') === 'pending').length;
+                document.querySelectorAll('.admin-menu-card[data-admin-view="richieste-membri"] h3').forEach(h => {
+                    h.textContent = pending > 0 ? `📩 Richieste Membri (${pending})` : '📩 Richieste Membri';
+                });
+                const view = document.getElementById('admin-view-richieste-membri');
+                if (view && view.style.display !== 'none' && typeof window.renderAdminRichiesteMembri === 'function') {
+                    window.renderAdminRichiesteMembri();
+                }
+            } catch (e) { console.warn('[richieste_membri] ui', e); }
+        }, (err) => console.error('[richieste_membri]', err));
+    }
+
+    function attachSystemLogs() {
+        if (!currentUser?.isAdmin) return;
+        if (_unsubs.systemLogs) return;
+        _unsubs.systemLogs = onSnapshot(
+            query(collection(db, "system_logs"), orderBy("timestamp", "desc"), limit(150)),
+            (snap) => {
+                systemLogs = snap.docs.map(d => ({ id: d.id, ...d.data() }));
+                if (typeof window.renderSystemLogs === 'function' &&
+                    document.getElementById('admin-view-system-logs')?.style.display !== 'none') {
+                    window.renderSystemLogs();
+                }
+            },
+            (err) => console.warn('[system_logs]', err?.code || err?.message || err)
+        );
+    }
+
+    /** Dipendenze per sezione membro */
+    const SECTION_DEPS = {
+        generale: [],
+        vendite: ['tipiMateriale'],
+        materiali: ['tipiMateriale'],
+        calcolo: ['tipiMateriale'],
+        saldo: ['saldoLogs'],
+        inventario: ['inventario', 'logs'],
+        calendario: ['calendario'],
+        albero: ['albero'],
+        gestione: []
+    };
+
+    const ATTACH = {
+        tipiMateriale: attachTipiMateriale,
+        tipiLavoro: attachTipiLavoro,
+        lavoriMembri: attachLavoriMembri,
+        inventario: attachInventario,
+        logs: attachLogs,
+        saldoLogs: attachSaldoLogs,
+        calendario: attachCalendario,
+        albero: attachAlbero,
+        richieste: attachRichieste,
+        systemLogs: attachSystemLogs
+    };
+
+    const UNSUB_KEYS = {
+        tipiMateriale: ['tipiMateriale'],
+        tipiLavoro: ['tipiLavoro'],
+        lavoriMembri: ['lavoriMembri'],
+        inventario: ['inventario'],
+        logs: ['logs'],
+        saldoLogs: ['saldoLogs'],
+        calendario: ['calendarioAvvento', 'calendarioMesi'],
+        albero: ['albero'],
+        richieste: ['richieste'],
+        systemLogs: ['systemLogs']
+    };
+
+    let _activeSectionDeps = new Set();
+    let _activeAdminDeps = new Set();
+
+    function _syncDeps(wantedSet, isAdminBucket) {
+        const current = isAdminBucket ? _activeAdminDeps : _activeSectionDeps;
+        for (const k of [...current]) {
+            if (!wantedSet.has(k)) {
+                _release(k, UNSUB_KEYS[k]);
+                current.delete(k);
+            }
+        }
+        for (const k of wantedSet) {
+            if (!current.has(k)) {
+                const fn = ATTACH[k];
+                if (fn) _acquire(k, fn);
+                current.add(k);
+            }
+        }
+        if (isAdminBucket) _activeAdminDeps = current;
+        else _activeSectionDeps = current;
+    }
+
+    window.ensureSectionData = function(sectionId, adminViewId) {
+        const id = sectionId || document.querySelector('.section.active')?.id;
+        if (!id) return;
+
+        if (id === 'gestione') {
+            const wanted = new Set();
+            if (currentUser?.isAdmin) wanted.add('richieste');
+
+            if (adminViewId === 'inventario' || adminViewId === 'finanze') {
+                wanted.add('inventario');
+                wanted.add('logs');
+                wanted.add('saldoLogs');
+            }
+            if (adminViewId === 'materiali') wanted.add('tipiMateriale');
+            if (adminViewId === 'albero') wanted.add('albero');
+            if (adminViewId === 'calendario') wanted.add('calendario');
+            if (adminViewId === 'lavori') {
+                wanted.add('tipiLavoro');
+                wanted.add('lavoriMembri');
+            }
+            if (adminViewId === 'system-logs') wanted.add('systemLogs');
+            if (adminViewId === 'richieste-membri') wanted.add('richieste');
+            if (adminViewId === 'storico-vendite' || adminViewId === 'classifiche' || adminViewId === 'finanze') {
+                window.loadStoricoVenditeIfNeeded?.();
+                window.loadStoricoMaterialiIfNeeded?.();
+            }
+            if (!adminViewId && currentUser?.isAdmin) wanted.add('richieste');
+
+            _syncDeps(wanted, true);
+            return;
+        }
+
+        const deps = SECTION_DEPS[id] || [];
+        _syncDeps(new Set(deps), false);
+    };
+
+    window.releaseSectionData = function(prevId, nextId) {
+        if (!prevId || prevId === nextId) return;
+
+        if (prevId === 'gestione' && nextId !== 'gestione') {
+            _syncDeps(new Set(), true);
+        }
+        if (prevId !== 'gestione') {
+            const nextDeps = new Set(SECTION_DEPS[nextId] || []);
+            const prevDeps = SECTION_DEPS[prevId] || [];
+            for (const k of prevDeps) {
+                if (!nextDeps.has(k) && _activeSectionDeps.has(k)) {
+                    _release(k, UNSUB_KEYS[k]);
+                    _activeSectionDeps.delete(k);
+                }
+            }
+        }
+    };
+
+    window.ensureAdminViewData = function(viewId) {
+        window.ensureSectionData('gestione', viewId);
+    };
+
+    window.releaseAdminViewData = function() {
+        const wanted = new Set();
+        if (currentUser?.isAdmin) wanted.add('richieste');
+        _syncDeps(wanted, true);
+    };
+
+    console.info('[Firestore] Core Generale attivo. Sezioni: attach/detach on-demand.');
 }
 
+// ---- Lazy load: immagini inventario + storico vendite/materiali ----
 // ---- Lazy load: immagini inventario + storico vendite/materiali ----
 let itemImagesLoaded = false;
 let itemImagesLoading = null;

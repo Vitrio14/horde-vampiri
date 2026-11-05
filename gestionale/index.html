@@ -1678,6 +1678,11 @@
                 return;
             }
 
+            // Carica dati Firestore solo per questa sotto-vista
+            if (typeof window.ensureAdminViewData === 'function') {
+                window.ensureAdminViewData(viewId);
+            }
+
             // Nasconde la griglia del menu principale
             document.getElementById('admin-dashboard-menu').style.display = 'none';
             
@@ -1742,6 +1747,10 @@
             // Mostra di nuovo il menu a griglia (filtrato)
             document.getElementById('admin-dashboard-menu').style.display = 'grid';
             if (typeof window.filterAdminMenuCards === 'function') window.filterAdminMenuCards();
+            // Rilascia listener pesanti delle sotto-viste (tiene badge richieste)
+            if (typeof window.releaseAdminViewData === 'function') {
+                window.releaseAdminViewData();
+            }
         };
 
     </script>
