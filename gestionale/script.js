@@ -222,9 +222,19 @@ window.unlockSite = async () => {
             return vampireToast("Accesso negato. Password errata.", "error");
         }
 
-        if (found.archiviato === true) {
-            logSystemEvent('auth', 'login_fallito', `Login bloccato: membro archiviato ${found.nome}`, { codice, nome: found.nome }, { utente: found.nome, ruolo: 'membro' });
-            return vampireToast("Questo membro risulta archiviato (uscito dalla dinastia). Accesso non consentito.", "error");
+        if (found.sospeso === true) {
+            const motivoSos = (found.motivoSospensione || '').trim() || 'Nessun motivo specificato';
+            logSystemEvent('auth', 'login_fallito', `Login bloccato: membro sospeso ${found.nome}. Motivo: ${motivoSos}`, { codice, nome: found.nome, motivo: motivoSos }, { utente: found.nome, ruolo: 'membro' });
+            await Swal.fire({
+                title: 'Accesso sospeso',
+                html: `<p style="font-size:0.95rem;line-height:1.5;margin:0;">Accesso sospeso per: <strong style="color:#e74c3c;">${String(motivoSos).replace(/</g,'&lt;')}</strong></p>`,
+                icon: 'error',
+                confirmButtonColor: '#8b0000',
+                background: '#111',
+                color: '#fff',
+                confirmButtonText: 'Ho capito'
+            });
+            return;
         }
 
         // Login membro riuscito
@@ -827,7 +837,7 @@ window.aggiungiVampiro = async () => {
     if(codice) data.codice = codice;
     if(password) data.password = password;
     // Se è un nuovo salvataggio / aggiornamento da form, non archivia; lascia lo stato esistente se merge
-    // (per ripristino usare esplicitamente ripristinaVampiro)
+    // (per riattivare un sospeso usare esplicitamente riattivaVampiro)
 
     await setDoc(doc(db, "membri", nome), data, { merge: true });
     logSystemEvent('membro', 'salva', `Membro salvato/aggiornato: ${nome} (${grado})`, { nome, grado, permessi: data.permessi, codice: !!codice });
@@ -843,14 +853,14 @@ window.aggiungiVampiro = async () => {
     vampireToast("Membro salvato correttamente.", "success");
 };
 
-/** Membri non archiviati (attivi in dinastia) */
+/** Tutti i membri (sospesi inclusi: restano in liste e selettori) */
 function membriAttivi() {
-    return listaVampiri.filter(v => v.archiviato !== true);
+    return listaVampiri.slice();
 }
 
-/** Membri archiviati (usciti) */
-function membriArchiviati() {
-    return listaVampiri.filter(v => v.archiviato === true);
+/** Membri con accesso sospeso */
+function membriSospesi() {
+    return listaVampiri.filter(v => v.sospeso === true);
 }
 
 // --- PERMESSI GESTIONE (delega sottosezioni admin ai membri) ---
@@ -944,25 +954,25 @@ window.renderAdminPermessiGestioneTable = function() {
     }).join('') || '<tr><td colspan="3" style="opacity:0.5;text-align:center;">Nessun membro trovato.</td></tr>';
 };
 
-window.archiviaVampiro = async (id) => {
+window.sospendiVampiro = async (id) => {
     if (!hasAdminPerm('membri')) {
         return vampireToast("Non hai il permesso Gestione Membri.", "error");
     }
     const v = listaVampiri.find(x => x.nome === id);
     if (!v) return vampireToast("Membro non trovato.", "error");
-    if (v.archiviato === true) return vampireToast("Questo membro è già archiviato.", "info");
+    if (v.sospeso === true) return vampireToast("Questo membro è già sospeso.", "info");
 
     const res = await Swal.fire({
-        title: 'Archiviare membro?',
-        html: `<p style="margin-bottom:12px;font-size:0.85rem;">Stai per archiviare <strong style="color:#c5a059">${v.nome}</strong>.<br>
-        Non comparirà più in Generale né nei selettori.<br>
-        <span style="color:#aaa;font-size:0.75rem;">Lo storico vendite/materiali resta intatto.</span></p>
-        <label style="display:block;text-align:left;font-size:0.7rem;color:#c5a059;margin-bottom:6px;">Motivo archiviazione *</label>`,
+        title: 'Sospendere accesso?',
+        html: `<p style="margin-bottom:12px;font-size:0.85rem;">Stai per sospendere l'accesso di <strong style="color:#c5a059">${v.nome}</strong>.<br>
+        Resterà in Generale e nei selettori (in rosso), ma non potrà più accedere.<br>
+        <span style="color:#aaa;font-size:0.75rem;">Al login vedrà il motivo della sospensione.</span></p>
+        <label style="display:block;text-align:left;font-size:0.7rem;color:#c5a059;margin-bottom:6px;">Motivo sospensione *</label>`,
         input: 'text',
-        inputPlaceholder: 'es. Uscito dalla dinastia, Inattivo, Trasferimento...',
+        inputPlaceholder: 'es. Violazione regole, Assenza prolungata...',
         inputAttributes: { maxlength: 200 },
         showCancelButton: true,
-        confirmButtonText: 'Archivia',
+        confirmButtonText: 'Sospendi',
         cancelButtonText: 'Annulla',
         confirmButtonColor: '#8b0000',
         background: '#111',
@@ -976,54 +986,56 @@ window.archiviaVampiro = async (id) => {
     const motivo = (res.value || '').trim();
     try {
         await setDoc(doc(db, "membri", id), {
-            archiviato: true,
-            motivoArchivio: motivo,
-            dataArchivio: Date.now(),
-            aggiornatoArchivioDa: currentUser.nome || 'GESTORE'
+            sospeso: true,
+            motivoSospensione: motivo,
+            dataSospensione: Date.now(),
+            sospesoDa: currentUser.nome || 'GESTORE',
+            archiviato: false
         }, { merge: true });
-        logSystemEvent('membro', 'archivia', `Archiviato membro ${id}. Motivo: ${motivo}`, { id, motivo });
-        vampireToast(`${id} archiviato. Motivo: ${motivo}`, "success");
+        logSystemEvent('membro', 'sospendi', `Sospeso membro ${id}. Motivo: ${motivo}`, { id, motivo });
+        vampireToast(`${id} sospeso. Motivo: ${motivo}`, "success");
     } catch (err) {
         console.error(err);
-        vampireToast("Errore durante l'archiviazione.", "error");
+        vampireToast("Errore durante la sospensione.", "error");
     }
 };
 
-window.ripristinaVampiro = async (id) => {
+window.riattivaVampiro = async (id) => {
     if (!hasAdminPerm('membri')) {
         return vampireToast("Non hai il permesso Gestione Membri.", "error");
     }
     const res = await Swal.fire({
-        title: 'Ripristinare membro?',
-        text: 'Tornerà visibile in Generale e nei selettori.',
+        title: 'Riattivare accesso?',
+        text: 'Il membro potrà di nuovo accedere con codice e password.',
         icon: 'question',
         showCancelButton: true,
         confirmButtonColor: '#2ecc71',
         background: '#111',
         color: '#fff',
-        confirmButtonText: 'Ripristina',
+        confirmButtonText: 'Riattiva',
         cancelButtonText: 'Annulla'
     });
     if (!res.isConfirmed) return;
     try {
         await setDoc(doc(db, "membri", id), {
-            archiviato: false,
-            motivoArchivio: '',
-            dataArchivio: null,
-            ripristinatoAt: Date.now()
+            sospeso: false,
+            motivoSospensione: '',
+            dataSospensione: null,
+            riattivatoAt: Date.now(),
+            archiviato: false
         }, { merge: true });
-        logSystemEvent('membro', 'ripristina', `Ripristinato membro ${id}`, { id });
-        vampireToast(`${id} ripristinato tra i membri attivi.`, "success");
+        logSystemEvent('membro', 'riattiva', `Riattivato membro ${id}`, { id });
+        vampireToast(`${id} riattivato: accesso di nuovo consentito.`, "success");
     } catch (err) {
         console.error(err);
-        vampireToast("Errore durante il ripristino.", "error");
+        vampireToast("Errore durante la riattivazione.", "error");
     }
 };
 
 window.eliminaVampiro = async (id) => {
     const res = await Swal.fire({
         title: 'Eliminare definitivamente?',
-        html: 'Questa azione <strong>cancella il documento membro</strong>.<br>Lo storico vendite resta, ma il profilo sparisce del tutto.<br><span style="color:#aaa;font-size:0.75rem;">Preferisci archiviare se vuoi solo nasconderlo.</span>',
+        html: 'Questa azione <strong>cancella il documento membro</strong>.<br>Lo storico vendite resta, ma il profilo sparisce del tutto.<br><span style="color:#aaa;font-size:0.75rem;">Preferisci sospendere l\'accesso se non vuoi eliminare il profilo.</span>',
         icon: 'warning',
         showCancelButton: true,
         confirmButtonColor: '#8b0000',
@@ -1053,7 +1065,7 @@ window.caricaMembroPerEdit = (nome) => {
 };
 
 function contaGradiMembri() {
-    // Contatori solo sui membri ATTIVI (non archiviati)
+    // Contatori su tutti i membri (sospesi inclusi)
     // Unificati M/F: Ekaton | Mentori | Adulti | Neonati
     const keys = [
         { label: 'Ekaton', match: ['ekaton', 'originario', 'originaria'] },
@@ -1085,16 +1097,6 @@ function htmlContatoriRanghi(compact) {
     return `<div class="rango-count-wrap${compact ? ' is-compact' : ''}">${chips}${tot}</div>`;
 }
 
-function htmlContatoreArchiviati() {
-    const n = membriArchiviati().length;
-    return `<div class="rango-count-wrap">
-        <span class="rango-count-chip rango-count-tot" style="border-left-color:var(--withdraw-red);">
-            <span class="rango-count-label">Archiviati</span>
-            <strong class="rango-count-num">${n}</strong>
-        </span>
-    </div>`;
-}
-
 function renderVampiriLists() {
     // Ordine gradi: Originario → Originaria → Mentore → Adulto → Adulta → Neonato → Neonata
     // Ordine gradi: Ekaton → Mentore → Adulto/a → Neonato/a (M/F stesso livello)
@@ -1122,25 +1124,31 @@ function renderVampiriLists() {
 
     const attivi = membriAttivi();
 
-    // Contatori ranghi (Generale + Admin Membri) — solo attivi
+    // Contatori ranghi (Generale + Admin Membri) — tutti i membri
     const counterGen = document.getElementById('membri-ranghi-counter');
     if (counterGen) counterGen.innerHTML = htmlContatoriRanghi(true);
     const counterAdm = document.getElementById('admin-membri-ranghi-counter');
     if (counterAdm) counterAdm.innerHTML = htmlContatoriRanghi(false);
-    const counterArch = document.getElementById('admin-archiviati-counter');
-    if (counterArch) counterArch.innerHTML = htmlContatoreArchiviati();
 
-    // Lista Generale: solo membri attivi
+    // Lista Generale: tutti i membri; sospesi in rosso
     const listaDinamica = document.getElementById('lista-membri-dinamica');
     if (listaDinamica) {
         listaDinamica.innerHTML = attivi.length
-            ? attivi.map(v => `<p style="font-size: 0.8rem; color: var(--text-light); margin-bottom: 5px;"><strong>${v.nome}:</strong> ${v.grado}</p>`).join('')
-            : '<p style="font-size:0.75rem; opacity:0.5;">Nessun membro attivo.</p>';
+            ? attivi.map(v => {
+                const isSos = v.sospeso === true;
+                const col = isSos ? 'var(--withdraw-red)' : 'var(--text-light)';
+                const badge = isSos ? ' <span style="font-size:0.65rem;text-transform:uppercase;letter-spacing:0.5px;">(sospeso)</span>' : '';
+                return `<p style="font-size: 0.8rem; color: ${col}; margin-bottom: 5px;"><strong>${v.nome}:</strong> ${v.grado || ''}${badge}</p>`;
+            }).join('')
+            : '<p style="font-size:0.75rem; opacity:0.5;">Nessun membro.</p>';
     }
 
-    // Select: solo membri attivi (storico vendite resta per nome)
+    // Select: tutti i membri (sospesi restano selezionabili)
     const selects = document.querySelectorAll('.vampiro-select-list');
-    const options = `<option value="">-- Seleziona Vampiro --</option>` + attivi.map(v => `<option value="${v.nome}">${v.nome}</option>`).join('');
+    const options = `<option value="">-- Seleziona Vampiro --</option>` + attivi.map(v => {
+        const label = v.sospeso === true ? `${v.nome} (sospeso)` : v.nome;
+        return `<option value="${v.nome}">${label}</option>`;
+    }).join('');
     selects.forEach(s => { 
         const currentVal = s.value; 
         s.innerHTML = options; 
@@ -1151,14 +1159,13 @@ function renderVampiriLists() {
     });
 
     window.renderAdminMembriTable();
-    if (typeof window.renderAdminArchiviatiTable === 'function') window.renderAdminArchiviatiTable();
     if (typeof window.popolaSelectPermessiGestione === 'function') window.popolaSelectPermessiGestione();
     if (typeof window.renderAdminPermessiGestioneTable === 'function') window.renderAdminPermessiGestioneTable();
     
     if (currentUser) applyPermissions();
 }
 
-/** Tabella admin membri ATTIVI con filtro ricerca */
+/** Tabella admin membri (tutti, con stato sospensione) */
 window.renderAdminMembriTable = function() {
     const tbody = document.getElementById('admin-vampiri-body');
     if (!tbody) return;
@@ -1168,62 +1175,34 @@ window.renderAdminMembriTable = function() {
         list = list.filter(v =>
             (v.nome || '').toLowerCase().includes(search) ||
             (v.grado || '').toLowerCase().includes(search) ||
-            String(v.codice || '').toLowerCase().includes(search)
+            String(v.codice || '').toLowerCase().includes(search) ||
+            (v.motivoSospensione || '').toLowerCase().includes(search)
         );
     }
     tbody.innerHTML = list.map(v => {
+        const isSos = v.sospeso === true;
         const cod = v.codice ? v.codice : '<span style="opacity:0.4">—</span>';
         const perms = Array.isArray(v.permessi) ? v.permessi.length + ' sez.' : '0';
-        const safeName = String(v.nome || '').replace(/'/g, "\\'");
-        return `<tr>
-            <td>${v.nome}</td>
+        const safeName = String(v.nome || '').replace(/'/g, "\'");
+        const motivoSafe = String(v.motivoSospensione || '').replace(/</g,'&lt;');
+        const nomeCell = isSos
+            ? `<strong style="color:var(--withdraw-red);">${v.nome}</strong><br><span style="font-size:0.6rem;color:var(--withdraw-red);">Sospeso${motivoSafe ? ': ' + motivoSafe : ''}</span>`
+            : v.nome;
+        const btnSos = isSos
+            ? `<button class="btn-delete" style="border-color:var(--success-green);color:var(--success-green);margin-right:4px;" onclick="window.riattivaVampiro('${safeName}')">Riattiva</button>`
+            : `<button class="btn-delete" style="border-color:#e67e22;color:#e67e22;margin-right:4px;" onclick="window.sospendiVampiro('${safeName}')">Sospendi</button>`;
+        return `<tr style="${isSos ? 'background:rgba(231,76,60,0.06);' : ''}">
+            <td style="text-align:left;">${nomeCell}</td>
             <td>${v.grado || ''}</td>
             <td style="font-family:monospace;">${cod}</td>
             <td style="font-size:0.65rem;">${perms}</td>
             <td style="white-space:nowrap;">
                 <button class="btn-delete" style="border-color:var(--gold-accent);color:var(--gold-accent);margin-right:4px;" onclick="window.caricaMembroPerEdit('${safeName}')">Modifica</button>
-                <button class="btn-delete" style="border-color:#e67e22;color:#e67e22;margin-right:4px;" onclick="window.archiviaVampiro('${safeName}')">Archivia</button>
+                ${btnSos}
                 <button class="btn-delete" onclick="window.eliminaVampiro('${safeName}')">Elimina</button>
             </td>
         </tr>`;
-    }).join('') || '<tr><td colspan="5" style="opacity:0.5;text-align:center;">Nessun membro attivo trovato.</td></tr>';
-};
-
-/** Tabella admin membri ARCHIVIATI */
-window.renderAdminArchiviatiTable = function() {
-    const tbody = document.getElementById('admin-archiviati-body');
-    if (!tbody) return;
-    const search = (document.getElementById('search-admin-archiviati')?.value || '').toLowerCase().trim();
-    let list = membriArchiviati();
-    if (search) {
-        list = list.filter(v =>
-            (v.nome || '').toLowerCase().includes(search) ||
-            (v.grado || '').toLowerCase().includes(search) ||
-            (v.motivoArchivio || '').toLowerCase().includes(search) ||
-            String(v.codice || '').toLowerCase().includes(search)
-        );
-    }
-    list = [...list].sort((a, b) => (b.dataArchivio || 0) - (a.dataArchivio || 0));
-    tbody.innerHTML = list.map(v => {
-        const safeName = String(v.nome || '').replace(/'/g, "\\'");
-        const motivo = v.motivoArchivio || '—';
-        let dataStr = '—';
-        if (v.dataArchivio) {
-            try {
-                dataStr = new Date(v.dataArchivio).toLocaleString('it-IT', { day: '2-digit', month: '2-digit', year: 'numeric', hour: '2-digit', minute: '2-digit' });
-            } catch (_) {}
-        }
-        return `<tr>
-            <td><strong>${v.nome}</strong></td>
-            <td>${v.grado || ''}</td>
-            <td style="font-size:0.65rem; max-width:180px; word-break:break-word;" title="${String(motivo).replace(/"/g, '&quot;')}">${motivo}</td>
-            <td style="font-size:0.65rem; font-family:monospace;">${dataStr}</td>
-            <td style="white-space:nowrap;">
-                <button class="btn-delete" style="border-color:var(--success-green);color:var(--success-green);margin-right:4px;" onclick="window.ripristinaVampiro('${safeName}')">Ripristina</button>
-                <button class="btn-delete" onclick="window.eliminaVampiro('${safeName}')">Elimina</button>
-            </td>
-        </tr>`;
-    }).join('') || '<tr><td colspan="5" style="opacity:0.5;text-align:center;">Nessun membro archiviato.</td></tr>';
+    }).join('') || '<tr><td colspan="5" style="opacity:0.5;text-align:center;">Nessun membro trovato.</td></tr>';
 };
 
 // --- POPOLA FILTRO MATERIALI ---
