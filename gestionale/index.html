@@ -1695,15 +1695,6 @@
             if(targetView) {
                 targetView.style.display = 'block';
             }
-
-            if (viewId === 'lavori') {
-                if (typeof window.ricaricaLavoriFromDb === 'function') {
-                    window.ricaricaLavoriFromDb().catch(() => {});
-                } else {
-                    if (typeof window.popolaSelectTipiLavoro === 'function') window.popolaSelectTipiLavoro();
-                    if (typeof window.renderAdminLavoriMembri === 'function') window.renderAdminLavoriMembri();
-                    if (typeof window.renderAdminTipiLavoro === 'function') window.renderAdminTipiLavoro();
-                }
             }
             if (viewId === 'permessi-gestione') {
                 if (typeof window.popolaSelectPermessiGestione === 'function') window.popolaSelectPermessiGestione();
