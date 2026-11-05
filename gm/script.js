@@ -13,6 +13,157 @@ firebase.initializeApp(firebaseConfig);
 const auth = firebase.auth();
 const db = firebase.firestore();
 
+/* ========== FIRESTORE OPTIMIZATION LAYER ==========
+ * - Persistence offline (riduce letture ripetute)
+ * - Un solo listener per collection (no nested onSnapshot / no leak)
+ * - Cache in memoria condivisa
+ * - Lazy-load sezioni: si sottoscrive solo quando apri il pannello
+ * - Players condivisi tra Giocatori e Uscite & Riti
+ */
+try {
+    db.enablePersistence({ synchronizeTabs: true }).catch(function (err) {
+        if (err && err.code === 'failed-precondition') {
+            console.warn('Firestore persistence: più tab aperte, cache solo su una.');
+        } else if (err && err.code === 'unimplemented') {
+            console.warn('Firestore persistence non supportata da questo browser.');
+        }
+    });
+} catch (e) {
+    console.warn('enablePersistence non disponibile', e);
+}
+
+/** Cache in memoria: { foldersByType: {quests: QuerySnapshot|null, ...}, collections: {quests: ..., players: ...} } */
+const FS = {
+    folders: {},          // type -> { docs: [{id, ...data}], raw: QuerySnapshot|null }
+    data: {},             // collectionName -> { docs: [{id,...}], map: {id: data}, raw }
+    unsubs: {},           // key -> unsubscribe fn
+    sectionLoaded: {},    // sectionId -> true after first ensure
+    renderers: {},        // collection/folder keys -> render callbacks
+    playersVersion: 0
+};
+
+function fsSnapshotToList(snap) {
+    const list = [];
+    if (!snap) return list;
+    snap.forEach(function (doc) {
+        list.push(Object.assign({ id: doc.id }, doc.data()));
+    });
+    return list;
+}
+
+function fsSnapshotToMap(snap) {
+    const map = {};
+    if (!snap) return map;
+    snap.forEach(function (doc) {
+        map[doc.id] = Object.assign({ id: doc.id }, doc.data());
+    });
+    return map;
+}
+
+/** Assicura un listener unico su folders filtrati per type */
+function ensureFoldersListener(type, onChange) {
+    const key = 'folders:' + type;
+    if (onChange) {
+        if (!FS.renderers[key]) FS.renderers[key] = [];
+        if (FS.renderers[key].indexOf(onChange) === -1) FS.renderers[key].push(onChange);
+    }
+    if (FS.unsubs[key]) return;
+    FS.unsubs[key] = db.collection('folders').where('type', '==', type).onSnapshot(function (snap) {
+        FS.folders[type] = { docs: fsSnapshotToList(snap), raw: snap };
+        const cbs = FS.renderers[key] || [];
+        cbs.forEach(function (cb) { try { cb(); } catch (e) { console.error(e); } });
+    }, function (err) {
+        console.error('folders listener', type, err);
+    });
+}
+
+/** Assicura un listener unico su una collection intera */
+function ensureCollectionListener(name, onChange) {
+    const key = 'col:' + name;
+    if (onChange) {
+        if (!FS.renderers[key]) FS.renderers[key] = [];
+        if (FS.renderers[key].indexOf(onChange) === -1) FS.renderers[key].push(onChange);
+    }
+    if (FS.unsubs[key]) return;
+    FS.unsubs[key] = db.collection(name).onSnapshot(function (snap) {
+        FS.data[name] = {
+            docs: fsSnapshotToList(snap),
+            map: fsSnapshotToMap(snap),
+            raw: snap
+        };
+        if (name === 'players') FS.playersVersion++;
+        const cbs = FS.renderers[key] || [];
+        cbs.forEach(function (cb) { try { cb(); } catch (e) { console.error(e); } });
+    }, function (err) {
+        console.error('collection listener', name, err);
+    });
+}
+
+/** Lista players dalla cache (array). Vuoto se non ancora caricata. */
+function getCachedPlayers() {
+    return (FS.data.players && FS.data.players.docs) ? FS.data.players.docs.slice() : [];
+}
+
+/** Mappa id -> player dalla cache */
+function getCachedPlayersMap() {
+    return (FS.data.players && FS.data.players.map) ? FS.data.players.map : {};
+}
+
+/** Promise che risolve con la lista players (usa cache se già presente, altrimenti attende 1° snapshot o fa get) */
+function whenPlayersReady() {
+    if (FS.data.players && FS.data.players.docs) {
+        return Promise.resolve(getCachedPlayers());
+    }
+    ensureCollectionListener('players');
+    return new Promise(function (resolve) {
+        var tries = 0;
+        var t = setInterval(function () {
+            tries++;
+            if (FS.data.players && FS.data.players.docs) {
+                clearInterval(t);
+                resolve(getCachedPlayers());
+            } else if (tries > 40) {
+                clearInterval(t);
+                db.collection('players').get().then(function (snap) {
+                    FS.data.players = { docs: fsSnapshotToList(snap), map: fsSnapshotToMap(snap), raw: snap };
+                    resolve(getCachedPlayers());
+                }).catch(function () { resolve([]); });
+            }
+        }, 50);
+    });
+}
+
+
+/** Promise di uno snapshot-like della collection players (dalla cache se possibile). */
+function playersGet() {
+    return whenPlayersReady().then(function (list) {
+        return {
+            empty: !list.length,
+            size: list.length,
+            forEach: function (cb) {
+                list.forEach(function (p) {
+                    var data = Object.assign({}, p);
+                    var id = data.id;
+                    delete data.id;
+                    cb({ id: id, data: function () { return data; }, exists: true });
+                });
+            }
+        };
+    });
+}
+
+/** Chiude tutti i listener (logout) */
+function unsubscribeAllFirestore() {
+    Object.keys(FS.unsubs).forEach(function (k) {
+        try { FS.unsubs[k](); } catch (e) {}
+    });
+    FS.unsubs = {};
+    FS.sectionLoaded = {};
+    FS.renderers = {};
+    FS.folders = {};
+    FS.data = {};
+}
+
 // Stati delle cartelle attive nelle varie sezioni
 let currentQuestsFolder = null;
 let currentDocsFolder = null;
@@ -708,19 +859,7 @@ function login() {
             document.getElementById('dashboard')
                 .classList.remove('hidden');
 
-            loadQuests();
-            loadDocs();
-            loadNotes();
-            loadMedia();
-            loadCommands();
-            loadGlobalLinks();
-            loadPlayers();
-            loadRitoPlayers();
-            loadTempi();
-            loadAbbracci();
-            loadFrammentiEvents();
-            loadFrammenti();
-            updateWeekRangeHints();
+            // auth.onAuthStateChanged gestisce già il caricamento lazy
         })
 
         .catch((error) => {
@@ -733,6 +872,7 @@ function login() {
 }
 
 function logout() {
+    try { unsubscribeAllFirestore(); } catch (e) {}
     auth.signOut();
     location.reload();
 }
@@ -742,7 +882,55 @@ function showSection(id) {
         panel.classList.remove('active');
     });
 
-    document.getElementById(id).classList.add('active');
+    const el = document.getElementById(id);
+    if (el) el.classList.add('active');
+
+    // Lazy-load: sottoscrivi Firestore solo quando apri la sezione (evita 10+ listener al login)
+    ensureSectionData(id);
+}
+
+/** Avvia i listener necessari per la sezione (idempotente). */
+function ensureSectionData(id) {
+    if (!id) return;
+    switch (id) {
+        case 'quests':
+            if (typeof loadQuests === 'function') loadQuests();
+            break;
+        case 'docs':
+            if (typeof loadDocs === 'function') loadDocs();
+            break;
+        case 'notes':
+            if (typeof loadNotes === 'function') loadNotes();
+            break;
+        case 'media':
+            if (typeof loadMedia === 'function') loadMedia();
+            break;
+        case 'commands':
+            if (typeof loadCommands === 'function') loadCommands();
+            break;
+        case 'admin':
+            if (typeof loadGlobalLinks === 'function') loadGlobalLinks();
+            break;
+        case 'players':
+            if (typeof loadPlayers === 'function') loadPlayers();
+            break;
+        case 'rito':
+            if (typeof loadRitoPlayers === 'function') loadRitoPlayers();
+            break;
+        case 'tempi':
+            if (typeof loadTempi === 'function') loadTempi();
+            break;
+        case 'abbraccio':
+            if (typeof loadAbbracci === 'function') loadAbbracci();
+            break;
+        case 'frammenti':
+            if (typeof loadFrammentiEvents === 'function') loadFrammentiEvents();
+            if (typeof loadFrammenti === 'function') loadFrammenti();
+            if (typeof updateWeekRangeHints === 'function') updateWeekRangeHints();
+            break;
+        default:
+            break;
+    }
 }
 
 /* FUNZIONE GESTIONE CARTELLE */
@@ -787,11 +975,12 @@ function openQuestModal(editId = null, existing = null) {
         return;
     }
 
-    db.collection('players').get().then(snapshot => {
+    whenPlayersReady().then(playersListRaw => {
         let playerOptions = '<option value="">Nessun Player</option>';
-        const playersList = [];
-        snapshot.forEach(doc => {
-            playersList.push(doc.data());
+        const playersList = playersListRaw.map(function (p) {
+            var d = Object.assign({}, p);
+            delete d.id;
+            return d;
         });
         sortAlpha(playersList, 'name').forEach(p => {
             const sel = (existing && existing.player === p.name) ? 'selected' : '';
@@ -909,10 +1098,20 @@ function editQuest(questId) {
 
 function loadQuests() {
     const container = document.getElementById('quest-list');
+    if (!container) return;
 
-    // Ascolto real-time sia delle cartelle che delle quest
-    db.collection('folders').where('type', '==', 'quests').onSnapshot(foldersSnapshot => {
-        db.collection('quests').onSnapshot(questsSnapshot => {
+    function __render_loadQuests() {
+        const foldersSnapshot = (FS.folders['quests'] && FS.folders['quests'].raw) || null;
+        const questsSnapshot = (FS.data['quests'] && FS.data['quests'].raw) || null;
+        if (!foldersSnapshot || !questsSnapshot) {
+            if (!container.dataset.fsLoading) {
+                container.dataset.fsLoading = '1';
+                container.innerHTML = '<p style="grid-column:1/-1;color:var(--text-dim);padding:12px;">Caricamento…</p>';
+            }
+            return;
+        }
+        delete container.dataset.fsLoading;
+
             container.innerHTML = '';
 
             if (currentQuestsFolder) {
@@ -1037,9 +1236,14 @@ function loadQuests() {
                 });
                 applyListFilter('quests');
             }
-        });
-    });
+    }
+
+    ensureFoldersListener('quests', __render_loadQuests);
+    ensureCollectionListener('quests', __render_loadQuests);
+    __render_loadQuests();
 }
+
+
 
 /* DOCUMENTI */
 
@@ -1116,9 +1320,20 @@ function addDoc() {
 
 function loadDocs() {
     const container = document.getElementById('docs-list');
+    if (!container) return;
 
-    db.collection('folders').where('type', '==', 'docs').onSnapshot(foldersSnapshot => {
-        db.collection('docs').onSnapshot(docsSnapshot => {
+    function __render_loadDocs() {
+        const foldersSnapshot = (FS.folders['docs'] && FS.folders['docs'].raw) || null;
+        const docsSnapshot = (FS.data['docs'] && FS.data['docs'].raw) || null;
+        if (!foldersSnapshot || !docsSnapshot) {
+            if (!container.dataset.fsLoading) {
+                container.dataset.fsLoading = '1';
+                container.innerHTML = '<p style="grid-column:1/-1;color:var(--text-dim);padding:12px;">Caricamento…</p>';
+            }
+            return;
+        }
+        delete container.dataset.fsLoading;
+
             container.innerHTML = '';
 
             if (currentDocsFolder) {
@@ -1196,9 +1411,14 @@ function loadDocs() {
                 });
                 applyListFilter('docs');
             }
-        });
-    });
+    }
+
+    ensureFoldersListener('docs', __render_loadDocs);
+    ensureCollectionListener('docs', __render_loadDocs);
+    __render_loadDocs();
 }
+
+
 
 /* NOTES */
 
@@ -1263,9 +1483,20 @@ function addNote() {
 
 function loadNotes() {
     const container = document.getElementById('notes-list');
+    if (!container) return;
 
-    db.collection('folders').where('type', '==', 'notes').onSnapshot(foldersSnapshot => {
-        db.collection('notes').onSnapshot(notesSnapshot => {
+    function __render_loadNotes() {
+        const foldersSnapshot = (FS.folders['notes'] && FS.folders['notes'].raw) || null;
+        const notesSnapshot = (FS.data['notes'] && FS.data['notes'].raw) || null;
+        if (!foldersSnapshot || !notesSnapshot) {
+            if (!container.dataset.fsLoading) {
+                container.dataset.fsLoading = '1';
+                container.innerHTML = '<p style="grid-column:1/-1;color:var(--text-dim);padding:12px;">Caricamento…</p>';
+            }
+            return;
+        }
+        delete container.dataset.fsLoading;
+
             container.innerHTML = '';
 
             if (currentNotesFolder) {
@@ -1321,9 +1552,14 @@ function loadNotes() {
                 });
                 applyListFilter('notes');
             }
-        });
-    });
+    }
+
+    ensureFoldersListener('notes', __render_loadNotes);
+    ensureCollectionListener('notes', __render_loadNotes);
+    __render_loadNotes();
 }
+
+
 
 /* MEDIA */
 
@@ -1397,9 +1633,20 @@ function addMedia() {
 
 function loadMedia() {
     const container = document.getElementById('media-list');
+    if (!container) return;
 
-    db.collection('folders').where('type', '==', 'media').onSnapshot(foldersSnapshot => {
-        db.collection('media').onSnapshot(mediaSnapshot => {
+    function __render_loadMedia() {
+        const foldersSnapshot = (FS.folders['media'] && FS.folders['media'].raw) || null;
+        const mediaSnapshot = (FS.data['media'] && FS.data['media'].raw) || null;
+        if (!foldersSnapshot || !mediaSnapshot) {
+            if (!container.dataset.fsLoading) {
+                container.dataset.fsLoading = '1';
+                container.innerHTML = '<p style="grid-column:1/-1;color:var(--text-dim);padding:12px;">Caricamento…</p>';
+            }
+            return;
+        }
+        delete container.dataset.fsLoading;
+
             container.innerHTML = '';
 
             if (currentMediaFolder) {
@@ -1496,8 +1743,11 @@ function loadMedia() {
                 });
                 applyListFilter('media');
             }
-        });
-    });
+    }
+
+    ensureFoldersListener('media', __render_loadMedia);
+    ensureCollectionListener('media', __render_loadMedia);
+    __render_loadMedia();
 }
 
 // --- PROTEZIONE INTERFACCIA ---
@@ -1511,9 +1761,11 @@ document.onkeydown = function(e) {
     if (e.ctrlKey && e.keyCode == 'U'.charCodeAt(0)) return false;
 };
 
-setInterval(function() {
-    debugger;
-}, 100);
+// Anti-devtools aggressivo disabilitato: causava lag continuo (debugger ogni 100ms).
+// setInterval(function() { debugger; }, 100);
+
+
+
 
 /* COMMANDS */
 
@@ -1565,9 +1817,20 @@ function addCommand() {
 
 function loadCommands() {
     const container = document.getElementById('commands-list');
+    if (!container) return;
 
-    db.collection('folders').where('type', '==', 'commands').onSnapshot(foldersSnapshot => {
-        db.collection('commands').onSnapshot(commandsSnapshot => {
+    function __render_loadCommands() {
+        const foldersSnapshot = (FS.folders['commands'] && FS.folders['commands'].raw) || null;
+        const commandsSnapshot = (FS.data['commands'] && FS.data['commands'].raw) || null;
+        if (!foldersSnapshot || !commandsSnapshot) {
+            if (!container.dataset.fsLoading) {
+                container.dataset.fsLoading = '1';
+                container.innerHTML = '<p style="grid-column:1/-1;color:var(--text-dim);padding:12px;">Caricamento…</p>';
+            }
+            return;
+        }
+        delete container.dataset.fsLoading;
+
             container.innerHTML = '';
 
             if (currentCommandsFolder) {
@@ -1625,9 +1888,14 @@ function loadCommands() {
                 });
                 applyListFilter('commands');
             }
-        });
-    });
+    }
+
+    ensureFoldersListener('commands', __render_loadCommands);
+    ensureCollectionListener('commands', __render_loadCommands);
+    __render_loadCommands();
 }
+
+
 
 /* ADMIN LINKS */
 
@@ -1679,9 +1947,20 @@ function saveGlobalLink() {
 
 function loadGlobalLinks() {
     const container = document.getElementById('global-links');
+    if (!container) return;
 
-    db.collection('folders').where('type', '==', 'admin').onSnapshot(foldersSnapshot => {
-        db.collection('globalLinks').onSnapshot(linksSnapshot => {
+    function __render_loadGlobalLinks() {
+        const foldersSnapshot = (FS.folders['admin'] && FS.folders['admin'].raw) || null;
+        const linksSnapshot = (FS.data['globalLinks'] && FS.data['globalLinks'].raw) || null;
+        if (!foldersSnapshot || !linksSnapshot) {
+            if (!container.dataset.fsLoading) {
+                container.dataset.fsLoading = '1';
+                container.innerHTML = '<p style="grid-column:1/-1;color:var(--text-dim);padding:12px;">Caricamento…</p>';
+            }
+            return;
+        }
+        delete container.dataset.fsLoading;
+
             container.innerHTML = '';
 
             if (currentAdminFolder) {
@@ -1744,9 +2023,14 @@ function loadGlobalLinks() {
                 });
                 applyListFilter('admin');
             }
-        });
-    });
+    }
+
+    ensureFoldersListener('admin', __render_loadGlobalLinks);
+    ensureCollectionListener('globalLinks', __render_loadGlobalLinks);
+    __render_loadGlobalLinks();
 }
+
+
 
 function openGoogleDoc(link) {
     openDocumentViewer(link);
@@ -1969,13 +2253,15 @@ function formatChildrenBadgeHtml(parentId, parentName, childrenList) {
 
 /** Popup lista figli di un player — separa attivi e passati (Rito/Reietto/Uscita) */
 function showPlayerChildren(parentId, parentName) {
-    db.collection('players').get().then(snap => {
+    whenPlayersReady().then(playersListRaw => {
         const children = [];
-        snap.forEach(doc => {
-            const d = doc.data();
+        playersListRaw.forEach(p => {
+            const d = Object.assign({}, p);
+            const id = d.id;
+            delete d.id;
             const pids = getParentIds(d);
             if (pids.includes(parentId)) {
-                children.push({ id: doc.id, ...d });
+                children.push({ id: id, ...d });
             }
         });
         sortAlpha(children, 'name');
@@ -2080,9 +2366,8 @@ function addPlayer() {
         return;
     }
 
-    db.collection('players').get().then(playersSnap => {
-        const allPlayers = [];
-        playersSnap.forEach(doc => allPlayers.push({ id: doc.id, ...doc.data() }));
+    whenPlayersReady().then(playersListRaw => {
+        const allPlayers = playersListRaw.slice();
         const parentItems = buildParentSelectItems(allPlayers, [], null);
         const parentMultiHtml = buildSearchableMultiSelect('player-parents-ms', parentItems, {
             height: 160,
@@ -2158,9 +2443,20 @@ function addPlayer() {
 function loadPlayers() {
     if (typeof ensurePunizioniListener === 'function') ensurePunizioniListener();
     const container = document.getElementById('players-list');
+    if (!container) return;
 
-    db.collection('folders').where('type', '==', 'players').onSnapshot(foldersSnapshot => {
-        db.collection('players').onSnapshot(playersSnapshot => {
+    function __render_loadPlayers() {
+        const foldersSnapshot = (FS.folders['players'] && FS.folders['players'].raw) || null;
+        const playersSnapshot = (FS.data['players'] && FS.data['players'].raw) || null;
+        if (!foldersSnapshot || !playersSnapshot) {
+            if (!container.dataset.fsLoading) {
+                container.dataset.fsLoading = '1';
+                container.innerHTML = '<p style="grid-column:1/-1;color:var(--text-dim);padding:12px;">Caricamento…</p>';
+            }
+            return;
+        }
+        delete container.dataset.fsLoading;
+
             container.innerHTML = '';
 
             if (currentPlayersFolder) {
@@ -2463,9 +2759,14 @@ function loadPlayers() {
                 });
                 applyListFilter('players');
             }
-        });
-    });
+    }
+
+    ensureFoldersListener('players', __render_loadPlayers);
+    ensureCollectionListener('players', __render_loadPlayers);
+    __render_loadPlayers();
 }
+
+
 
 function openPlayerModal(playerId) {
 
@@ -2481,7 +2782,7 @@ function openPlayerModal(playerId) {
 
             Promise.all([
                 db.collection('quests').get(),
-                db.collection('players').get()
+                playersGet()
             ]).then(([snapshot, allPlayersSnap]) => {
                 const allPlayers = [];
                 allPlayersSnap.forEach(doc => allPlayers.push({ id: doc.id, ...doc.data() }));
@@ -2742,7 +3043,7 @@ function movePlayerToFolder(playerId) {
  */
 function repairOrphanPlayers() {
     Promise.all([
-        db.collection('players').get(),
+        playersGet(),
         db.collection('folders').where('type', '==', 'players').get()
     ]).then(([playersSnap, foldersSnap]) => {
         const folders = [];
@@ -2825,7 +3126,7 @@ function repairOrphanPlayers() {
  */
 function deletePlayersFolder(folderId, folderName) {
     Promise.all([
-        db.collection('players').get(),
+        playersGet(),
         db.collection('folders').where('type', '==', 'players').get()
     ]).then(([playersSnap, foldersSnap]) => {
         const folders = [];
@@ -3091,7 +3392,17 @@ function loadRitoPlayers() {
     const container = document.getElementById('rito-list');
     if (!container) return;
 
-    db.collection('players').onSnapshot(playersSnapshot => {
+    function __render_loadRitoPlayers() {
+        const playersSnapshot = (FS.data.players && FS.data.players.raw) || null;
+        if (!playersSnapshot) {
+            if (!container.dataset.fsLoading) {
+                container.dataset.fsLoading = '1';
+                container.innerHTML = '<p style="color:var(--text-dim);padding:16px;">Caricamento…</p>';
+            }
+            return;
+        }
+        delete container.dataset.fsLoading;
+
         const items = [];
         const allPlayersForFamily = [];
         playersSnapshot.forEach(doc => {
@@ -3203,8 +3514,13 @@ function loadRitoPlayers() {
             `;
         });
         applyListFilter('rito');
-    });
+    }
+
+    ensureCollectionListener('players', __render_loadRitoPlayers);
+    __render_loadRitoPlayers();
 }
+
+
 
 /** Archivia un'uscita (Rito / Uscita Ospitato / Reietto). Non elimina: resta in Archiviati. */
 function archiveExit(playerId) {
@@ -4396,7 +4712,7 @@ function addFrammentoForEvent(eventId) {
     if (!eventId) return;
 
     Promise.all([
-        db.collection('players').get(),
+        playersGet(),
         db.collection('frammentiEvents').doc(eventId).get(),
         db.collection('frammenti').get(),
         db.collection('folders').where('type', '==', 'players').get()
@@ -4601,7 +4917,7 @@ function addFrammentoForEvent(eventId) {
 
 function addFrammento() {
     Promise.all([
-        db.collection('players').get(),
+        playersGet(),
         db.collection('frammentiEvents').get()
     ]).then(([playersSnap, eventsSnap]) => {
         const playersList = [];
@@ -6203,7 +6519,7 @@ function syncExpiredTempi(items) {
 function addTempo(editId = null, existing = null) {
     // Carica players + tempi in parallelo per filtrare chi può ricevere ogni tipo di periodo
     Promise.all([
-        db.collection('players').get(),
+        playersGet(),
         db.collection('tempi').get()
     ]).then(([playersSnap, tempiSnap]) => {
         const isEdit = !!editId;
@@ -7270,7 +7586,7 @@ function addAbbraccio(editId = null, existing = null) {
     const isEdit = !!editId;
 
     Promise.all([
-        db.collection('players').get(),
+        playersGet(),
         isEdit ? Promise.resolve(null) : db.collection('abbracci').get()
     ]).then(([playersSnap, abbracciSnap]) => {
         const playersList = [];
@@ -7832,21 +8148,19 @@ auth.onAuthStateChanged(user => {
         document.getElementById('dashboard')
             .classList.remove('hidden');
 
-        loadQuests();
-        loadDocs();
-        loadNotes();
-        loadMedia();
-        loadCommands();
-        loadGlobalLinks();
-        loadPlayers();
-        loadRitoPlayers();
-        loadTempi();
-        loadAbbracci();
-        loadFrammentiEvents();
-        loadFrammenti();
-        updateWeekRangeHints();
+        // Solo dati condivisi critici + sezione attiva (default: quests).
+        // Le altre sezioni partono al primo click (lazy-load) → meno letture Firestore.
+        ensureCollectionListener('players');
+        if (typeof ensurePunizioniListener === 'function') {
+            try { ensurePunizioniListener(); } catch (e) {}
+        }
+        const active = document.querySelector('.panel.active');
+        const activeId = active ? active.id : 'quests';
+        ensureSectionData(activeId);
 
     } else {
+
+        unsubscribeAllFirestore();
 
         document.getElementById('login-page')
             .classList.remove('hidden');
