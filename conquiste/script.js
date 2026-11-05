@@ -1,5 +1,5 @@
 import { initializeApp } from "https://www.gstatic.com/firebasejs/10.8.0/firebase-app.js";
-import { getFirestore, doc, setDoc, onSnapshot, collection, addDoc, getDocs, deleteDoc, updateDoc, query, orderBy, limit, increment, where } from "https://www.gstatic.com/firebasejs/10.8.0/firebase-firestore.js";
+import { getFirestore, doc, setDoc, onSnapshot, collection, addDoc, getDocs, deleteDoc, updateDoc, query, orderBy, limit, increment, where, writeBatch } from "https://www.gstatic.com/firebasejs/10.8.0/firebase-firestore.js";
 import { getAuth, signInWithEmailAndPassword, onAuthStateChanged, signOut } from "https://www.gstatic.com/firebasejs/10.8.0/firebase-auth.js";
 
 // 1. CONFIGURAZIONE FIREBASE
@@ -76,7 +76,6 @@ function renderAdminActivityLog(filter = "") {
         adminBox.innerHTML = '<p style="font-size:0.8rem; color:var(--text-secondary); text-align:center;">Nessun movimento utente trovato.</p>';
         return;
     }
-    // GESTIONE: audit utenti — chi ha fatto cosa
     adminBox.innerHTML = filtered.map(item => {
         const date = item.timestamp ? item.timestamp.toDate() : new Date();
         const timeString = date.toLocaleDateString('it-IT') + ' ' + date.toLocaleTimeString([], {hour: '2-digit', minute:'2-digit'});
@@ -95,18 +94,17 @@ function renderAdminActivityLog(filter = "") {
 }
 
 function avviaAscoltoLog() {
-    const q = query(collection(db, "activity_log"), orderBy("timestamp", "desc"), limit(100));
+    const q = query(collection(db, "activity_log"), orderBy("timestamp", "desc"), limit(80));
     onSnapshot(q, (snapshot) => {
         activityLogCache = [];
         snapshot.forEach((docSnap) => {
             activityLogCache.push({ id: docSnap.id, ...docSnap.data() });
         });
 
-        // ATTIVITÀ RECENTI (Territori): log operativo come sempre (conquiste, fazioni, risorse)
         const box = document.getElementById('activity-log-content');
         if (box) {
             box.innerHTML = '';
-            activityLogCache.slice(0, 50).forEach((data) => {
+            activityLogCache.slice(0, 40).forEach((data) => {
                 const date = data.timestamp ? data.timestamp.toDate() : new Date();
                 const timeString = date.toLocaleTimeString([], {hour: '2-digit', minute:'2-digit'});
                 box.innerHTML += `
@@ -118,13 +116,11 @@ function avviaAscoltoLog() {
             });
         }
 
-        // GESTIONE: log utenti (chi ha fatto l'azione)
         const searchVal = document.getElementById('search-admin-log')?.value || '';
         renderAdminActivityLog(searchVal);
     });
 }
 
-// Filtro log in gestione
 document.getElementById('search-admin-log')?.addEventListener('input', (e) => {
     renderAdminActivityLog(e.target.value);
 });
@@ -150,7 +146,7 @@ const loginOverlay = document.getElementById('login-overlay');
 const appContainer = document.getElementById('app-container');
 
 // --- AUTH CUSTOM + GESTORE ---
-let currentUser = null; // { nome, codice, permessi:[], isAdmin:false }
+let currentUser = null;
 let listenersStarted = false;
 let listaUtenti = [];
 
@@ -159,7 +155,6 @@ const SEZIONI = ['conquiste', 'punti', 'risorse', 'gestione'];
 function applyPermissions() {
     if (!currentUser) return;
     const isAdmin = currentUser.isAdmin;
-    // Compatibilità: vecchio permesso "tattiche" → nuovo "punti"
     let perm = currentUser.permessi || [];
     if (perm.includes('tattiche') && !perm.includes('punti')) {
         perm = [...perm, 'punti'];
@@ -174,7 +169,6 @@ function applyPermissions() {
         }
     });
 
-    // Se la tab attiva non è più visibile, vai alla prima permessa
     const activeBtn = document.querySelector('.tab-btn.active');
     if (activeBtn && activeBtn.style.display === 'none') {
         const first = document.querySelector('.tab-btn:not([style*="display: none"])');
@@ -248,7 +242,6 @@ document.getElementById('btn-login-gestore').addEventListener('click', async () 
     if (!password) return showToast("Inserisci la password gestore.", "error");
     try {
         await signInWithEmailAndPassword(auth, "vampiri.gestore@horde.it", password);
-        // onAuthStateChanged gestisce il resto
     } catch (e) {
         showToast("Credenziali Gestore errate.", "error");
     }
@@ -271,13 +264,11 @@ onAuthStateChanged(auth, (user) => {
         appContainer.style.display = 'flex';
         startAllListeners();
         applyPermissions();
-        // Vai a gestione se admin
         const tabG = document.getElementById('tab-gestione');
         if (tabG) { tabG.style.display = ''; tabG.click(); }
         showToast("Accesso Gestore eseguito.", "success");
         logActivity(`🔑 Accesso Gestore effettuato.`);
     } else if (!user && currentUser && currentUser.isAdmin) {
-        // logout gestore
         currentUser = null;
         loginOverlay.style.display = 'flex';
         appContainer.style.display = 'none';
@@ -289,7 +280,6 @@ document.getElementById('btn-logout').addEventListener('click', async () => {
     try { await signOut(auth); } catch(e) {}
     loginOverlay.style.display = 'flex';
     appContainer.style.display = 'none';
-    // reset login UI
     document.getElementById('login-gestore-box').style.display = 'none';
     document.getElementById('login-membro-box').style.display = 'block';
     showToast("Sessione chiusa.", "info");
@@ -358,7 +348,6 @@ document.getElementById('btn-salva-utente')?.addEventListener('click', async () 
     document.querySelectorAll('.perm-check:checked').forEach(cb => permessi.push(cb.value));
     if (permessi.length === 0) permessi.push('conquiste');
 
-    // Unicità codice
     if (codice) {
         const q = query(collection(db, "membri"), where("codice", "==", codice));
         const snap = await getDocs(q);
@@ -401,6 +390,16 @@ const fazioniDef = [
 
 let globalData = { territori: {}, punti: {}, anelli: {} };
 
+// Debounce utility per evitare ricalcoli eccessivi
+let ricalcolaTimeout = null;
+function scheduleRicalcola() {
+    if (ricalcolaTimeout) clearTimeout(ricalcolaTimeout);
+    ricalcolaTimeout = setTimeout(() => {
+        ricalcolaDati();
+        ricalcolaTimeout = null;
+    }, 80);
+}
+
 // TABS NAVIGAZIONE
 document.querySelectorAll('.tab-btn').forEach(btn => {
     btn.addEventListener('click', () => {
@@ -442,20 +441,26 @@ async function conquistaTerritorio(cellaId) {
     if (!currentUser && !auth.currentUser) return;
     
     const oldOwnerId = globalData.territori[cellaId];
-    if (oldOwnerId === fazioneAttiva.id) return; // Stessa fazione, nessun cambiamento
+    if (oldOwnerId === fazioneAttiva.id) return;
 
     try {
+        const batch = writeBatch(db);
+
         // Aggiorna Territorio
-        await setDoc(doc(db, "territori", cellaId), {
-            owner: fazioneAttiva.id, color: fazioneAttiva.colore, timestamp: new Date()
+        batch.set(doc(db, "territori", cellaId), {
+            owner: fazioneAttiva.id,
+            color: fazioneAttiva.colore,
+            timestamp: new Date()
         });
 
         // Auto-deduzione anello (solo se la fazione non è Nessuno)
         if (fazioneAttiva.id !== 'nessuno') {
-            await setDoc(doc(db, "sistema", "anelli"), {
+            batch.set(doc(db, "sistema", "anelli"), {
                 [fazioneAttiva.id]: increment(-1)
             }, { merge: true });
         }
+
+        await batch.commit();
 
         // Costruzione Log Conquista
         const nomeNuova = fazioneAttiva.id === 'nessuno' ? 'Territorio Reso Neutrale' : (fazioniDef.find(f => f.id === fazioneAttiva.id)?.name || fazioneAttiva.id);
@@ -470,7 +475,6 @@ async function conquistaTerritorio(cellaId) {
                 msgLog += ` (sottraendolo a ${nomeVecchia})`;
             }
 
-            // Cerca risorse in quel quadrante
             let risorseTrovate = [];
             for (const pId in globalData.punti) {
                 const p = globalData.punti[pId];
@@ -485,42 +489,53 @@ async function conquistaTerritorio(cellaId) {
 
         logActivity(msgLog + ".");
 
-    } catch (e) { console.error(e); }
+    } catch (e) { console.error(e); showToast("Errore durante la conquista.", "error"); }
 }
 
-// ASCOLTO DATI DA FIREBASE
+// ASCOLTO DATI DA FIREBASE - OTTIMIZZATO (1 listener collection invece di 121)
 function avviaAscoltoDati() {
-    // Ascolto territori
-    document.querySelectorAll('.cella').forEach(cella => {
-        onSnapshot(doc(db, "territori", cella.id), (docSnap) => {
-            if (docSnap.exists()) {
-                const dati = docSnap.data();
-                cella.style.backgroundColor = dati.color;
-                globalData.territori[cella.id] = dati.owner;
-            } else {
-                cella.style.backgroundColor = 'transparent';
-                globalData.territori[cella.id] = 'nessuno';
+    // ===== TERRITORI: UN SOLO LISTENER SULLA COLLECTION =====
+    onSnapshot(collection(db, "territori"), (snapshot) => {
+        // Reset completo solo se necessario, altrimenti aggiorna delta
+        const nuoviTerritori = {};
+        snapshot.forEach((docSnap) => {
+            const dati = docSnap.data();
+            nuoviTerritori[docSnap.id] = dati.owner || 'nessuno';
+            const cella = document.getElementById(docSnap.id);
+            if (cella) {
+                cella.style.backgroundColor = dati.color || 'transparent';
             }
-            ricalcolaDati();
         });
+
+        // Pulisci celle non più presenti nel snapshot (es. eliminate)
+        document.querySelectorAll('.cella').forEach(cella => {
+            if (!nuoviTerritori[cella.id]) {
+                cella.style.backgroundColor = 'transparent';
+                nuoviTerritori[cella.id] = 'nessuno';
+            }
+        });
+
+        globalData.territori = nuoviTerritori;
+        scheduleRicalcola();
     });
 
-    // Ascolto punti interesse
+    // Ascolto punti interesse (una sola collection)
     onSnapshot(collection(db, "punti_interesse"), (snapshot) => {
+        const nuoviPunti = {};
         snapshot.forEach((docSnap) => {
             const data = docSnap.data();
-            globalData.punti[docSnap.id] = data;
+            nuoviPunti[docSnap.id] = data;
             const inp = document.getElementById(`quad_${docSnap.id}`);
             if (inp) inp.value = data.quadrante || "";
         });
-        ricalcolaDati();
+        globalData.punti = nuoviPunti;
+        scheduleRicalcola();
     });
 
-    // Ascolto Anelli
+    // Ascolto Anelli (documento singolo)
     onSnapshot(doc(db, "sistema", "anelli"), (docSnap) => {
         if (docSnap.exists()) {
             globalData.anelli = docSnap.data();
-            // Aggiorna gli input nella vista Database
             fazioniDef.forEach(f => {
                 if (f.id !== 'nessuno') {
                     const inp = document.getElementById(`anelli_${f.id}`);
@@ -530,11 +545,11 @@ function avviaAscoltoDati() {
         } else {
             globalData.anelli = {};
         }
-        ricalcolaDati();
+        scheduleRicalcola();
     });
 }
 
-// MOTORE: AGGIORNA MAPPA, LEGENDA E CLASSIFICA (CON NUOVO PUNTEGGIO)
+// MOTORE: AGGIORNA MAPPA, LEGENDA E CLASSIFICA
 function ricalcolaDati() {
     document.querySelectorAll('.cella-icons').forEach(c => c.innerHTML = ''); 
     for (const pId in globalData.punti) {
@@ -583,13 +598,11 @@ function ricalcolaDati() {
     let classifica = [];
     for (const fId in stats) {
         if (fId !== 'nessuno' && (stats[fId].terr > 0 || stats[fId].mat > 0 || stats[fId].mer > 0 || stats[fId].alt > 0 || stats[fId].anelli > 0)) {
-            // Punteggio: base 1, con mercante 2 (+1), con materiale 3 (+2), con altare 4 (+3)
             stats[fId].punteggio = (stats[fId].terr * 1) + (stats[fId].mer * 1) + (stats[fId].mat * 2) + (stats[fId].alt * 3);
             classifica.push(stats[fId]);
         }
     }
 
-    // Ordina per Punteggio decrescente, a parità per numero territori
     classifica.sort((a, b) => b.punteggio - a.punteggio || b.terr - a.terr);
 
     const cont = document.getElementById('stats-content');
@@ -647,20 +660,18 @@ function ricalcolaDati() {
 let puntiCache = [];
 let editingPuntoId = null;
 
-// Zoom / pan state
 let mapZoom = 1;
 let mapPanX = 0;
 let mapPanY = 0;
 let isPanning = false;
 let panStartX = 0, panStartY = 0, panOriginX = 0, panOriginY = 0;
-const ZOOM_MIN = 1;   // non si può rimpicciolire sotto il 100%
+const ZOOM_MIN = 1;
 const ZOOM_MAX = 4;
 const ZOOM_STEP = 0.25;
-const MAP_SIZE = 900; // lato del riquadro mappa in px
+const MAP_SIZE = 900;
 
 function clampMapPan() {
-    // A zoom 1: pan bloccato a 0. A zoom > 1: non mostrare mai bordi vuoti.
-    const minPan = MAP_SIZE * (1 - mapZoom); // es. zoom 2 → -900
+    const minPan = MAP_SIZE * (1 - mapZoom);
     const maxPan = 0;
     mapPanX = Math.min(maxPan, Math.max(minPan, mapPanX));
     mapPanY = Math.min(maxPan, Math.max(minPan, mapPanY));
@@ -671,10 +682,7 @@ function applyMapTransform() {
     const inner = document.getElementById('punti-map-inner');
     if (!inner) return;
     inner.style.transform = `translate(${mapPanX}px, ${mapPanY}px) scale(${mapZoom})`;
-
-    // Blip fuori dallo scale: riposiziona in pixel interi (sempre nitidi)
     positionPuntiBlips();
-
     const label = document.getElementById('zoom-level-label');
     if (label) label.textContent = Math.round(mapZoom * 100) + '%';
     const btnOut = document.getElementById('btn-zoom-out');
@@ -705,7 +713,6 @@ function setMapZoom(z, centerX, centerY) {
 function initPuntiGrid() {
     const layer = document.getElementById('punti-grid-layer');
     if (!layer || layer.children.length > 0) return;
-    // Solo linee griglia, senza lettere/numeri nei quadranti
     for (let r = 0; r < 11; r++) {
         for (let c = 1; c <= 11; c++) {
             const cell = document.createElement('div');
@@ -735,7 +742,6 @@ function getPuntoPercent(p) {
     return { x: Number(x), y: Number(y) };
 }
 
-/** % mappa (0–100) → pixel sullo schermo (zoom + pan), arrotondati */
 function mapPercentToScreen(pctX, pctY) {
     const mapX = (pctX / 100) * MAP_SIZE;
     const mapY = (pctY / 100) * MAP_SIZE;
@@ -862,18 +868,14 @@ function avviaAscoltoPunti() {
     });
 }
 
-// Coordinate click tenendo conto di zoom e pan
 function mapClickToPercent(clientX, clientY) {
     const wrapper = document.getElementById('wrapper-punti');
     if (!wrapper) return { x: 50, y: 50 };
     const rect = wrapper.getBoundingClientRect();
     const localX = clientX - rect.left;
     const localY = clientY - rect.top;
-    // Inverso di translate + scale
     const mapX = (localX - mapPanX) / mapZoom;
     const mapY = (localY - mapPanY) / mapZoom;
-    const x = (mapX / rect.width) * 100 * mapZoom / mapZoom; // mapX is in unscaled px relative to 900
-    // mapX is in the coordinate system of the unscaled inner (0..width)
     const pctX = (mapX / 900) * 100;
     const pctY = (mapY / 900) * 100;
     return {
@@ -882,7 +884,6 @@ function mapClickToPercent(clientX, clientY) {
     };
 }
 
-// Click per posizionare blip (solo se non stiamo pannando)
 let didPan = false;
 document.getElementById('punti-click-overlay')?.addEventListener('click', (e) => {
     if (didPan) { didPan = false; return; }
@@ -894,14 +895,12 @@ document.getElementById('punti-click-overlay')?.addEventListener('click', (e) =>
     showToast("Posizione blip impostata.", "info");
 });
 
-// Zoom buttons
 document.getElementById('btn-zoom-in')?.addEventListener('click', () => setMapZoom(mapZoom + ZOOM_STEP));
 document.getElementById('btn-zoom-out')?.addEventListener('click', () => setMapZoom(mapZoom - ZOOM_STEP));
 document.getElementById('btn-zoom-reset')?.addEventListener('click', () => {
     mapZoom = 1; mapPanX = 0; mapPanY = 0; applyMapTransform();
 });
 
-// Rotella mouse
 document.getElementById('wrapper-punti')?.addEventListener('wheel', (e) => {
     e.preventDefault();
     const rect = e.currentTarget.getBoundingClientRect();
@@ -911,9 +910,7 @@ document.getElementById('wrapper-punti')?.addEventListener('wheel', (e) => {
     setMapZoom(mapZoom + delta, cx, cy);
 }, { passive: false });
 
-// Drag per pan
 document.getElementById('wrapper-punti')?.addEventListener('mousedown', (e) => {
-    // Solo tasto sinistro, e non su un blip
     if (e.button !== 0) return;
     if (e.target.closest('.blip-marker')) return;
     isPanning = true;
@@ -1018,7 +1015,7 @@ document.getElementById('punti-lista')?.addEventListener('click', async (e) => {
 });
 
 
-// GENERAZIONE UI DATABASE RISORSE E ANELLI A GRIGLIA
+// GENERAZIONE UI DATABASE RISORSE E ANELLI
 const materiali = [ { id: 'mat_oro', nome: 'Oro' }, { id: 'mat_rame', nome: 'Rame' }, { id: 'mat_cotone', nome: 'Cotone' },  { id: 'mat_dmt', nome: 'DMT' }, { id: 'mat_zolfo', nome: 'Zolfo' }, { id: 'mat_grafite', nome: 'Grafite' }, { id: 'mat_carbone', nome: 'Carbone' }, { id: 'mat_cromo', nome: 'Cromo' }, { id: 'mat_salnitro', nome: 'Salnitro' }, { id: 'mat_magnete', nome: 'Magnete' }, { id: 'mat_piombo', nome: 'Piombo' }, { id: 'mat_tabacco', nome: 'Tabacco' }, { id: 'mat_azoto', nome: 'Azoto' }, { id: 'mat_marijuana', nome: 'Marijuana' } ];
 const mercanti = [ { id: 'mer_rame', nome: 'Rame' }, { id: 'mer_piombo', nome: 'Piombo' }, { id: 'mer_carbone', nome: 'Carbone' }, { id: 'mer_pile', nome: 'Pile' }, { id: 'mer_cartine', nome: 'Cartine' }, { id: 'mer_grafite', nome: 'Grafite' }, { id: 'mer_tessuto', nome: 'Tessuto' }, { id: 'mer_vetro', nome: 'Vetro' }, { id: 'mer_alcool', nome: 'Alcool' }, { id: 'mer_elettrici', nome: 'Elettrici' } ];
 const altari = [ { id: 'alt_motel', nome: 'Altare Motel' }, { id: 'alt_rovine', nome: 'Altare Rovine' }, { id: 'alt_antenne', nome: 'Altare Antenne' },];
@@ -1058,6 +1055,7 @@ fazioniDef.forEach(f => {
     if(f.id !== 'nessuno') document.getElementById('grid-anelli').appendChild(creaCardAnello(f));
 });
 
+// SALVATAGGIO RISORSE CON BATCH (molto più efficiente)
 document.getElementById('btn-salva-risorse').addEventListener('click', async () => {
     if (!currentUser && !auth.currentUser) {
         showToast("Azione negata. Utente non autenticato.", "error");
@@ -1066,10 +1064,12 @@ document.getElementById('btn-salva-risorse').addEventListener('click', async () 
     const tutti = [...materiali.map(m => ({...m, tipo: 'mat'})), ...mercanti.map(m => ({...m, tipo: 'mer'})), ...altari.map(a => ({...a, tipo: 'alt'}))];
     
     try {
-        // Salva Materiali, Mercanti e Altari
+        const batch = writeBatch(db);
+
+        // Salva Materiali, Mercanti e Altari in un unico batch
         for (let i of tutti) {
             const val = document.getElementById(`quad_${i.id}`).value.trim();
-            await setDoc(doc(db, "punti_interesse", i.id), { nome: i.nome, quadrante: val, type: i.tipo });
+            batch.set(doc(db, "punti_interesse", i.id), { nome: i.nome, quadrante: val, type: i.tipo });
         }
 
         // Salva Anelli
@@ -1080,7 +1080,9 @@ document.getElementById('btn-salva-risorse').addEventListener('click', async () 
                 anelliDaSalvare[f.id] = val;
             }
         });
-        await setDoc(doc(db, "sistema", "anelli"), anelliDaSalvare, { merge: true });
+        batch.set(doc(db, "sistema", "anelli"), anelliDaSalvare, { merge: true });
+
+        await batch.commit();
 
         logActivity(`🗄️ Il Database Generale (Punti e Anelli) è stato sincronizzato.`);
         showToast("Database Sincronizzato con successo!", "success");
