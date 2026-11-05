@@ -1705,7 +1705,23 @@
                 if (typeof window.renderAdminPermessiGestioneTable === 'function') window.renderAdminPermessiGestioneTable();
             }
             if (viewId === 'classifiche') {
-                if (typeof window.renderAdminClassifiche === 'function') window.renderAdminClassifiche({ refreshWeeks: true });
+                Promise.all([
+                    window.loadStoricoVenditeIfNeeded?.() || Promise.resolve(),
+                    window.loadStoricoMaterialiIfNeeded?.() || Promise.resolve()
+                ]).finally(() => {
+                    if (typeof window.renderAdminClassifiche === 'function') window.renderAdminClassifiche({ refreshWeeks: true });
+                });
+            }
+            if (viewId === 'storico-vendite') {
+                Promise.all([
+                    window.loadStoricoVenditeIfNeeded?.() || Promise.resolve(),
+                    window.loadStoricoMaterialiIfNeeded?.() || Promise.resolve()
+                ]).finally(() => {
+                    if (typeof window.renderArchivioGestione === 'function') window.renderArchivioGestione();
+                });
+            }
+            if (viewId === 'inventario') {
+                window.loadItemImagesOnce?.();
             }
             if (viewId === 'system-logs') {
                 if (typeof window.renderSystemLogs === 'function') window.renderSystemLogs();
