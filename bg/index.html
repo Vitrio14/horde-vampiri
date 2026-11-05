@@ -164,9 +164,12 @@
             <div id="gmDashboardPanel" class="card hidden gm-dashboard">
                 <div class="gm-header">
                     <h2>Archivio Background</h2>
-                    <button class="btn" id="btnLogOutAction" style="width: auto; padding: 8px 16px; font-size: 0.8rem;">Chiudi Sessione</button>
+                    <div style="display:flex; gap:10px; align-items:center; flex-wrap:wrap;">
+                        <button class="btn" id="btnRefreshGmList" style="width: auto; padding: 8px 16px; font-size: 0.75rem;">Aggiorna lista</button>
+                        <button class="btn" id="btnLogOutAction" style="width: auto; padding: 8px 16px; font-size: 0.8rem;">Chiudi Sessione</button>
+                    </div>
                 </div>
-                <p class="subtitle">Esamina i background inviati dai giocatori.</p>
+                <p class="subtitle">Esamina i background inviati dai giocatori. Usa “Aggiorna lista” per ricaricare i dati (ottimizzato per piano gratuito).</p>
 
                 <!-- Vista Lista con Tab -->
                 <div id="gmListView">

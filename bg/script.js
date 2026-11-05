@@ -48,7 +48,7 @@ const db = firebase.firestore();
 
 const GM_EMAIL = 'gm.vampiri@horde.it';
 let deviceToken = '';
-let gmSnapshotUnsubscribe = null;
+let gmSnapshotUnsubscribe = null; // mantenuto per compatibilità / cleanup
 
 const loadingPanel = document.getElementById('loadingPanel');
 const bgFormPanel = document.getElementById('bgFormPanel');
@@ -145,6 +145,7 @@ auth.onAuthStateChanged(user => {
         switchPanel(gmDashboardPanel);
         loadGmDashboard();
     } else {
+        // Cleanup di eventuali listener residui
         if (gmSnapshotUnsubscribe) {
             gmSnapshotUnsubscribe();
             gmSnapshotUnsubscribe = null;
@@ -161,6 +162,7 @@ function checkBackgroundStatus() {
         initDeviceIdentification();
     }
 
+    // Una sola lettura per documento del device — ottimale
     db.collection('backgrounds').doc(deviceToken).get().then(doc => {
         if (doc.exists) {
             const data = doc.data();
@@ -339,22 +341,30 @@ document.getElementById('btnLoginGM').addEventListener('click', () => {
 });
 
 document.getElementById('btnLogOutAction').addEventListener('click', () => {
+    // Cleanup listener se presente
+    if (gmSnapshotUnsubscribe) {
+        gmSnapshotUnsubscribe();
+        gmSnapshotUnsubscribe = null;
+    }
     auth.signOut();
 });
 
 // ==========================================
 // DASHBOARD GM — TAB + VISTA DETTAGLIO
+// OTTIMIZZATA PER PIANO GRATUITO FIRESTORE
 // ==========================================
 let allBackgroundsCache = [];
 let currentGmTab = 'da_revisionare';
 let currentDetailDocId = null;
 let currentSearchQuery = '';
+let isGmLoading = false;
 
 const gmListView = document.getElementById('gmListView');
 const gmDetailView = document.getElementById('gmDetailView');
 const gmDetailContent = document.getElementById('gmDetailContent');
 const gmSearchInput = document.getElementById('gmSearchInput');
 const gmSearchClear = document.getElementById('gmSearchClear');
+const btnRefreshGmList = document.getElementById('btnRefreshGmList');
 
 document.querySelectorAll('.gm-tab').forEach(tabBtn => {
     tabBtn.addEventListener('click', () => {
@@ -387,6 +397,12 @@ if (gmSearchClear) {
     });
 }
 
+if (btnRefreshGmList) {
+    btnRefreshGmList.addEventListener('click', () => {
+        refreshGmData(true);
+    });
+}
+
 document.getElementById('btnBackToList').addEventListener('click', () => {
     showGmListView();
 });
@@ -402,8 +418,16 @@ function showGmDetailView() {
     gmDetailView.classList.remove('hidden');
 }
 
+/**
+ * Carica la dashboard GM con una sola lettura (get) invece di onSnapshot permanente.
+ * Questo riduce drasticamente le letture giornaliere sul piano gratuito.
+ */
 function loadGmDashboard() {
-    if (gmSnapshotUnsubscribe) gmSnapshotUnsubscribe();
+    // Cleanup di eventuali listener precedenti
+    if (gmSnapshotUnsubscribe) {
+        gmSnapshotUnsubscribe();
+        gmSnapshotUnsubscribe = null;
+    }
 
     showGmListView();
     currentGmTab = 'da_revisionare';
@@ -413,25 +437,62 @@ function loadGmDashboard() {
     document.querySelectorAll('.gm-tab').forEach(t => t.classList.remove('active'));
     document.getElementById('tabDaRevisionare').classList.add('active');
 
-    gmSnapshotUnsubscribe = db.collection('backgrounds').orderBy('submittedAt', 'desc').onSnapshot(snapshot => {
-        allBackgroundsCache = [];
-        snapshot.forEach(doc => {
-            allBackgroundsCache.push({ id: doc.id, ...doc.data() });
-        });
-        updateTabCounts();
-        renderGmList();
+    refreshGmData(false);
+}
 
-        if (currentDetailDocId) {
-            const stillExists = allBackgroundsCache.find(b => b.id === currentDetailDocId);
-            if (stillExists) {
-                openGmDetail(currentDetailDocId);
-            } else {
-                showGmListView();
+/**
+ * Esegue una lettura one-shot della collection (con limit di sicurezza).
+ * @param {boolean} showFeedback - se true mostra alert di successo/errore
+ */
+function refreshGmData(showFeedback) {
+    if (isGmLoading) return;
+    isGmLoading = true;
+
+    if (btnRefreshGmList) {
+        btnRefreshGmList.disabled = true;
+        btnRefreshGmList.innerText = 'Aggiornamento...';
+    }
+
+    // Una sola lettura: orderBy + limit per evitare di scaricare tutto se la collection cresce
+    db.collection('backgrounds')
+        .orderBy('submittedAt', 'desc')
+        .limit(250)
+        .get()
+        .then(snapshot => {
+            allBackgroundsCache = [];
+            snapshot.forEach(doc => {
+                allBackgroundsCache.push({ id: doc.id, ...doc.data() });
+            });
+            updateTabCounts();
+            renderGmList();
+
+            // Se eravamo in dettaglio e il doc esiste ancora, riapriamo
+            if (currentDetailDocId) {
+                const stillExists = allBackgroundsCache.find(b => b.id === currentDetailDocId);
+                if (stillExists) {
+                    openGmDetail(currentDetailDocId);
+                } else {
+                    showGmListView();
+                }
             }
-        }
-    }, error => {
-        console.error("Errore di caricamento dati GM: ", error);
-    });
+
+            if (showFeedback) {
+                triggerChronicaAlert('Lista aggiornata', 'I background sono stati ricaricati correttamente.');
+            }
+        })
+        .catch(error => {
+            console.error("Errore di caricamento dati GM: ", error);
+            if (showFeedback) {
+                triggerChronicaAlert('Errore', 'Impossibile aggiornare la lista: ' + error.message);
+            }
+        })
+        .finally(() => {
+            isGmLoading = false;
+            if (btnRefreshGmList) {
+                btnRefreshGmList.disabled = false;
+                btnRefreshGmList.innerText = 'Aggiorna lista';
+            }
+        });
 }
 
 function updateTabCounts() {
@@ -569,15 +630,26 @@ window.openGmDetail = function(docId) {
                 archiveButtonHtml +
             '</div>' +
             '<div class="gm-buttons-group" style="margin-top:12px;">' +
-                // '<button class="btn btn-pdf" onclick="generateBackgroundPdf(\'' + docId + '\')">Scarica PDF</button>' +
-                // '<button class="btn btn-txt" onclick="generateBackgroundTxt(\'' + docId + '\')">Scarica TXT</button>' +
-                // '<button class="btn btn-word" onclick="generateBackgroundDocx(\'' + docId + '\')">Scarica Word</button>' +
             '</div>' +
         '</div>';
 
     showGmDetailView();
     window.scrollTo({ top: 0, behavior: 'smooth' });
 };
+
+/**
+ * Aggiorna ottimisticamente la cache locale dopo un'azione GM
+ * così l'UI si aggiorna subito senza dover rifare una lettura.
+ */
+function updateLocalCache(docId, updateData) {
+    const idx = allBackgroundsCache.findIndex(b => b.id === docId);
+    if (idx !== -1) {
+        allBackgroundsCache[idx] = {
+            ...allBackgroundsCache[idx],
+            ...updateData
+        };
+    }
+}
 
 window.reviewBackground = function(docId, nextStatus) {
     const feedbackEl = document.getElementById('feedback_detail') || document.getElementById('feedback_' + docId);
@@ -608,6 +680,10 @@ window.reviewBackground = function(docId, nextStatus) {
 
     db.collection('backgrounds').doc(docId).update(updateData)
         .then(() => {
+            // Aggiornamento ottimistico della cache locale → zero letture extra
+            updateLocalCache(docId, updateData);
+            updateTabCounts();
+
             const isApproved = nextStatus === 'approvato';
             const embedFields = [
                 { name: "Discord User", value: userDiscord, inline: true },
@@ -644,6 +720,7 @@ window.reviewBackground = function(docId, nextStatus) {
                     document.getElementById('tabDaModificare').classList.add('active');
                 }
                 showGmListView();
+                renderGmList();
             });
         })
         .catch(error => {
@@ -679,12 +756,17 @@ window.archiveBackground = function(docId) {
 
     db.collection('backgrounds').doc(docId).update(updateData)
         .then(() => {
+            // Aggiornamento ottimistico della cache locale
+            updateLocalCache(docId, updateData);
+            updateTabCounts();
+
             triggerChronicaAlert('Background archiviato', 'Il background è stato spostato in Archiviati. Nessuna notifica è stata inviata.', () => {
                 currentGmTab = 'archiviato';
                 document.querySelectorAll('.gm-tab').forEach(t => t.classList.remove('active'));
                 const tabArch = document.getElementById('tabArchiviati');
                 if (tabArch) tabArch.classList.add('active');
                 showGmListView();
+                renderGmList();
             });
         })
         .catch(error => {
