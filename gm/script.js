@@ -152,6 +152,28 @@ function playersGet() {
     });
 }
 
+
+/** Get singolo documento dalla cache di collection (evita .get() se già in listener). */
+function fsGetCachedDoc(collectionName, docId) {
+    const col = FS.data[collectionName];
+    if (col && col.map && col.map[docId]) {
+        const data = Object.assign({}, col.map[docId]);
+        const id = data.id;
+        delete data.id;
+        return { id: id, exists: true, data: function () { return data; } };
+    }
+    return null;
+}
+
+/** Promise: doc da cache o fallback a .get() una sola volta. */
+function fsGetDoc(collectionName, docId) {
+    const cached = fsGetCachedDoc(collectionName, docId);
+    if (cached) return Promise.resolve(cached);
+    return db.collection(collectionName).doc(docId).get().then(function (doc) {
+        return doc;
+    });
+}
+
 /** Chiude tutti i listener (logout) */
 function unsubscribeAllFirestore() {
     Object.keys(FS.unsubs).forEach(function (k) {
@@ -370,10 +392,11 @@ const listFilters = {
     media: '',
     commands: '',
     admin: '',
-    players: { text: '', grado: 'all', ferale: 'all', inattivo: 'all', questLibro: 'all' },
+    players: { text: '', grado: 'all', ferale: 'all', inattivo: 'all', questLibro: 'all', clan: 'all' },
     rito: { text: '', tipo: 'all', archived: 'no' },
     tempi: { text: '', status: 'attivo', tipo: 'all' },
-    abbraccio: { text: '', status: 'all' }
+    abbraccio: { text: '', status: 'all' },
+    clan: ''
 };
 
 const SECTION_LIST_IDS = {
@@ -386,7 +409,8 @@ const SECTION_LIST_IDS = {
     players: 'players-list',
     rito: 'rito-list',
     tempi: 'tempi-list',
-    abbraccio: 'abbraccio-list'
+    abbraccio: 'abbraccio-list',
+    clan: 'clan-list'
 };
 
 /** Normalizza grado: Adulta/Adulto → Adulto, Neonata/Neonato → Neonato */
@@ -415,6 +439,53 @@ function escapeAttr(s) {
         .replace(/"/g, '&quot;')
         .replace(/</g, '&lt;')
         .replace(/>/g, '&gt;');
+}
+
+/**
+ * Formatta note per le card: ogni riga con trattino (- • * – —) diventa un punto
+ * sotto l'altro; gli a capo normali restano separati. Contenitore scrollabile.
+ * opts: { emptyText?, maxHeight?, preview?, previewLen? }
+ */
+function formatNotesHtml(notes, opts) {
+    opts = opts || {};
+    const emptyText = opts.emptyText != null ? opts.emptyText : 'Nessuna nota';
+    if (notes == null || !String(notes).trim()) {
+        return '<p class="notes-empty">' + escapeAttr(emptyText) + '</p>';
+    }
+    let text = String(notes);
+    // Anteprima: tronca ma cerca di non tagliare a metà riga
+    if (opts.preview) {
+        const max = opts.previewLen != null ? opts.previewLen : 160;
+        if (text.length > max) {
+            text = text.slice(0, max).replace(/\s+\S*$/, '') + '…';
+        }
+    }
+    const lines = text.split(/\r?\n/);
+    let html = '';
+    let inList = false;
+    lines.forEach(function (line) {
+        const trimmed = String(line).trim();
+        const m = trimmed.match(/^[-•*–—]\s+(.*)$/) || trimmed.match(/^[-•*–—](.*)$/);
+        if (m && trimmed.length > 0 && /^[-•*–—]/.test(trimmed)) {
+            if (!inList) {
+                html += '<ul class="notes-list">';
+                inList = true;
+            }
+            html += '<li>' + escapeAttr((m[1] || '').trim()) + '</li>';
+        } else {
+            if (inList) {
+                html += '</ul>';
+                inList = false;
+            }
+            if (trimmed) {
+                html += '<p class="notes-line">' + escapeAttr(trimmed) + '</p>';
+            }
+        }
+    });
+    if (inList) html += '</ul>';
+    const mh = opts.maxHeight != null ? opts.maxHeight : (opts.preview ? 88 : 140);
+    const style = 'max-height:' + mh + 'px';
+    return '<div class="notes-block notes-scroll" style="' + style + '">' + html + '</div>';
 }
 
 /** Tipo uscita: rito | uscita_ospitato | reietto | null */
@@ -501,8 +572,18 @@ function buildPlayersFilterBarHtml(insideFolder) {
         const cls = isActive ? 'filter-chip active' : 'filter-chip';
         return `<button type="button" class="${cls}" data-filter-group="questLibro" onclick="onPlayersQuestLibroFilter('${g.key}')">${g.label}</button>`;
     }).join('');
+    const clansList = (typeof getCachedClansList === 'function') ? getCachedClansList() : [];
+    const clanChipsArr = [
+        { key: 'all', label: 'Tutti' },
+        { key: '__none__', label: 'Senza clan' }
+    ].concat(clansList.map(c => ({ key: c.id, label: c.name || 'Clan' })));
+    const clanChips = clanChipsArr.map(g => {
+        const isActive = (f.clan || 'all') === g.key;
+        const cls = isActive ? 'filter-chip active' : 'filter-chip';
+        return `<button type="button" class="${cls}" data-filter-group="clan" onclick="onPlayersClanFilter('${g.key}')">${escapeAttr(g.label)}</button>`;
+    }).join('');
     const hint = insideFolder
-        ? 'Cerca per nome o note · filtra per grado / ferale / inattivo / quest libro'
+        ? 'Cerca per nome o note · filtra per grado / ferale / inattivo / quest libro / clan'
         : 'Cerca cartella per nome';
     return `
         <div class="section-filter-bar" style="grid-column: 1 / -1;" data-filter-bar="players">
@@ -531,6 +612,10 @@ function buildPlayersFilterBarHtml(insideFolder) {
             <div class="section-filter-chips">
                 <span class="filter-chips-label">Quest libro</span>
                 ${questLibroChips}
+            </div>
+            <div class="section-filter-chips">
+                <span class="filter-chips-label">Clan</span>
+                ${clanChips}
             </div>` : ''}
         </div>`;
 }
@@ -654,6 +739,20 @@ function onPlayersQuestLibroFilter(key) {
     applyListFilter('players');
 }
 
+function onPlayersClanFilter(key) {
+    listFilters.players.clan = key || 'all';
+    const bar = document.querySelector('[data-filter-bar="players"]');
+    if (bar) {
+        bar.querySelectorAll('.filter-chip[data-filter-group="clan"]').forEach(btn => {
+            const onclick = btn.getAttribute('onclick') || '';
+            const m = onclick.match(/onPlayersClanFilter\('([^']+)'\)/);
+            const k = m ? m[1] : '';
+            btn.classList.toggle('active', k === listFilters.players.clan);
+        });
+    }
+    applyListFilter('players');
+}
+
 function onRitoTipoFilter(key) {
     listFilters.rito.tipo = key;
     const bar = document.querySelector('[data-filter-bar="rito"]');
@@ -688,6 +787,7 @@ function applyListFilter(sectionKey) {
     let feraleFilter = null;
     let inattivoFilter = null;
     let questLibroFilter = null;
+    let clanFilter = null;
     let tipoFilter = null;
     let statusFilter = null;
     let tempoTipoFilter = null;
@@ -702,6 +802,7 @@ function applyListFilter(sectionKey) {
             feraleFilter = listFilters[sectionKey].ferale;
             inattivoFilter = listFilters[sectionKey].inattivo;
             questLibroFilter = listFilters[sectionKey].questLibro;
+            clanFilter = listFilters[sectionKey].clan;
         }
         if (sectionKey === 'rito') {
             tipoFilter = listFilters[sectionKey].tipo;
@@ -740,6 +841,14 @@ function applyListFilter(sectionKey) {
         if (show && questLibroFilter != null && questLibroFilter !== 'all') {
             const hasQL = el.getAttribute('data-quest-libro') === '1';
             show = (questLibroFilter === 'yes') ? hasQL : !hasQL;
+        }
+        if (show && clanFilter != null && clanFilter !== 'all') {
+            const ids = (el.getAttribute('data-clan-ids') || '').split(',').filter(Boolean);
+            if (clanFilter === '__none__') {
+                show = ids.length === 0;
+            } else {
+                show = ids.indexOf(clanFilter) !== -1;
+            }
         }
         if (show && tipoFilter != null && tipoFilter !== 'all') {
             const t = el.getAttribute('data-exit-type') || '';
@@ -922,6 +1031,9 @@ function ensureSectionData(id) {
             break;
         case 'abbraccio':
             if (typeof loadAbbracci === 'function') loadAbbracci();
+            break;
+        case 'clan':
+            if (typeof loadClans === 'function') loadClans();
             break;
         case 'frammenti':
             if (typeof loadFrammentiEvents === 'function') loadFrammentiEvents();
@@ -1518,7 +1630,7 @@ function loadNotes() {
                 sortAlpha(noteItems, 'note').forEach(n => {
                         container.innerHTML += `
                             <div class="card" data-filter-text="${escapeAttr(n.note || '')}">
-                                <p>${n.note}</p>
+                                ${n.note ? formatNotesHtml(n.note) : '<p class="notes-empty">Nessuna nota</p>'}
                                 <div class="action-buttons">
                                     <button
                                         class="delete-btn"
@@ -2489,6 +2601,7 @@ function loadPlayers() {
                         childrenByParent[pid].push(ch);
                     });
                 });
+                const playerClansMap = (typeof buildPlayerClansMap === 'function') ? buildPlayerClansMap() : {};
                 sortAlpha(playerItems, 'name').forEach(p => {
                         let activeQuestsHTML = '';
                         if (p.quests && p.quests.length > 0) {
@@ -2531,8 +2644,7 @@ function loadPlayers() {
                                 </div>`;
                         }
                         if (p.exitNotes) {
-                            const safeNotes = String(p.exitNotes).replace(/</g, '&lt;');
-                            exitBadge += `<p class="exit-notes-preview" title="Note uscita"><i class="fa-solid fa-note-sticky"></i> ${safeNotes.slice(0, 80)}${safeNotes.length > 80 ? '…' : ''}</p>`;
+                            exitBadge += `<div class="exit-notes-preview" title="Note uscita"><i class="fa-solid fa-note-sticky"></i> ${formatNotesHtml(p.exitNotes, { preview: true, previewLen: 120, maxHeight: 72, emptyText: '' })}</div>`;
                         }
 
                         const gradoBadge = p.grado
@@ -2550,6 +2662,10 @@ function loadPlayers() {
                         const questLibroBadge = p.questLibro
                             ? '<div class="status quest-libro-status">📕 Quest libro</div>'
                             : '';
+                        const playerClans = playerClansMap[p.id] || [];
+                        const clanBadge = (typeof formatPlayerClanBadgesHtml === 'function') ? formatPlayerClanBadgesHtml(playerClans) : '';
+                        const clanIdsAttr = playerClans.map(function (c) { return c.id; }).join(',');
+                        const clanNamesForFilter = playerClans.map(function (c) { return c.name; }).join(' ');
 
                         const isOspite = normalizeGradoKey(p.grado) === 'Ospite';
                         const abbraccioBtn = isOspite
@@ -2565,19 +2681,20 @@ function loadPlayers() {
                         const childrenBadge = formatChildrenBadgeHtml(p.id, p.name, myChildren);
                         const parentNamesForFilter = pParentIds.map(id => (playersMapFamily[id] && playersMapFamily[id].name) || '').join(' ');
                         const childNamesForFilter = myChildren.map(c => c.name || '').join(' ');
-                        const filterText = [p.name, p.notes, p.grado, (p.quests || []).join(' '), p.ferale ? 'ferale' : '', p.inattivo ? 'inattivo' : '', p.questLibro ? 'quest libro' : '', parentNamesForFilter, childNamesForFilter, 'genitori', 'figli'].filter(Boolean).join(' ');
+                        const filterText = [p.name, p.notes, p.grado, (p.quests || []).join(' '), p.ferale ? 'ferale' : '', p.inattivo ? 'inattivo' : '', p.questLibro ? 'quest libro' : '', parentNamesForFilter, childNamesForFilter, 'genitori', 'figli', clanNamesForFilter].filter(Boolean).join(' ');
                         container.innerHTML += `
-                            <div class="${cardClass}" data-filter-text="${escapeAttr(filterText)}" data-grado="${escapeAttr(p.grado || '')}" data-ferale="${p.ferale ? '1' : '0'}" data-inattivo="${p.inattivo ? '1' : '0'}" data-quest-libro="${p.questLibro ? '1' : '0'}">
+                            <div class="${cardClass}" data-filter-text="${escapeAttr(filterText)}" data-grado="${escapeAttr(p.grado || '')}" data-ferale="${p.ferale ? '1' : '0'}" data-inattivo="${p.inattivo ? '1' : '0'}" data-quest-libro="${p.questLibro ? '1' : '0'}" data-clan-ids="${escapeAttr(clanIdsAttr)}">
                                 <h3>${p.name}</h3>
                                 ${gradoBadge}
                                 ${feraleBadge}
                                 ${inattivoBadge}
                                 ${questLibroBadge}
+                                ${clanBadge}
                                 ${punBadge}
                                 ${parentsBadge}
                                 ${childrenBadge}
                                 ${exitBadge}
-                                <p>${p.notes || 'Nessuna nota'}</p>
+                                ${p.notes ? formatNotesHtml(p.notes) : '<p class="notes-empty">Nessuna nota</p>'}
                                 <div style="margin-top:10px;">
                                     <b>Quest Attive:</b><br>${activeQuestsHTML}
                                 </div>
@@ -2763,6 +2880,7 @@ function loadPlayers() {
 
     ensureFoldersListener('players', __render_loadPlayers);
     ensureCollectionListener('players', __render_loadPlayers);
+    ensureCollectionListener('clans', __render_loadPlayers);
     __render_loadPlayers();
 }
 
@@ -2770,18 +2888,27 @@ function loadPlayers() {
 
 function openPlayerModal(playerId) {
 
-    db.collection('players')
-        .doc(playerId)
-        .get()
-        .then(playerDoc => {
+    // Cache-first: evita letture extra se players/quests sono già in listener
+    fsGetDoc('players', playerId).then(playerDoc => {
 
             if (!playerDoc.exists) return;
             const player = playerDoc.data();
             const exitType = resolveExitType(player);
             const isExit = !!exitType;
 
+            const questsFromCache = (FS.data.quests && FS.data.quests.docs)
+                ? Promise.resolve({
+                    forEach: function (cb) {
+                        FS.data.quests.docs.forEach(function (q) {
+                            var d = Object.assign({}, q); var id = d.id; delete d.id;
+                            cb({ id: id, data: function () { return d; } });
+                        });
+                    }
+                  })
+                : db.collection('quests').get();
+
             Promise.all([
-                db.collection('quests').get(),
+                questsFromCache,
                 playersGet()
             ]).then(([snapshot, allPlayersSnap]) => {
                 const allPlayers = [];
@@ -3469,7 +3596,7 @@ function loadRitoPlayers() {
                     ${reiettoLine}
                 </div>`;
             const notesHtml = p.exitNotes
-                ? `<p class="exit-notes-preview"><i class="fa-solid fa-note-sticky"></i> ${String(p.exitNotes).replace(/</g,'&lt;')}</p>`
+                ? `<div class="exit-notes-preview"><i class="fa-solid fa-note-sticky"></i> ${formatNotesHtml(p.exitNotes, { preview: true, previewLen: 140, maxHeight: 80, emptyText: '' })}</div>`
                 : '';
             const isExitArchived = !!p.exitArchived;
             let cardClass = exitCardClass(exitType);
@@ -3497,7 +3624,7 @@ function loadRitoPlayers() {
                     ${childrenBadge}
                     ${exitBadgesHtml}
                     ${notesHtml}
-                    <p>${p.notes || 'Nessuna nota'}</p>
+                    ${p.notes ? formatNotesHtml(p.notes) : '<p class="notes-empty">Nessuna nota</p>'}
                     <div style="margin-top:10px;">
                         <b>Quest Attive:</b><br>${activeQuestsHTML}
                     </div>
@@ -7343,7 +7470,7 @@ function loadTempi() {
                     </p>
                     ${statusBadge}
                     ${readyLine}
-                    ${t.lastAdjustReason ? `<p class="tempo-notes-preview" style="color:#fbbf24;"><b>Ultimo aggiustamento:</b> ${(t.lastAdjustDelta > 0 ? '+' : '') + (t.lastAdjustDelta || '')} g. — ${String(t.lastAdjustReason).replace(/</g, '&lt;')}</p>` : (t.notes ? `<p class="tempo-notes-preview">${String(t.notes).slice(0, 80).replace(/</g, '&lt;')}${String(t.notes).length > 80 ? '…' : ''}</p>` : '')}
+                    ${t.lastAdjustReason ? `<p class="tempo-notes-preview" style="color:#fbbf24;"><b>Ultimo aggiustamento:</b> ${(t.lastAdjustDelta > 0 ? '+' : '') + (t.lastAdjustDelta || '')} g. — ${String(t.lastAdjustReason).replace(/</g, '&lt;')}</p>` : (t.notes ? formatNotesHtml(t.notes, { preview: true, previewLen: 120, maxHeight: 72 }) : '')}
                     <div class="action-buttons action-buttons-icons">
                         <button class="btn-icon-only" onclick="openTempoDetails('${t.id}')" title="Dettagli e note">
                             <i class="fa-solid fa-eye"></i>
@@ -7813,7 +7940,7 @@ function openAbbraccioDetails(id) {
                     })()}</p>
                     ${a.notes ? `<div style="margin-top:14px;padding:12px;background:rgba(0,0,0,0.35);border-left:3px solid #c5a059;border-radius:0 8px 0 8px;">
                         <p style="margin:0 0 6px;color:#c5a059;font-size:0.75rem;font-weight:700;text-transform:uppercase;letter-spacing:1px;">Note</p>
-                        <p style="margin:0;white-space:pre-wrap;line-height:1.5;">${String(a.notes).replace(/</g, '&lt;')}</p>
+                        ${formatNotesHtml(a.notes, { maxHeight: 200 })}
                     </div>` : '<p style="color:#9ca3af;font-size:0.85rem;margin-top:12px;">Nessuna nota</p>'}
                     ${a.createdAt ? `<p style="margin-top:14px;font-size:0.75rem;color:#6b7280;">Creato: ${formatDateTime(a.createdAt)}</p>` : ''}
                     ${a.completedAt ? `<p style="font-size:0.75rem;color:#6b7280;">Concluso: ${formatDateTime(a.completedAt)}</p>` : ''}
@@ -8093,7 +8220,7 @@ function loadAbbracci() {
                 : '';
 
             const notesPrev = a.notes
-                ? `<p class="tempo-notes-preview">${String(a.notes).slice(0, 80).replace(/</g, '&lt;')}${String(a.notes).length > 80 ? '…' : ''}</p>`
+                ? formatNotesHtml(a.notes, { preview: true, previewLen: 120, maxHeight: 72 })
                 : '';
 
             const filterText = [a.playerName, parentNamesDisp.join(' '), a.notes, a.status, a.fiala].filter(Boolean).join(' ');
@@ -8134,6 +8261,372 @@ function loadAbbracci() {
         applyListFilter('abbraccio');
     }, err => {
         console.error('loadAbbracci', err);
+    });
+}
+
+
+
+/* ========== CLAN (ottimizzato: 1 solo listener via FS layer) ========== */
+let currentClanId = null;
+
+function getCachedClansList() {
+    return (FS.data.clans && FS.data.clans.docs) ? FS.data.clans.docs.slice() : [];
+}
+
+function buildPlayerClansMap() {
+    const map = {};
+    getCachedClansList().forEach(function (c) {
+        normalizeClanMembers(c.members).forEach(function (m) {
+            if (!m.playerId) return;
+            if (!map[m.playerId]) map[m.playerId] = [];
+            map[m.playerId].push({ id: c.id, name: c.name || 'Clan' });
+        });
+    });
+    return map;
+}
+
+function formatPlayerClanBadgesHtml(clans) {
+    if (!clans || !clans.length) return '';
+    return clans.map(function (c) {
+        const safeName = escapeAttr(c.name || 'Clan');
+        return '<button type="button" class="status clan-badge" onclick="event.stopPropagation(); goToClan(\'' + c.id + '\')" title="Apri clan ' + safeName + '">🏰 ' + safeName + '</button>';
+    }).join(' ');
+}
+
+function goToClan(clanId) {
+    currentClanId = clanId || null;
+    showSection('clan');
+}
+
+function normalizeClanMembers(raw) {
+    if (!Array.isArray(raw)) return [];
+    return raw.map(function (m) {
+        if (!m) return null;
+        return {
+            playerId: m.playerId || null,
+            name: String(m.name || '').trim(),
+            race: m.race != null ? String(m.race).trim() : (m.playerId ? 'Vampiro' : '')
+        };
+    }).filter(function (m) { return m && m.name; });
+}
+
+function openClanList() {
+    currentClanId = null;
+    renderClansFromCache();
+}
+
+function openClanDetail(id) {
+    currentClanId = id;
+    renderClansFromCache();
+}
+
+/** Render da cache FS — nessun onSnapshot extra. */
+function renderClansFromCache() {
+    const container = document.getElementById('clan-list');
+    if (!container) return;
+    const items = getCachedClansList().slice();
+    sortAlpha(items, 'name');
+    if (currentClanId) {
+        const clan = items.find(function (c) { return c.id === currentClanId; });
+        if (!clan) {
+            currentClanId = null;
+            renderClansList(container, items);
+            return;
+        }
+        renderClanDetail(container, clan);
+        return;
+    }
+    renderClansList(container, items);
+}
+
+function loadClans() {
+    // Un solo listener condiviso; callback di render (no doppio onSnapshot)
+    ensureCollectionListener('clans', renderClansFromCache);
+    ensureCollectionListener('players'); // cache gradi/note in detail
+    if (FS.data.clans && FS.data.clans.docs) {
+        renderClansFromCache();
+    } else {
+        const container = document.getElementById('clan-list');
+        if (container && !container.dataset.fsLoading) {
+            container.dataset.fsLoading = '1';
+            container.innerHTML = '<p style="grid-column:1/-1;color:var(--text-dim);padding:12px;">Caricamento clan…</p>';
+        }
+    }
+}
+
+function renderClansList(container, items) {
+    delete container.dataset.fsLoading;
+    container.innerHTML = '';
+    container.innerHTML += buildSearchBarHtml('clan', 'Cerca clan per nome o note...');
+    if (!items.length) {
+        container.innerHTML += '<p style="grid-column:1/-1;color:var(--text-dim);padding:16px;">Nessun clan registrato. Usa «+ Nuovo Clan» per crearne uno.</p>';
+        return;
+    }
+    items.forEach(function (c) {
+        const members = normalizeClanMembers(c.members);
+        const tipo = c.tipo === 'misto' ? 'misto' : 'vampiri';
+        const typeBadge = tipo === 'misto'
+            ? '<div class="status clan-type-misto">🧬 Misto</div>'
+            : '<div class="status clan-type-vampiri">🩸 Solo Vampiri</div>';
+        const notesPrev = c.notes
+            ? formatNotesHtml(c.notes, { preview: true, previewLen: 140, maxHeight: 72 })
+            : '';
+        const memberNames = members.map(function (m) { return m.name; }).join(' ');
+        const filterText = [c.name, c.notes, tipo, memberNames].filter(Boolean).join(' ');
+        container.innerHTML +=
+            '<div class="card card-clan" data-filter-text="' + escapeAttr(filterText) + '" onclick="openClanDetail(\'' + c.id + '\')">' +
+            '<h3>' + escapeAttr(c.name || '—') + '</h3>' + typeBadge +
+            '<p class="clan-members-count"><i class="fa-solid fa-users"></i> ' + members.length + (members.length === 1 ? ' membro' : ' membri') + '</p>' +
+            notesPrev +
+            '<div class="action-buttons action-buttons-icons" onclick="event.stopPropagation()">' +
+            '<button class="btn-icon-only" onclick="openClanDetail(\'' + c.id + '\')" title="Apri"><i class="fa-solid fa-folder-open"></i></button>' +
+            '<button class="edit-btn" onclick="editClan(\'' + c.id + '\')">Modifica</button>' +
+            '<button class="delete-btn btn-icon-only" onclick="deleteClan(\'' + c.id + '\')" title="Elimina">🗑️</button>' +
+            '</div></div>';
+    });
+    applyListFilter('clan');
+}
+
+function renderClanDetail(container, clan) {
+    delete container.dataset.fsLoading;
+    const members = normalizeClanMembers(clan.members);
+    const tipo = clan.tipo === 'misto' ? 'misto' : 'vampiri';
+    const typeBadge = tipo === 'misto'
+        ? '<div class="status clan-type-misto">🧬 Misto</div>'
+        : '<div class="status clan-type-vampiri">🩸 Solo Vampiri</div>';
+    const playersMap = getCachedPlayersMap();
+    let notesBlock = '';
+    if (clan.notes) {
+        notesBlock =
+            '<div class="card" style="grid-column:1/-1;border-left:3px solid #a78bfa;">' +
+            '<h3 style="color:#c4b5fd;font-size:0.9rem;">Note del clan</h3>' +
+            formatNotesHtml(clan.notes, { maxHeight: 220 }) + '</div>';
+    }
+    container.innerHTML =
+        '<div class="clan-detail-header"><div>' +
+        '<button type="button" class="btn-clan-back" onclick="openClanList()" title="Torna all\'elenco clan">' +
+        '<i class="fa-solid fa-arrow-left"></i> <span>Torna all\'elenco clan</span></button>' +
+        '<h2>' + escapeAttr(clan.name || 'Clan') + '</h2>' +
+        '<div class="clan-detail-meta">' + typeBadge +
+        '<span class="clan-members-count" style="margin:0;align-self:center;"><i class="fa-solid fa-users"></i> ' + members.length + (members.length === 1 ? ' membro' : ' membri') + '</span>' +
+        '</div></div>' +
+        '<div style="display:flex;gap:8px;flex-wrap:wrap;">' +
+        '<button class="edit-btn" onclick="editClan(\'' + clan.id + '\')">Modifica clan</button>' +
+        '<button class="edit-btn" onclick="editClan(\'' + clan.id + '\')">+ Membri</button>' +
+        '<button class="delete-btn" onclick="deleteClan(\'' + clan.id + '\')">Elimina</button>' +
+        '</div></div>' + notesBlock;
+    if (!members.length) {
+        container.innerHTML += '<p style="grid-column:1/-1;color:var(--text-dim);padding:12px;">Nessun membro. Usa Modifica clan.</p>';
+        return;
+    }
+    members.forEach(function (m, idx) {
+        const linked = !!m.playerId;
+        let extra = '', gradoLine = '';
+        if (linked && playersMap[m.playerId]) {
+            const p = playersMap[m.playerId];
+            if (p.grado) gradoLine = '<div class="status grado-status grado-' + String(p.grado).toLowerCase() + '">' + escapeAttr(p.grado) + '</div>';
+            if (p.notes) extra = formatNotesHtml(p.notes, { preview: true, previewLen: 140, maxHeight: 72 });
+        }
+        const raceLabel = m.race || (linked ? 'Vampiro' : '—');
+        const raceClass = linked ? 'clan-member-race linked' : 'clan-member-race';
+        const source = linked
+            ? '<p style="font-size:0.75rem;color:#9ca3af;margin:0 0 6px;">Collegato a Giocatori</p>'
+            : '<p style="font-size:0.75rem;color:#9ca3af;margin:0 0 6px;">Membro esterno</p>';
+        container.innerHTML +=
+            '<div class="card clan-member-card"><h3>' + escapeAttr(m.name) + '</h3>' +
+            '<span class="' + raceClass + '">' + escapeAttr(raceLabel) + '</span>' + gradoLine + source + extra +
+            '<div class="action-buttons action-buttons-icons">' +
+            '<button class="delete-btn btn-icon-only" onclick="removeClanMember(\'' + clan.id + '\', ' + idx + ')" title="Rimuovi">🗑️</button>' +
+            '</div></div>';
+    });
+}
+
+function addClan(editId, existing) {
+    const isEdit = !!editId;
+    // Se edit senza dati: leggi da cache prima di fare .get()
+    const start = function (ex) {
+        whenPlayersReady().then(function (playersListRaw) {
+            const playersList = [];
+            (playersListRaw || []).forEach(function (p) {
+                if (resolveExitType(p)) return;
+                playersList.push(p);
+            });
+            sortAlpha(playersList, 'name');
+            const selectedIds = {};
+            const externalMembers = [];
+            if (ex) {
+                normalizeClanMembers(ex.members).forEach(function (m) {
+                    if (m.playerId) selectedIds[m.playerId] = true;
+                    else externalMembers.push({ name: m.name, race: m.race || '' });
+                });
+            }
+            const playerItems = playersList.map(function (p) {
+                const g = p.grado ? ' (' + p.grado + ')' : '';
+                return { value: p.id, label: (p.name || '') + g, selected: !!selectedIds[p.id] };
+            });
+            const membersMs = buildSearchableMultiSelect('clan-members-ms', playerItems, {
+                height: 180, searchPlaceholder: 'Cerca player nelle cartelle...', emptyText: 'Nessun player disponibile'
+            });
+            const nameVal = ex ? (ex.name || '') : '';
+            const notesVal = ex ? (ex.notes || '') : '';
+            const tipoVal = ex && ex.tipo === 'misto' ? 'misto' : 'vampiri';
+            const extInitialHtml = externalMembers.map(function (e) {
+                return '<div class="clan-external-item"><span><b>' + escapeAttr(e.name) + '</b> · ' + escapeAttr(e.race || '—') + '</span>' +
+                    '<button type="button" onclick="this.closest(\'.clan-external-item\').remove();">Rimuovi</button></div>';
+            }).join('');
+            Swal.fire({
+                title: isEdit ? 'Modifica Clan' : 'Nuovo Clan',
+                width: 580, background: '#131a25',
+                confirmButtonText: isEdit ? 'Salva modifiche' : 'Crea Clan',
+                showCancelButton: true, cancelButtonText: 'Annulla',
+                html:
+                    '<label style="display:block;text-align:left;margin:8px 0 4px 4px;color:#a0a0a0;font-size:13px;font-weight:600;">Nome clan</label>' +
+                    '<input id="clan-name" class="swal2-input" placeholder="Nome del clan" value="' + escapeAttr(nameVal) + '">' +
+                    '<label style="display:block;text-align:left;margin:8px 0 4px 4px;color:#a0a0a0;font-size:13px;font-weight:600;">Tipo</label>' +
+                    '<select id="clan-tipo" class="swal2-select" onchange="onClanTipoChange()">' +
+                    '<option value="vampiri"' + (tipoVal === 'vampiri' ? ' selected' : '') + '>🩸 Solo Vampiri</option>' +
+                    '<option value="misto"' + (tipoVal === 'misto' ? ' selected' : '') + '>🧬 Misto (anche altre razze)</option></select>' +
+                    '<label style="display:block;text-align:left;margin:8px 0 4px 4px;color:#a0a0a0;font-size:13px;font-weight:600;">Membri dalle cartelle Giocatori</label>' +
+                    membersMs +
+                    '<div id="clan-external-box" style="display:' + (tipoVal === 'misto' ? 'block' : 'none') + ';">' +
+                    '<label style="display:block;text-align:left;margin:12px 0 4px 4px;color:#a0a0a0;font-size:13px;font-weight:600;">Membri esterni (nome + razza)</label>' +
+                    '<div class="clan-external-row">' +
+                    '<input id="clan-ext-name" class="swal2-input" placeholder="Nome" style="margin:0;">' +
+                    '<input id="clan-ext-race" class="swal2-input" placeholder="Razza" style="margin:0;">' +
+                    '<button type="button" onclick="addClanExternalRow()" style="padding:10px 12px;white-space:nowrap;">Aggiungi</button></div>' +
+                    '<div class="clan-external-list" id="clan-external-list">' + extInitialHtml + '</div>' +
+                    '<p style="font-size:12px;color:#6b7280;text-align:left;margin:4px 0 8px 4px;">Solo se Misto.</p></div>' +
+                    '<label style="display:block;text-align:left;margin:8px 0 4px 4px;color:#a0a0a0;font-size:13px;font-weight:600;">Note</label>' +
+                    '<textarea id="clan-notes" class="swal2-textarea" placeholder="Note clan...">' + String(notesVal).replace(/</g, '&lt;') + '</textarea>',
+                preConfirm: function () {
+                    const name = (document.getElementById('clan-name').value || '').trim();
+                    if (!name) { Swal.showValidationMessage('Inserisci il nome del clan'); return false; }
+                    const tipo = document.getElementById('clan-tipo').value === 'misto' ? 'misto' : 'vampiri';
+                    const notes = (document.getElementById('clan-notes').value || '').trim();
+                    const members = [];
+                    getMultiSelectItems('clan-members-ms').forEach(function (it) {
+                        const label = String(it.label || '').replace(/\s*\([^)]*\)\s*$/, '').trim() || it.value;
+                        members.push({ playerId: it.value, name: label, race: 'Vampiro' });
+                    });
+                    if (tipo === 'misto') {
+                        const list = document.getElementById('clan-external-list');
+                        if (list) list.querySelectorAll('.clan-external-item').forEach(function (el) {
+                            const span = el.querySelector('span');
+                            if (!span) return;
+                            const parts = (span.textContent || '').split('·');
+                            const n = (parts[0] || '').replace(/\s+/g, ' ').trim();
+                            const r = (parts[1] || '').trim();
+                            if (n) members.push({ playerId: null, name: n, race: r || '' });
+                        });
+                    }
+                    return { name: name, tipo: tipo, notes: notes, members: members };
+                }
+            }).then(function (result) {
+                if (!result.isConfirmed || !result.value) return;
+                const data = result.value;
+                if (isEdit) {
+                    db.collection('clans').doc(editId).update({
+                        name: data.name, tipo: data.tipo, notes: data.notes, members: data.members,
+                        updatedAt: new Date().toISOString()
+                    }).then(function () { showToast('Clan aggiornato'); });
+                } else {
+                    data.createdAt = new Date().toISOString();
+                    db.collection('clans').add(data).then(function (ref) {
+                        showToast('Clan «' + data.name + '» creato');
+                        currentClanId = ref.id;
+                        showSection('clan');
+                    });
+                }
+            });
+        }).catch(function (err) {
+            console.error('addClan', err);
+            Swal.fire({ icon: 'error', title: 'Errore', text: (err && err.message) || 'Caricamento fallito', background: '#131a25' });
+        });
+    };
+    if (isEdit && !existing) {
+        const cached = fsGetCachedDoc('clans', editId);
+        if (cached) { start(cached.data()); return; }
+        fsGetDoc('clans', editId).then(function (doc) {
+            if (!doc.exists) return;
+            start(doc.data());
+        });
+        return;
+    }
+    start(existing || null);
+}
+
+function onClanTipoChange() {
+    const sel = document.getElementById('clan-tipo');
+    const box = document.getElementById('clan-external-box');
+    if (sel && box) box.style.display = sel.value === 'misto' ? 'block' : 'none';
+}
+
+function addClanExternalRow() {
+    const nameEl = document.getElementById('clan-ext-name');
+    const raceEl = document.getElementById('clan-ext-race');
+    const list = document.getElementById('clan-external-list');
+    if (!nameEl || !list) return;
+    const name = (nameEl.value || '').trim();
+    const race = ((raceEl && raceEl.value) || '').trim();
+    if (!name) { showToast('Inserisci un nome'); return; }
+    if (!race) { showToast('Inserisci anche la razza'); return; }
+    const div = document.createElement('div');
+    div.className = 'clan-external-item';
+    div.innerHTML = '<span><b>' + escapeAttr(name) + '</b> · ' + escapeAttr(race) + '</span>' +
+        '<button type="button" onclick="this.closest(\'.clan-external-item\').remove();">Rimuovi</button>';
+    list.appendChild(div);
+    nameEl.value = '';
+    if (raceEl) raceEl.value = '';
+}
+
+function editClan(id) {
+    const cached = fsGetCachedDoc('clans', id);
+    if (cached) { addClan(id, cached.data()); return; }
+    fsGetDoc('clans', id).then(function (doc) {
+        if (!doc.exists) return;
+        addClan(id, doc.data());
+    });
+}
+
+function deleteClan(id) {
+    Swal.fire({
+        title: 'Eliminare questo clan?',
+        text: 'I player restano in Giocatori: si elimina solo il clan.',
+        icon: 'warning', showCancelButton: true, confirmButtonColor: '#ef4444',
+        cancelButtonText: 'Annulla', confirmButtonText: 'Elimina', background: '#131a25'
+    }).then(function (result) {
+        if (!result.isConfirmed) return;
+        db.collection('clans').doc(id).delete().then(function () {
+            if (currentClanId === id) currentClanId = null;
+            showToast('Clan eliminato');
+        });
+    });
+}
+
+function removeClanMember(clanId, index) {
+    Swal.fire({
+        title: 'Rimuovere questo membro?',
+        text: 'Non elimina il player da Giocatori.',
+        icon: 'question', showCancelButton: true,
+        confirmButtonText: 'Sì, rimuovi', cancelButtonText: 'Annulla', background: '#131a25'
+    }).then(function (result) {
+        if (!result.isConfirmed) return;
+        const apply = function (members) {
+            if (index < 0 || index >= members.length) return;
+            members.splice(index, 1);
+            db.collection('clans').doc(clanId).update({
+                members: members, updatedAt: new Date().toISOString()
+            }).then(function () { showToast('Membro rimosso dal clan'); });
+        };
+        const cached = fsGetCachedDoc('clans', clanId);
+        if (cached) {
+            apply(normalizeClanMembers(cached.data().members));
+            return;
+        }
+        fsGetDoc('clans', clanId).then(function (doc) {
+            if (!doc.exists) return;
+            apply(normalizeClanMembers(doc.data().members));
+        });
     });
 }
 

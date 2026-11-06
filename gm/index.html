@@ -245,6 +245,7 @@
         <button onclick="showSection('tempi')">Tempi</button>
         <button onclick="showSection('rito')">Uscite & Riti</button>
         <button onclick="showSection('abbraccio')">Abbraccio</button>
+        <button onclick="showSection('clan')">Clan</button>
         <button onclick="showSection('frammenti')">Frammenti</button>
         <button onclick="showSection('docs')">Documenti</button>
         <button onclick="showSection('notes')">Note</button>
@@ -334,6 +335,25 @@
             </p>
 
             <div id="abbraccio-list" class="grid grid-compact"></div>
+
+        </section>
+
+        <section id="clan" class="panel">
+
+            <div class="topbar">
+                <h1>Clan</h1>
+                <div style="display: flex; gap: 10px;">
+                    <button onclick="addClan()">+ Nuovo Clan</button>
+                </div>
+            </div>
+
+            <p style="color:var(--text-dim);font-size:0.85rem;margin:-10px 0 18px;">
+                Gestione dei <b>Clan</b>: crea un clan, assegna i membri dalle cartelle Giocatori e aggiungi note.
+                Tipo <b>Solo Vampiri</b> o <b>Misto</b> (se misto puoi inserire anche nomi esterni con razza).
+                Clicca su un clan per la scheda. In <b>Giocatori</b> compare il badge clan (cliccabile) e il filtro per clan.
+            </p>
+
+            <div id="clan-list" class="grid grid-compact"></div>
 
         </section>
 

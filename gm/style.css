@@ -407,3 +407,139 @@ box-shadow:0 0 12px rgba(156,163,175,0.3)!important
 .card-abbraccio-archived h3 {
     color: #9ca3af !important;
 }
+
+
+/* ========== CLAN ========== */
+.card-clan{border-color:rgba(167,139,250,0.4)!important;background:linear-gradient(135deg,rgba(35,25,55,0.88),rgba(10,10,10,0.92))!important;box-shadow:0 8px 32px rgba(0,0,0,0.9),0 0 22px rgba(139,92,246,0.1)!important;cursor:pointer}
+.card-clan:hover{border-color:rgba(196,181,253,0.7)!important;box-shadow:0 10px 30px rgba(0,0,0,0.9),inset 0 0 20px rgba(139,92,246,0.08)!important}
+.card-clan h3{color:#c4b5fd!important}
+.status.clan-type-vampiri{background:rgba(139,0,0,0.15);color:#f87171;border-color:#af0000;box-shadow:inset 5px 0 15px rgba(139,0,0,0.2);margin:0 0 8px 0}
+.status.clan-type-misto{background:rgba(167,139,250,0.14);color:#c4b5fd;border-color:#a78bfa;box-shadow:inset 5px 0 15px rgba(139,92,246,0.18);margin:0 0 8px 0}
+.clan-members-count{font-size:0.82rem;color:var(--text-dim);margin:4px 0 8px}
+.clan-notes-preview{font-size:0.8rem!important;color:#9ca3af!important;font-style:italic;margin:4px 0 8px!important;line-height:1.35!important}
+.clan-detail-header{grid-column:1/-1;display:flex;flex-wrap:wrap;align-items:flex-start;justify-content:space-between;gap:12px;margin-bottom:8px;padding:16px 18px;background:rgba(12,10,10,0.45);border:1px solid var(--glass-border);border-left:4px solid #a78bfa;border-radius:0 12px 0 12px}
+.clan-detail-header h2{margin:0;color:#c4b5fd;font-size:1.15rem}
+.clan-detail-meta{display:flex;flex-wrap:wrap;gap:8px;margin-top:8px}
+.clan-member-card{border-color:rgba(167,139,250,0.25)!important}
+.clan-member-card h3{color:var(--gold-accent)!important;font-size:0.95rem!important}
+.clan-member-race{display:inline-block;margin:0 0 8px 0;padding:3px 8px;font-size:0.65rem;font-weight:700;letter-spacing:0.5px;text-transform:uppercase;border-left:3px solid #a78bfa;background:rgba(167,139,250,0.1);color:#c4b5fd}
+.clan-member-race.linked{border-left-color:var(--gold-accent);background:rgba(197,160,89,0.1);color:var(--gold-accent)}
+.clan-external-row{display:flex;gap:8px;margin:6px 0;align-items:center}
+.clan-external-row input{margin-bottom:0!important;flex:1}
+.clan-external-list{max-height:160px;overflow-y:auto;margin:8px 0;text-align:left}
+.clan-external-item{display:flex;align-items:center;justify-content:space-between;gap:8px;padding:6px 10px;border-bottom:1px dashed rgba(255,255,255,0.06);font-size:0.85rem}
+.clan-external-item button{padding:4px 8px!important;font-size:0.7rem!important;min-width:auto!important;margin:0!important}
+.status.clan-badge,button.status.clan-badge{background:rgba(167,139,250,0.14)!important;color:#c4b5fd!important;border:1px solid #a78bfa!important;border-left:3px solid #a78bfa!important;box-shadow:inset 5px 0 15px rgba(139,92,246,0.15)!important;margin:0 0 8px 0!important;cursor:pointer!important;font-family:'Cinzel',serif!important;font-size:0.65rem!important;font-weight:800!important;letter-spacing:0.8px!important;text-transform:uppercase!important;padding:4px 10px!important;width:max-content!important;display:inline-block!important;max-width:100%}
+button.status.clan-badge::before{display:none!important}
+button.status.clan-badge:hover{background:rgba(139,92,246,0.35)!important;color:#fff!important;border-color:#c4b5fd!important;transform:none!important;box-shadow:0 0 12px rgba(167,139,250,0.4)!important}
+
+
+/* Pulsante torna indietro scheda clan */
+.btn-clan-back {
+    display: inline-flex !important;
+    align-items: center;
+    justify-content: flex-start;
+    gap: 10px !important;
+    width: auto !important;
+    min-width: 180px !important;
+    max-width: 100% !important;
+    flex: 0 0 auto !important;
+    padding: 12px 18px !important;
+    margin: 0 0 14px 0 !important;
+    font-size: 0.8rem !important;
+    letter-spacing: 1px !important;
+    white-space: nowrap !important;
+    border: 1px solid rgba(167, 139, 250, 0.55) !important;
+    color: #c4b5fd !important;
+    background: rgba(139, 92, 246, 0.12) !important;
+}
+.btn-clan-back::before {
+    background: linear-gradient(90deg, #6d28d9, #a78bfa) !important;
+}
+.btn-clan-back:hover {
+    color: #fff !important;
+    border-color: #c4b5fd !important;
+    box-shadow: 0 0 14px rgba(167, 139, 250, 0.35) !important;
+    transform: translateY(-1px) !important;
+}
+.btn-clan-back i {
+    font-size: 0.95rem;
+}
+.clan-detail-header {
+    align-items: center !important;
+}
+
+
+/* ========== NOTE FORMATTATE (trattini in colonna + scroll) ========== */
+.notes-block {
+    text-align: left;
+    margin: 4px 0 10px;
+    padding: 8px 10px;
+    background: rgba(0, 0, 0, 0.28);
+    border: 1px solid rgba(255, 255, 255, 0.06);
+    border-left: 3px solid rgba(197, 160, 89, 0.45);
+    border-radius: 0 8px 0 8px;
+}
+.notes-scroll {
+    overflow-y: auto;
+    overflow-x: hidden;
+    scrollbar-width: thin;
+}
+.notes-scroll::-webkit-scrollbar { width: 6px; }
+.notes-scroll::-webkit-scrollbar-thumb {
+    background: linear-gradient(180deg, var(--blood-red), var(--dark-void));
+    border: 1px solid rgba(197, 160, 89, 0.3);
+}
+.notes-list {
+    list-style: none;
+    margin: 0;
+    padding: 0;
+    display: block;
+}
+.notes-list li {
+    display: block !important;
+    position: relative;
+    padding: 4px 0 4px 16px;
+    margin: 0;
+    line-height: 1.45;
+    font-size: 0.85rem;
+    color: var(--text-light);
+    border-bottom: 1px dashed rgba(255, 255, 255, 0.05);
+    word-break: break-word;
+    white-space: normal;
+}
+.notes-list li:last-child { border-bottom: none; }
+.notes-list li::before {
+    content: "–";
+    position: absolute;
+    left: 0;
+    top: 4px;
+    color: var(--gold-accent);
+    font-weight: 700;
+}
+.notes-line {
+    margin: 0 0 6px 0 !important;
+    padding: 0;
+    line-height: 1.45 !important;
+    font-size: 0.85rem !important;
+    color: var(--text-light) !important;
+    word-break: break-word;
+    white-space: normal;
+}
+.notes-line:last-child { margin-bottom: 0 !important; }
+.notes-empty {
+    color: var(--text-dim) !important;
+    font-size: 0.85rem !important;
+    font-style: italic;
+    margin: 4px 0 8px !important;
+}
+.exit-notes-preview .notes-block,
+.tempo-notes-preview .notes-block {
+    margin: 4px 0;
+    padding: 6px 8px;
+    background: rgba(0, 0, 0, 0.2);
+}
+.card .notes-block p,
+.card .notes-list li {
+    margin-bottom: 0;
+}
