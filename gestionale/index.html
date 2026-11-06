@@ -955,13 +955,11 @@
 
                     <div class="vamp-card">
                         <h2>Archivio Storico Vendite</h2>
-                        <p style="font-size:0.72rem;color:var(--text-dim);margin-bottom:12px;">Di default solo la <strong style="color:var(--gold-accent);">settimana corrente</strong>. Scegli un'altra settimana e premi «Carica» per scaricarla on-demand.</p>
+                        <p style="font-size:0.72rem;color:var(--text-dim);margin-bottom:12px;">Di default solo la <strong style="color:var(--gold-accent);">settimana corrente</strong>. Altre settimane: seleziona e premi «Carica».</p>
                         <div style="display:flex;flex-wrap:wrap;gap:10px;align-items:end;margin-bottom:12px;">
                             <div class="form-group" style="margin:0;min-width:220px;flex:1;">
                                 <label>Settimana</label>
-                                <select id="archivio-week-select" onchange="window.onArchivioWeekChange()">
-                                    <option value="">— Settimana corrente —</option>
-                                </select>
+                                <select id="archivio-week-select" onchange="window.onArchivioWeekChange()"></select>
                             </div>
                             <button type="button" onclick="window.loadArchivioWeekFromSelect()" style="width:auto;padding:12px 16px;font-size:0.7rem;">Carica settimana</button>
                         </div>
@@ -1582,11 +1580,9 @@
                     <div class="vamp-card">
                         <h2>💾 Backup &amp; Pulizia Database</h2>
                         <p style="font-size:0.75rem;color:var(--text-dim);margin-bottom:16px;line-height:1.5;">
-                            Esporta collezioni in <strong style="color:var(--gold-accent);">CSV (Excel)</strong>, filtra per settimana dove disponibile,
-                            e <strong style="color:var(--withdraw-red);">elimina</strong> i documenti che appesantiscono Firestore.
-                            <br><span style="opacity:0.85;">Usa <strong>«Carica TUTTO»</strong> per un backup completo (pagina dopo pagina, senza limite artificiale). Prima esporta, poi elimina. Solo gestore.</span>
+                            Esporta in <strong style="color:var(--gold-accent);">CSV (Excel)</strong>. Usa <strong>«Carica TUTTO»</strong> per backup completo.
+                            Poi elimina solo se serve. Solo gestore.
                         </p>
-
                         <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(200px,1fr));gap:12px;margin-bottom:14px;align-items:end;">
                             <div class="form-group" style="margin:0;">
                                 <label>Collezione</label>
@@ -1595,7 +1591,7 @@
                                     <option value="vendite_materiali">Vendite Materiali</option>
                                     <option value="logs">Log Inventario</option>
                                     <option value="saldo_logs">Log Saldo / Finanze</option>
-                                    <option value="system_logs">Log di Sistema (auth/azioni)</option>
+                                    <option value="system_logs">Log di Sistema</option>
                                     <option value="inventario">Inventario</option>
                                     <option value="membri">Membri</option>
                                     <option value="comunicazioni">Comunicazioni</option>
@@ -1610,9 +1606,7 @@
                             </div>
                             <div class="form-group" style="margin:0;" id="backup-week-wrap">
                                 <label>Filtro settimana</label>
-                                <select id="backup-week">
-                                    <option value="">— Tutte —</option>
-                                </select>
+                                <select id="backup-week"><option value="">— Tutte —</option></select>
                             </div>
                             <div class="form-group" style="margin:0;">
                                 <label>Limite anteprima</label>
@@ -1624,23 +1618,17 @@
                                 </select>
                             </div>
                         </div>
-
                         <div style="display:flex;flex-wrap:wrap;gap:10px;margin-bottom:14px;align-items:center;">
-                            <button type="button" onclick="window.backupLoadPreview(false)" style="width:auto;padding:12px 18px;">🔍 Anteprima (limite)</button>
+                            <button type="button" onclick="window.backupLoadPreview(false)" style="width:auto;padding:12px 18px;">🔍 Anteprima</button>
                             <button type="button" onclick="window.backupLoadPreview(true)" style="width:auto;padding:12px 18px;border-color:var(--gold-accent);">📦 Carica TUTTO</button>
-                            <button type="button" onclick="window.backupDownloadCSV()" style="width:auto;padding:12px 18px;">📥 Scarica CSV / Excel</button>
+                            <button type="button" onclick="window.backupDownloadCSV()" style="width:auto;padding:12px 18px;">📥 Scarica CSV</button>
                             <button type="button" onclick="window.backupDeleteFiltered()" style="width:auto;padding:12px 18px;border-color:var(--withdraw-red);color:var(--withdraw-red);">🗑️ Elimina filtrati</button>
                             <span id="backup-status" style="font-size:0.72rem;color:var(--gold-dim);margin-left:auto;"></span>
                         </div>
-
                         <div class="scroll-container" style="max-height:min(55vh,480px);">
                             <table style="font-size:0.75rem;">
-                                <thead>
-                                    <tr id="backup-thead"><th>Anteprima</th></tr>
-                                </thead>
-                                <tbody id="backup-tbody">
-                                    <tr><td style="opacity:0.5;text-align:center;padding:24px;">Seleziona una collezione e carica i dati.</td></tr>
-                                </tbody>
+                                <thead><tr id="backup-thead"><th>Anteprima</th></tr></thead>
+                                <tbody id="backup-tbody"><tr><td style="opacity:0.5;text-align:center;padding:24px;">Seleziona collezione e carica.</td></tr></tbody>
                             </table>
                         </div>
                     </div>
