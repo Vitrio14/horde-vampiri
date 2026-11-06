@@ -97,15 +97,7 @@ h1, h2, h3, .nav-link { font-family: 'Cinzel', serif; letter-spacing: 2px; text-
 #comunicazioni-box, 
 #documenti-box, 
 #top-settimana-box, 
-#top-sempre-box, 
-#morsi-vamp-sett-box, 
-#morsi-vamp-tot-box, 
-#morsi-umani-sett-box, 
-#morsi-umani-tot-box,
-#morsi-vampiri-predatori-sett-box,
-#morsi-vampiri-predatori-tot-box,
-#morsi-vampiri-vittime-sett-box,
-#morsi-vampiri-vittime-tot-box {
+#top-sempre-box {
     max-height: 180px; 
     overflow-y: auto; 
     padding-right: 12px;
@@ -267,74 +259,6 @@ nav {
 }
 .stat-card h3 { font-size: 0.6rem; color: var(--gold-dim); margin-bottom: 12px; font-weight: 800; letter-spacing: 1.5px; }
 .stat-card p { font-size: 1.5rem; font-weight: 800; color: #fff; text-shadow: 2px 2px 0px rgba(139,0,0,0.5), -1px -1px 0px rgba(197,160,89,0.3); }
-
-/* --- SPECIFICO SEZIONE MORSI --- */
-.status-badge {
-    padding: 4px 12px;
-    border-radius: 0;
-    font-size: 0.65rem;
-    font-weight: 800;
-    text-transform: uppercase;
-    letter-spacing: 1px;
-    display: inline-block;
-    border-left: 3px solid #fff;
-}
-.status-attivo { 
-    background: rgba(46, 204, 113, 0.1); 
-    color: var(--success-green); 
-    border-color: var(--success-green);
-    box-shadow: inset 5px 0 15px rgba(46, 204, 113, 0.2); 
-}
-.status-passato { 
-    background: rgba(255, 255, 255, 0.05); 
-    color: var(--text-dim); 
-    border-color: var(--text-dim);
-}
-.status-eterno { 
-    background: rgba(197, 160, 89, 0.1); 
-    color: var(--gold-accent); 
-    border-color: var(--gold-accent);
-    box-shadow: inset 5px 0 15px rgba(197, 160, 89, 0.2); 
-}
-
-.type-badge {
-    font-size: 0.6rem;
-    padding: 2px 8px;
-    border-radius: 4px;
-    margin-right: 8px;
-    text-transform: uppercase;
-    border: 1px dashed currentColor;
-    letter-spacing: 0.5px;
-}
-.type-umano { color: var(--gold-dim); background: rgba(197, 160, 89, 0.05); }
-.type-vampiro { color: var(--blood-light); background: rgba(139, 0, 0, 0.05); }
-
-.morsi-grid-classifiche {
-    display: grid;
-    grid-template-columns: repeat(auto-fit, minmax(260px, 1fr));
-    gap: 28px;
-    margin-top: 25px;
-}
-
-.morsi-col {
-    background: linear-gradient(to bottom, rgba(18, 18, 18, 0.4), transparent);
-    padding: 20px;
-    border-radius: 0 20px 0 20px;
-    border: 1px solid var(--glass-border);
-    border-top: 3px solid var(--blood-red);
-    box-shadow: inset 0 20px 30px -20px rgba(197, 160, 89, 0.05);
-}
-
-.morsi-col h4 {
-    font-size: 0.75rem;
-    color: var(--gold-accent);
-    text-align: left;
-    margin-bottom: 20px;
-    text-shadow: 0 0 10px rgba(197, 160, 89, 0.3);
-    padding-bottom: 10px;
-    letter-spacing: 1.5px;
-}
-/* --- FINE MORSI --- */
 
 /* Inputs & Forms */
 .search-box { margin-bottom: 20px; position: relative; }
@@ -1046,19 +970,10 @@ footer:hover strong { color: var(--blood-red); }
 #top-settimana-box,
 #top-sempre-box,
 #top-mat-box,
-#top-mat-sempre-box,
-#morsi-vamp-sett-box,
-#morsi-sett-box,
-#morsi-sempre-box {
+#top-mat-sempre-box {
     max-height: 220px;
     overflow-y: auto;
     -webkit-overflow-scrolling: touch;
-}
-.morsi-grid-classifiche .coming-soon-card > div:last-child,
-.morsi-grid-classifiche [id^="top-"],
-.morsi-grid-classifiche [id^="morsi-"] {
-    max-height: 260px;
-    overflow-y: auto;
 }
 
 /* ===== Contatori ranghi membri (Generale + Admin) ===== */
