@@ -1,5 +1,5 @@
 import { initializeApp } from "https://www.gstatic.com/firebasejs/10.7.1/firebase-app.js";
-import { getFirestore, collection, addDoc, onSnapshot, doc, updateDoc, setDoc, deleteDoc, query, orderBy, limit, getDocs, getDoc, where } from "https://www.gstatic.com/firebasejs/10.7.1/firebase-firestore.js";
+import { getFirestore, collection, addDoc, onSnapshot, doc, updateDoc, setDoc, deleteDoc, query, orderBy, limit, getDocs, getDoc, where, writeBatch, startAfter } from "https://www.gstatic.com/firebasejs/10.7.1/firebase-firestore.js";
 import { getAuth, signInWithEmailAndPassword, onAuthStateChanged, signOut } from "https://www.gstatic.com/firebasejs/10.7.1/firebase-auth.js";
 
 // --- CONFIGURAZIONE FIREBASE ---
@@ -672,8 +672,8 @@ window.showSection = (id) => {
         window.ensureSectionData(id);
     }
 
-    // Storico completo solo se serve
-    if (id === 'generale' || id === 'calcolo' || id === 'gestione') {
+    // Storico: solo sezioni che lo usano (NON sul menu Gestione)
+    if (id === 'generale' || id === 'calcolo') {
         window.loadStoricoVenditeIfNeeded?.();
         window.loadStoricoMaterialiIfNeeded?.();
     }
@@ -683,10 +683,9 @@ window.showSection = (id) => {
     }
 
     if (id === 'gestione') {
+        // Solo menu: zero getDocs massivi. Dati pesanti in apriAdminView.
         setupGestionePanelForCurrentUser();
-        if (typeof refreshAdminUI === 'function' && currentUser?.isAdmin) {
-            scheduleUI(() => refreshAdminUI(), { priority: 'normal' });
-        }
+        if (typeof window.filterAdminMenuCards === 'function') window.filterAdminMenuCards();
     }
 
     if (id === 'albero') {
@@ -738,7 +737,7 @@ function filterAdminMenuCards() {
         const viewId = card.getAttribute('data-admin-view');
         if (!viewId) return;
         // Solo il gestore pieno vede la card "Permessi Gestione"
-        if (viewId === 'permessi-gestione' || viewId === 'system-logs' || viewId === 'richieste-membri') {
+        if (viewId === 'permessi-gestione' || viewId === 'backup' || viewId === 'richieste-membri') {
             card.style.display = currentUser?.isAdmin ? '' : 'none';
             return;
         }
@@ -1415,10 +1414,12 @@ window.renderAdminMateriali = () => {
     const filterInput = document.getElementById('filter-admin-tipo-mat');
     const filterTerm = filterInput ? filterInput.value.toLowerCase() : "";
 
+    const weekSelMat = document.getElementById('archivio-week-select')?.value || '';
     const gruppi = {};
-    venditeMateriali.forEach(m => { 
-        if(!gruppi[m.settimanaEtichetta]) gruppi[m.settimanaEtichetta] = []; 
-        gruppi[m.settimanaEtichetta].push(m); 
+    (venditeMateriali || []).forEach(m => {
+        if (weekSelMat && m.settimanaEtichetta !== weekSelMat) return;
+        if(!gruppi[m.settimanaEtichetta]) gruppi[m.settimanaEtichetta] = [];
+        gruppi[m.settimanaEtichetta].push(m);
     });
 
     container.innerHTML = Object.keys(gruppi).sort().reverse().map(key => {
@@ -1473,25 +1474,23 @@ window.adminDeleteMat = async (id) => {
 function renderClassifiche() {
     const currentWeek = getWeekYearKey(new Date());
 
-    const buildRank = (rows, nameKey, qtyKey, creditKey, weekOnly) => {
+    const buildRank = (rows, nameKey, qtyKey, creditKey) => {
         const map = {};
         rows.forEach(r => {
-            if (weekOnly && r.settimanaEtichetta !== currentWeek) return;
+            if (r.settimanaEtichetta !== currentWeek) return;
             const nome = r[nameKey];
             if (!nome) return;
             if (!map[nome]) map[nome] = { qty: 0, crediti: 0 };
             map[nome].qty += (r[qtyKey] || 0);
             map[nome].crediti += (r[creditKey] || 0);
         });
-        return Object.entries(map).sort((a, b) => b[1].qty - a[1].qty || b[1].crediti - a[1].crediti);
+        return Object.entries(map)
+            .sort((a, b) => b[1].qty - a[1].qty || b[1].crediti - a[1].crediti)
+            .slice(0, 3);
     };
 
-    const rankVendSett = buildRank(vendite, 'nome', 'qty', 'dinastia', true);
-    const rankVendSempre = buildRank(vendite, 'nome', 'qty', 'dinastia', false)
-        .sort((a, b) => b[1].crediti - a[1].crediti || b[1].qty - a[1].qty);
-    const rankMatSett = buildRank(venditeMateriali, 'vampiro', 'qty', 'vDin', true);
-    const rankMatSempre = buildRank(venditeMateriali, 'vampiro', 'qty', 'vDin', false)
-        .sort((a, b) => b[1].crediti - a[1].crediti || b[1].qty - a[1].qty);
+    const rankVendSett = buildRank(vendite, 'nome', 'qty', 'dinastia');
+    const rankMatSett = buildRank(venditeMateriali, 'vampiro', 'qty', 'vDin');
 
     const generateHtml = (arr, unitLabel) => {
         if (!arr.length) return "<p style='font-size:0.7rem; opacity:0.3; text-align:center;'>Nessun dato</p>";
@@ -1506,13 +1505,9 @@ function renderClassifiche() {
     };
 
     const elSett = document.getElementById('top-settimana-box');
-    const elSempre = document.getElementById('top-sempre-box');
     const elMatSett = document.getElementById('top-mat-settimana-box');
-    const elMatSempre = document.getElementById('top-mat-sempre-box');
     if (elSett) elSett.innerHTML = generateHtml(rankVendSett, 'qty');
-    if (elSempre) elSempre.innerHTML = generateHtml(rankVendSempre, 'qty');
     if (elMatSett) elMatSett.innerHTML = generateHtml(rankMatSett, 'mat');
-    if (elMatSempre) elMatSempre.innerHTML = generateHtml(rankMatSempre, 'mat');
 }
 
 window.movimentoSaldo = async () => {
@@ -2121,12 +2116,23 @@ window.renderAdminSaldoLogs = () => {
 };
 
 window.renderArchivioGestione = () => {
-    const searchTerm = document.getElementById('search-admin-archivio').value.toLowerCase();
+    const searchEl = document.getElementById('search-admin-archivio');
+    const searchTerm = (searchEl?.value || '').toLowerCase();
     const container = document.getElementById('admin-archivio-container');
     if(!container) return;
+    const weekSel = document.getElementById('archivio-week-select')?.value || getWeekYearKey(new Date());
     const gruppi = {};
-    vendite.forEach(v => { if(!gruppi[v.settimanaEtichetta]) gruppi[v.settimanaEtichetta] = []; gruppi[v.settimanaEtichetta].push(v); });
-    container.innerHTML = Object.keys(gruppi).sort().reverse().map(key => {
+    (vendite || []).forEach(v => {
+        if (weekSel && v.settimanaEtichetta !== weekSel) return;
+        if(!gruppi[v.settimanaEtichetta]) gruppi[v.settimanaEtichetta] = [];
+        gruppi[v.settimanaEtichetta].push(v);
+    });
+    const keys = Object.keys(gruppi).sort().reverse();
+    if (!keys.length) {
+        container.innerHTML = `<p style="opacity:0.6;padding:16px;text-align:center;">Nessuna vendita in memoria per questa settimana.<br><span style="font-size:0.75rem;">Se non è la settimana corrente, premi «Carica settimana».</span></p>`;
+        return;
+    }
+    container.innerHTML = keys.map(key => {
         const filtered = gruppi[key].filter(v =>
             (v.nome || "").toLowerCase().includes(searchTerm) ||
             (v.materiale || "").toLowerCase().includes(searchTerm) ||
@@ -2863,9 +2869,9 @@ function startFirestoreListeners() {
             if (adminViewId === 'materiali') wanted.add('tipiMateriale');
             if (adminViewId === 'albero') wanted.add('albero');
             if (adminViewId === 'calendario') wanted.add('calendario');
-            if (adminViewId === 'system-logs') wanted.add('systemLogs');
             if (adminViewId === 'richieste-membri') wanted.add('richieste');
-            if (adminViewId === 'storico-vendite' || adminViewId === 'classifiche' || adminViewId === 'finanze') {
+            // storico-vendite: settimana corrente già nei listener live
+            if (adminViewId === 'classifiche' || adminViewId === 'finanze') {
                 window.loadStoricoVenditeIfNeeded?.();
                 window.loadStoricoMaterialiIfNeeded?.();
             }
@@ -4677,6 +4683,275 @@ window.eliminaRichiestaMembro = async function(id) {
     }
 };
 
+
+
+// ========== STORICO: settimana corrente + on-demand ==========
+const _loadedArchivioWeeks = new Set();
+
+window.setupArchivioWeekSelect = function() {
+    const sel = document.getElementById('archivio-week-select');
+    if (!sel) return;
+    const current = getWeekYearKey(new Date());
+    const keys = new Set([current]);
+    (vendite || []).forEach(v => { if (v.settimanaEtichetta) keys.add(v.settimanaEtichetta); });
+    (venditeMateriali || []).forEach(m => { if (m.settimanaEtichetta) keys.add(m.settimanaEtichetta); });
+    try {
+        const d = new Date();
+        for (let i = 1; i <= 16; i++) {
+            d.setDate(d.getDate() - 7);
+            keys.add(getWeekYearKey(new Date(d)));
+        }
+    } catch (_) {}
+    const sorted = [...keys].sort().reverse();
+    const prev = sel.value;
+    sel.innerHTML = sorted.map(k => {
+        const label = (typeof getWeekRangeLabel === 'function' ? getWeekRangeLabel(k) : k) + (k === current ? ' · corrente' : '');
+        return `<option value="${k}">${label}</option>`;
+    }).join('');
+    sel.value = sorted.includes(prev) ? prev : current;
+    _loadedArchivioWeeks.add(current);
+};
+
+window.onArchivioWeekChange = function() {
+    window.renderArchivioGestione?.();
+    window.renderAdminMateriali?.();
+};
+
+window.loadArchivioWeekFromSelect = async function() {
+    const week = document.getElementById('archivio-week-select')?.value;
+    if (!week) return vampireToast('Seleziona una settimana.', 'error');
+    await window.loadStoricoWeek(week);
+    window.renderArchivioGestione?.();
+    window.renderAdminMateriali?.();
+    vampireToast('Settimana caricata: ' + (typeof getWeekRangeLabel === 'function' ? getWeekRangeLabel(week) : week), 'success');
+};
+
+window.loadStoricoWeek = async function(weekKey) {
+    if (!weekKey) return;
+    try {
+        const [sv, sm] = await Promise.all([
+            getDocs(query(collection(db, 'vendite'), where('settimanaEtichetta', '==', weekKey), limit(500))),
+            getDocs(query(collection(db, 'vendite_materiali'), where('settimanaEtichetta', '==', weekKey), limit(500)))
+        ]);
+        const byV = new Map((vendite || []).map(v => [v.id, v]));
+        sv.docs.forEach(d => byV.set(d.id, { id: d.id, ...d.data() }));
+        vendite = [...byV.values()];
+        const byM = new Map((venditeMateriali || []).map(m => [m.id, m]));
+        sm.docs.forEach(d => byM.set(d.id, { id: d.id, ...d.data() }));
+        venditeMateriali = [...byM.values()];
+        _loadedArchivioWeeks.add(weekKey);
+    } catch (err) {
+        console.warn('[loadStoricoWeek]', err);
+        vampireToast('Errore caricamento settimana: ' + (err.message || err), 'error');
+    }
+};
+
+// ========== BACKUP & PULIZIA (export completo + delete) ==========
+let _backupDocs = [];
+const BACKUP_COLS_WITH_WEEK = new Set(['vendite', 'vendite_materiali']);
+
+window.initBackupPanel = function() {
+    _backupDocs = [];
+    window.onBackupCollectionChange();
+    const st = document.getElementById('backup-status');
+    if (st) st.textContent = '';
+    const tb = document.getElementById('backup-tbody');
+    if (tb) tb.innerHTML = '<tr><td style="opacity:0.5;text-align:center;padding:24px;">Seleziona una collezione e carica i dati.</td></tr>';
+    const weekSel = document.getElementById('backup-week');
+    if (weekSel) {
+        const keys = new Set();
+        const cur = getWeekYearKey(new Date());
+        keys.add(cur);
+        (vendite || []).forEach(v => { if (v.settimanaEtichetta) keys.add(v.settimanaEtichetta); });
+        (venditeMateriali || []).forEach(m => { if (m.settimanaEtichetta) keys.add(m.settimanaEtichetta); });
+        try {
+            const d = new Date();
+            for (let i = 0; i < 20; i++) {
+                keys.add(getWeekYearKey(new Date(d)));
+                d.setDate(d.getDate() - 7);
+            }
+        } catch (_) {}
+        const sorted = [...keys].sort().reverse();
+        weekSel.innerHTML = `<option value="">— Tutte —</option>` +
+            sorted.map(k => `<option value="${k}">${typeof getWeekRangeLabel === 'function' ? getWeekRangeLabel(k) : k}${k === cur ? ' · corrente' : ''}</option>`).join('');
+    }
+};
+
+window.onBackupCollectionChange = function() {
+    const col = document.getElementById('backup-collection')?.value || 'vendite';
+    const wrap = document.getElementById('backup-week-wrap');
+    if (wrap) wrap.style.display = BACKUP_COLS_WITH_WEEK.has(col) ? '' : 'none';
+};
+
+/** Carica documenti: full=true pagina finché non finiscono (backup completo) */
+window.backupLoadPreview = async function(full = false) {
+    if (!currentUser?.isAdmin) return vampireToast('Solo il gestore.', 'error');
+    const col = document.getElementById('backup-collection')?.value || 'vendite';
+    const week = document.getElementById('backup-week')?.value || '';
+    const lim = Math.min(2000, Math.max(50, Number(document.getElementById('backup-limit')?.value) || 500));
+    const st = document.getElementById('backup-status');
+    if (st) st.textContent = full ? 'Caricamento completo…' : 'Caricamento anteprima…';
+    try {
+        const pageSize = full ? 400 : lim;
+        let all = [];
+        let lastDoc = null;
+        let pages = 0;
+        const maxPages = full ? 50 : 1; // max 50*400 = 20000 docs safety
+        while (pages < maxPages) {
+            let qRef;
+            const useTs = ['system_logs','logs','saldo_logs','comunicazioni','documenti','richieste_membri','vendite','vendite_materiali'].includes(col);
+            try {
+                const parts = [];
+                if (BACKUP_COLS_WITH_WEEK.has(col) && week) {
+                    parts.push(where('settimanaEtichetta', '==', week));
+                }
+                if (useTs) parts.push(orderBy('timestamp', 'desc'));
+                if (lastDoc) parts.push(startAfter(lastDoc));
+                parts.push(limit(pageSize));
+                qRef = query(collection(db, col), ...parts);
+            } catch (_) {
+                qRef = lastDoc
+                    ? query(collection(db, col), startAfter(lastDoc), limit(pageSize))
+                    : query(collection(db, col), limit(pageSize));
+            }
+            const snap = await getDocs(qRef);
+            if (snap.empty) break;
+            snap.docs.forEach(d => all.push({ id: d.id, ...d.data() }));
+            lastDoc = snap.docs[snap.docs.length - 1];
+            pages++;
+            if (st) st.textContent = `Caricati ${all.length}…`;
+            if (!full || snap.docs.length < pageSize) break;
+        }
+        if (BACKUP_COLS_WITH_WEEK.has(col) && week) {
+            all = all.filter(d => d.settimanaEtichetta === week);
+        }
+        _backupDocs = all;
+        window.renderBackupPreview();
+        if (st) st.textContent = `${_backupDocs.length} documenti` + (full ? ' (completo)' : ' (anteprima)') + (week ? ` · ${week}` : '');
+        vampireToast(`${_backupDocs.length} documenti pronti.`, 'success');
+    } catch (err) {
+        console.error('[backupLoad]', err);
+        if (st) st.textContent = 'Errore';
+        vampireToast('Errore caricamento: ' + (err.message || err), 'error');
+    }
+};
+
+window.renderBackupPreview = function() {
+    const thead = document.getElementById('backup-thead');
+    const tbody = document.getElementById('backup-tbody');
+    if (!thead || !tbody) return;
+    if (!_backupDocs.length) {
+        thead.innerHTML = '<th>Anteprima</th>';
+        tbody.innerHTML = '<tr><td style="opacity:0.5;text-align:center;padding:24px;">Nessun documento.</td></tr>';
+        return;
+    }
+    const keyCount = {};
+    _backupDocs.slice(0, 40).forEach(docu => {
+        Object.keys(docu).forEach(k => { keyCount[k] = (keyCount[k] || 0) + 1; });
+    });
+    const preferred = ['id','timestamp','settimanaEtichetta','nome','vampiro','materiale','qty','azione','tipo','utente','dettagli','stato','grado','codice','titolo'];
+    const keys = [...new Set([
+        ...preferred.filter(k => keyCount[k]),
+        ...Object.keys(keyCount).sort((a,b) => keyCount[b]-keyCount[a])
+    ])].filter(k => k !== 'meta' && k !== 'userAgent' && k !== 'dataUrl').slice(0, 8);
+
+    thead.innerHTML = keys.map(k => `<th>${k}</th>`).join('');
+    tbody.innerHTML = _backupDocs.slice(0, 100).map(docu => {
+        return '<tr>' + keys.map(k => {
+            let v = docu[k];
+            if (v == null) v = '';
+            else if (typeof v === 'object') v = JSON.stringify(v).slice(0, 80);
+            else v = String(v);
+            if (k === 'timestamp' && /^\d{10,}$/.test(v)) {
+                try { v = new Date(Number(v)).toLocaleString('it-IT'); } catch (_) {}
+            }
+            return `<td style="text-align:left;max-width:160px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;" title="${String(v).replace(/"/g,'&quot;')}">${String(v).replace(/</g,'&lt;').slice(0,60)}</td>`;
+        }).join('') + '</tr>';
+    }).join('') + (_backupDocs.length > 100
+        ? `<tr><td colspan="${keys.length}" style="opacity:0.6;text-align:center;">… +${_backupDocs.length - 100} non in anteprima (inclusi nell\'export CSV)</td></tr>`
+        : '');
+};
+
+function _backupToCSV(rows) {
+    if (!rows.length) return '';
+    const allKeys = new Set();
+    rows.forEach(r => Object.keys(r).forEach(k => allKeys.add(k)));
+    // dataUrl immagini troppo pesanti: escludi dal CSV di default se enormi
+    const keys = [...allKeys].filter(k => k !== 'dataUrl' || rows.length < 20);
+    const esc = (v) => {
+        if (v == null) return '""';
+        if (typeof v === 'object') v = JSON.stringify(v);
+        return '"' + String(v).replace(/"/g, '""') + '"';
+    };
+    const lines = [keys.map(esc).join(',')];
+    rows.forEach(r => lines.push(keys.map(k => esc(r[k])).join(',')));
+    return '\uFEFF' + lines.join('\n');
+}
+
+window.backupDownloadCSV = function() {
+    if (!_backupDocs.length) return vampireToast('Carica prima i dati (Anteprima o Carica TUTTO).', 'error');
+    const col = document.getElementById('backup-collection')?.value || 'backup';
+    const week = document.getElementById('backup-week')?.value || '';
+    const csv = _backupToCSV(_backupDocs);
+    const blob = new Blob([csv], { type: 'text/csv;charset=utf-8' });
+    const a = document.createElement('a');
+    a.href = URL.createObjectURL(blob);
+    a.download = `backup-${col}${week ? '-' + week : ''}-${new Date().toISOString().slice(0,10)}.csv`;
+    a.click();
+    URL.revokeObjectURL(a.href);
+    vampireToast(`CSV scaricato: ${_backupDocs.length} righe. Aprilo con Excel.`, 'success');
+    try { logSystemEvent('admin', 'backup_export', `Export ${col} (${_backupDocs.length})`, { col, n: _backupDocs.length, week: week || null }); } catch (_) {}
+};
+
+window.backupDeleteFiltered = async function() {
+    if (!currentUser?.isAdmin) return vampireToast('Solo il gestore.', 'error');
+    if (!_backupDocs.length) return vampireToast('Carica prima i documenti da eliminare.', 'error');
+    const col = document.getElementById('backup-collection')?.value || '';
+    if (!col) return;
+
+    const promptText = col === 'membri' ? 'ELIMINA MEMBRI' : 'ELIMINA';
+    const conf = await Swal.fire({
+        title: `Eliminare ${_backupDocs.length} documenti?`,
+        html: `<p>Collezione: <strong style="color:#c5a059;">${col}</strong></p>
+               <p style="font-size:0.85rem;">Irreversibile. Assicurati di aver scaricato il CSV.</p>
+               <p>Digita <strong>${promptText}</strong> per confermare.</p>`,
+        input: 'text',
+        showCancelButton: true,
+        confirmButtonColor: '#8b0000',
+        background: '#111',
+        color: '#fff',
+        confirmButtonText: 'Elimina'
+    });
+    if (!conf.isConfirmed || conf.value !== promptText) return vampireToast('Annullato.', 'info');
+
+    const ids = _backupDocs.map(d => d.id).filter(Boolean);
+    let done = 0;
+    const st = document.getElementById('backup-status');
+    try {
+        for (let i = 0; i < ids.length; i += 400) {
+            const chunk = ids.slice(i, i + 400);
+            const batch = writeBatch(db);
+            chunk.forEach(id => batch.delete(doc(db, col, id)));
+            await batch.commit();
+            done += chunk.length;
+            if (st) st.textContent = `Eliminati ${done}/${ids.length}…`;
+        }
+        const idSet = new Set(ids);
+        if (col === 'vendite') vendite = (vendite || []).filter(v => !idSet.has(v.id));
+        if (col === 'vendite_materiali') venditeMateriali = (venditeMateriali || []).filter(v => !idSet.has(v.id));
+        if (col === 'system_logs') systemLogs = (systemLogs || []).filter(v => !idSet.has(v.id));
+        if (col === 'logs') logs = (logs || []).filter(v => !idSet.has(v.id));
+        if (col === 'saldo_logs') saldoLogs = (saldoLogs || []).filter(v => !idSet.has(v.id));
+        try { logSystemEvent('admin', 'backup_delete', `Eliminati ${done} da ${col}`, { col, n: done }); } catch (_) {}
+        vampireToast(`Eliminati ${done} documenti da ${col}.`, 'success');
+        _backupDocs = [];
+        window.renderBackupPreview();
+        if (st) st.textContent = `Eliminati ${done} documenti.`;
+    } catch (err) {
+        console.error('[backupDelete]', err);
+        vampireToast('Errore eliminazione: ' + (err.message || err) + (done ? ` (ok ${done})` : ''), 'error');
+    }
+};
 
 // ========== LOG DI SISTEMA (UI + filtri) ==========
 function formatSystemLogDate(ts) {

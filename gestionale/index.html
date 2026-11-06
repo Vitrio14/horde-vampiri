@@ -379,22 +379,14 @@
         <section id="generale" class="section active">
             <div class="vamp-card" style="margin-bottom: 20px;">
                 <h2 style="text-align: center;">🎖️ Classifiche Dinastia</h2>
-                <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(240px, 1fr)); gap: 20px; margin-top: 20px;">
+                <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(260px, 1fr)); gap: 20px; margin-top: 20px;">
                     <div>
-                        <h4 style="font-size: 0.7rem; color: var(--gold-accent); text-transform: uppercase; margin-bottom: 15px; text-align: center;">Vendite · Top Settimana</h4>
+                        <h4 style="font-size: 0.7rem; color: var(--gold-accent); text-transform: uppercase; margin-bottom: 15px; text-align: center;">Vendite · Top 3 Settimana</h4>
                         <div id="top-settimana-box"></div>
                     </div>
                     <div>
-                        <h4 style="font-size: 0.7rem; color: var(--gold-accent); text-transform: uppercase; margin-bottom: 15px; text-align: center;">Vendite · Migliori di Sempre</h4>
-                        <div id="top-sempre-box"></div>
-                    </div>
-                    <div>
-                        <h4 style="font-size: 0.7rem; color: var(--gold-accent); text-transform: uppercase; margin-bottom: 15px; text-align: center;">Materiali · Top Settimana</h4>
+                        <h4 style="font-size: 0.7rem; color: var(--gold-accent); text-transform: uppercase; margin-bottom: 15px; text-align: center;">Materiali · Top 3 Settimana</h4>
                         <div id="top-mat-settimana-box"></div>
-                    </div>
-                    <div>
-                        <h4 style="font-size: 0.7rem; color: var(--gold-accent); text-transform: uppercase; margin-bottom: 15px; text-align: center;">Materiali · Migliori di Sempre</h4>
-                        <div id="top-mat-sempre-box"></div>
                     </div>
                 </div>
             </div>
@@ -828,9 +820,9 @@
                         <h3>🔑 Permessi Gestione</h3>
                         <p>Abilita ai membri le tab di Gestione (delega)</p>
                     </div>
-                    <div class="admin-menu-card" data-admin-view="system-logs" onclick="window.apriAdminView('system-logs')">
-                        <h3>📋 Log di Sistema</h3>
-                        <p>Accessi, logout, modifiche gestore e ogni azione tracciata</p>
+                    <div class="admin-menu-card" data-admin-view="backup" onclick="window.apriAdminView('backup')">
+                        <h3>💾 Backup &amp; Pulizia</h3>
+                        <p>Esporta tutto in CSV/Excel, filtra per settimana ed elimina documenti pesanti</p>
                     </div>
                 </div>
 
@@ -963,6 +955,16 @@
 
                     <div class="vamp-card">
                         <h2>Archivio Storico Vendite</h2>
+                        <p style="font-size:0.72rem;color:var(--text-dim);margin-bottom:12px;">Di default solo la <strong style="color:var(--gold-accent);">settimana corrente</strong>. Scegli un'altra settimana e premi «Carica» per scaricarla on-demand.</p>
+                        <div style="display:flex;flex-wrap:wrap;gap:10px;align-items:end;margin-bottom:12px;">
+                            <div class="form-group" style="margin:0;min-width:220px;flex:1;">
+                                <label>Settimana</label>
+                                <select id="archivio-week-select" onchange="window.onArchivioWeekChange()">
+                                    <option value="">— Settimana corrente —</option>
+                                </select>
+                            </div>
+                            <button type="button" onclick="window.loadArchivioWeekFromSelect()" style="width:auto;padding:12px 16px;font-size:0.7rem;">Carica settimana</button>
+                        </div>
                         <div class="search-box"><input type="text" id="search-admin-archivio" placeholder="Filtra vampiro, materiale o note..." onkeyup="window.renderArchivioGestione()"></div>
                         <div class="scroll-container" id="admin-archivio-container"></div>
                     </div>
@@ -1575,70 +1577,69 @@
                     </div>
                 </div>
 
-                <div id="admin-view-system-logs" class="admin-sub-view" style="display: none;">
+                                <div id="admin-view-backup" class="admin-sub-view" style="display: none;">
                     <button class="btn-indietro" onclick="window.tornaAdminMenu()">🔙 Torna alla Dashboard</button>
                     <div class="vamp-card">
-                        <h2>📋 Log di Sistema</h2>
-                        <p style="font-size:0.75rem; color:var(--text-dim); margin-bottom:16px; line-height:1.5;">
-                            Registro completo di accessi (login/logout, anche falliti), azioni del gestore e scritture sulla piattaforma.
-                            Ogni riga include <strong style="color:var(--gold-accent);">utente, IP, data/ora</strong> e dettagli.
-                            <br><span style="opacity:0.75;">Visibile solo al gestore. Ultimi ~400 eventi in tempo reale.</span>
+                        <h2>💾 Backup &amp; Pulizia Database</h2>
+                        <p style="font-size:0.75rem;color:var(--text-dim);margin-bottom:16px;line-height:1.5;">
+                            Esporta collezioni in <strong style="color:var(--gold-accent);">CSV (Excel)</strong>, filtra per settimana dove disponibile,
+                            e <strong style="color:var(--withdraw-red);">elimina</strong> i documenti che appesantiscono Firestore.
+                            <br><span style="opacity:0.85;">Usa <strong>«Carica TUTTO»</strong> per un backup completo (pagina dopo pagina, senza limite artificiale). Prima esporta, poi elimina. Solo gestore.</span>
                         </p>
-                        <div style="display:grid; grid-template-columns: 1.4fr 1fr 1fr 1fr 1fr; gap:12px; margin-bottom:12px; align-items:end;">
+
+                        <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(200px,1fr));gap:12px;margin-bottom:14px;align-items:end;">
                             <div class="form-group" style="margin:0;">
-                                <label>Cerca (testo libero)</label>
-                                <input type="text" id="syslog-search" placeholder="nome, IP, azione, dettagli..." oninput="window.renderSystemLogs()">
-                            </div>
-                            <div class="form-group" style="margin:0;">
-                                <label>Tipo evento</label>
-                                <select id="syslog-tipo" onchange="window.renderSystemLogs()">
-                                    <option value="">— Tutti i tipi —</option>
-                                    <option value="auth">Accessi / Auth</option>
-                                    <option value="admin">Admin / Permessi</option>
-                                    <option value="membro">Membri</option>
-                                    <option value="vendita">Vendite</option>
-                                    <option value="materiali">Materiali</option>
+                                <label>Collezione</label>
+                                <select id="backup-collection" onchange="window.onBackupCollectionChange()">
+                                    <option value="vendite">Vendite</option>
+                                    <option value="vendite_materiali">Vendite Materiali</option>
+                                    <option value="logs">Log Inventario</option>
+                                    <option value="saldo_logs">Log Saldo / Finanze</option>
+                                    <option value="system_logs">Log di Sistema (auth/azioni)</option>
                                     <option value="inventario">Inventario</option>
-                                    <option value="saldo">Saldo / Finanze</option>
-                                    <option value="albero">Albero</option>
-                                    <option value="calendario">Calendario</option>
-                                    <option value="dinamico">Comunicazioni / Link</option>
-                                    <option value="altro">Altro</option>
+                                    <option value="membri">Membri</option>
+                                    <option value="comunicazioni">Comunicazioni</option>
+                                    <option value="documenti">Documenti / Link</option>
+                                    <option value="tipi_materiale">Tipi Materiale</option>
+                                    <option value="albero_genealogico">Albero Genealogico</option>
+                                    <option value="calendario_avvento">Calendario Avvento</option>
+                                    <option value="calendario_mesi">Calendario Mesi</option>
+                                    <option value="richieste_membri">Richieste Membri</option>
+                                    <option value="item_images">Immagini Inventario</option>
+                                </select>
+                            </div>
+                            <div class="form-group" style="margin:0;" id="backup-week-wrap">
+                                <label>Filtro settimana</label>
+                                <select id="backup-week">
+                                    <option value="">— Tutte —</option>
                                 </select>
                             </div>
                             <div class="form-group" style="margin:0;">
-                                <label>Utente</label>
-                                <input type="text" id="syslog-utente" placeholder="es. GESTORE, Nome..." oninput="window.renderSystemLogs()">
-                            </div>
-                            <div class="form-group" style="margin:0;">
-                                <label>Da data</label>
-                                <input type="date" id="syslog-from" onchange="window.renderSystemLogs()">
-                            </div>
-                            <div class="form-group" style="margin:0;">
-                                <label>A data</label>
-                                <input type="date" id="syslog-to" onchange="window.renderSystemLogs()">
+                                <label>Limite anteprima</label>
+                                <select id="backup-limit">
+                                    <option value="200">200</option>
+                                    <option value="500" selected>500</option>
+                                    <option value="1000">1000</option>
+                                    <option value="2000">2000</option>
+                                </select>
                             </div>
                         </div>
-                        <div style="display:flex; flex-wrap:wrap; gap:10px; align-items:center; margin-bottom:14px;">
-                            <button type="button" onclick="window.resetSystemLogFilters()" style="width:auto; padding:10px 16px; font-size:0.7rem; border-color:#555; color:#888;">Azzera filtri</button>
-                            <button type="button" onclick="window.exportSystemLogsCSV()" style="width:auto; padding:10px 16px; font-size:0.7rem;">📥 Esporta CSV</button>
-                            <span id="syslog-count" style="font-size:0.72rem; color:var(--gold-dim); margin-left:auto;"></span>
+
+                        <div style="display:flex;flex-wrap:wrap;gap:10px;margin-bottom:14px;align-items:center;">
+                            <button type="button" onclick="window.backupLoadPreview(false)" style="width:auto;padding:12px 18px;">🔍 Anteprima (limite)</button>
+                            <button type="button" onclick="window.backupLoadPreview(true)" style="width:auto;padding:12px 18px;border-color:var(--gold-accent);">📦 Carica TUTTO</button>
+                            <button type="button" onclick="window.backupDownloadCSV()" style="width:auto;padding:12px 18px;">📥 Scarica CSV / Excel</button>
+                            <button type="button" onclick="window.backupDeleteFiltered()" style="width:auto;padding:12px 18px;border-color:var(--withdraw-red);color:var(--withdraw-red);">🗑️ Elimina filtrati</button>
+                            <span id="backup-status" style="font-size:0.72rem;color:var(--gold-dim);margin-left:auto;"></span>
                         </div>
-                        <div class="scroll-container" style="max-height:min(62vh, 560px);">
-                            <table style="font-size:0.78rem;">
+
+                        <div class="scroll-container" style="max-height:min(55vh,480px);">
+                            <table style="font-size:0.75rem;">
                                 <thead>
-                                    <tr>
-                                        <th>Data / Ora</th>
-                                        <th>Tipo</th>
-                                        <th>Azione</th>
-                                        <th>Utente</th>
-                                        <th>Dettagli</th>
-                                        <th>IP</th>
-                                        <th>Device</th>
-                                    </tr>
+                                    <tr id="backup-thead"><th>Anteprima</th></tr>
                                 </thead>
-                                <tbody id="system-logs-body">
-                                    <tr><td colspan="7" style="opacity:0.5;text-align:center;padding:24px;">Caricamento log...</td></tr>
+                                <tbody id="backup-tbody">
+                                    <tr><td style="opacity:0.5;text-align:center;padding:24px;">Seleziona una collezione e carica i dati.</td></tr>
                                 </tbody>
                             </table>
                         </div>
@@ -1658,12 +1659,12 @@
     <script>
         window.apriAdminView = function(viewId) {
             // Controllo permesso sulla sottosezione
-            if (viewId === 'permessi-gestione' || viewId === 'system-logs' || viewId === 'richieste-membri') {
+            if (viewId === 'permessi-gestione' || viewId === 'backup' || viewId === 'richieste-membri') {
                 // Solo gestore pieno (Firebase)
                 if (!window.currentUser || !window.currentUser.isAdmin) {
                     if (typeof window.vampireToast === 'function') {
-                        const msg = viewId === 'system-logs'
-                            ? 'Solo il gestore può consultare i Log di Sistema.'
+                        const msg = viewId === 'backup'
+                            ? 'Solo il gestore può usare Backup & Pulizia.'
                             : (viewId === 'richieste-membri'
                                 ? 'Solo il gestore può gestire le richieste membri.'
                                 : 'Solo il gestore può assegnare i permessi di Gestione.');
@@ -1695,7 +1696,6 @@
             if(targetView) {
                 targetView.style.display = 'block';
             }
-            }
             if (viewId === 'permessi-gestione') {
                 if (typeof window.popolaSelectPermessiGestione === 'function') window.popolaSelectPermessiGestione();
                 if (typeof window.renderAdminPermessiGestioneTable === 'function') window.renderAdminPermessiGestioneTable();
@@ -1709,18 +1709,15 @@
                 });
             }
             if (viewId === 'storico-vendite') {
-                Promise.all([
-                    window.loadStoricoVenditeIfNeeded?.() || Promise.resolve(),
-                    window.loadStoricoMaterialiIfNeeded?.() || Promise.resolve()
-                ]).finally(() => {
-                    if (typeof window.renderArchivioGestione === 'function') window.renderArchivioGestione();
-                });
+                if (typeof window.setupArchivioWeekSelect === 'function') window.setupArchivioWeekSelect();
+                if (typeof window.renderArchivioGestione === 'function') window.renderArchivioGestione();
+                if (typeof window.renderAdminMateriali === 'function') window.renderAdminMateriali();
             }
             if (viewId === 'inventario') {
                 window.loadItemImagesOnce?.();
             }
-            if (viewId === 'system-logs') {
-                if (typeof window.renderSystemLogs === 'function') window.renderSystemLogs();
+            if (viewId === 'backup') {
+                if (typeof window.initBackupPanel === 'function') window.initBackupPanel();
             }
             if (viewId === 'richieste-membri') {
                 if (typeof window.renderAdminRichiesteMembri === 'function') window.renderAdminRichiesteMembri();
