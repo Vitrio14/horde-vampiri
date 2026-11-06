@@ -114,6 +114,81 @@ const vampireToast = (msg, icon = 'info') => {
 };
 window.vampireToast = vampireToast;
 
+/** Aggiorna array locale e UI dopo delete/write (immediato, senza attendere snapshot) */
+function applyLocalRemove(collectionName, id) {
+    const sid = String(id);
+    if (collectionName === 'vendite') {
+        vendite = (vendite || []).filter(v => String(v.id) !== sid);
+        scheduleUI(() => {
+            window.renderArchivioGestione?.();
+            window.renderVendite?.();
+            renderClassifiche?.();
+            aggiornaStats?.();
+            window.renderAdminClassifiche?.();
+        }, { priority: 'high' });
+    } else if (collectionName === 'vendite_materiali') {
+        venditeMateriali = (venditeMateriali || []).filter(v => String(v.id) !== sid);
+        scheduleUI(() => {
+            window.renderAdminMateriali?.();
+            window.renderMateriali?.();
+            renderClassifiche?.();
+            aggiornaStats?.();
+            window.renderAdminClassifiche?.();
+        }, { priority: 'high' });
+    } else if (collectionName === 'logs') {
+        logs = (logs || []).filter(v => String(v.id) !== sid);
+        scheduleUI(() => { window.renderLogs?.(); window.renderAdminLogs?.(); }, { priority: 'high' });
+    } else if (collectionName === 'saldo_logs') {
+        saldoLogs = (saldoLogs || []).filter(v => String(v.id) !== sid);
+        scheduleUI(() => { window.renderSaldoLogs?.(); window.renderAdminSaldoLogs?.(); }, { priority: 'high' });
+    } else if (collectionName === 'inventario') {
+        inventarioDati = (inventarioDati || []).filter(v => String(v.id) !== sid && String(v.nome || '') !== sid);
+        scheduleUI(() => {
+            window.renderInventario?.();
+            window.renderAdminTable?.();
+            window.popolaSelectOggetti?.();
+        }, { priority: 'high' });
+    } else if (collectionName === 'membri') {
+        listaVampiri = (listaVampiri || []).filter(v => String(v.nome) !== sid && String(v.id) !== sid);
+        scheduleUI(() => {
+            renderVampiriLists?.();
+            window.renderAdminMembriTable?.();
+            window.renderAdminPermessiGestioneTable?.();
+        }, { priority: 'high' });
+    } else if (collectionName === 'comunicazioni') {
+        comunicazioni = (comunicazioni || []).filter(v => String(v.id) !== sid);
+        scheduleUI(() => renderDinamici?.(), { priority: 'high' });
+    } else if (collectionName === 'documenti') {
+        documenti = (documenti || []).filter(v => String(v.id) !== sid);
+        scheduleUI(() => renderDinamici?.(), { priority: 'high' });
+    } else if (collectionName === 'tipi_materiale') {
+        tipiMateriale = (tipiMateriale || []).filter(v => String(v.id) !== sid);
+        scheduleUI(() => {
+            window.renderAdminTipiMateriale?.();
+            window.popolaSelectTipiMateriale?.();
+        }, { priority: 'high' });
+    } else if (collectionName === 'albero_genealogico') {
+        alberoNodi = (alberoNodi || []).filter(v => String(v.id) !== sid);
+        window._alberoDirty = true;
+        scheduleUI(() => {
+            window.renderAlbero?.({ preservePan: true });
+            window.renderAdminAlbero?.();
+        }, { priority: 'high' });
+    } else if (collectionName === 'richieste_membri') {
+        richiesteMembri = (richiesteMembri || []).filter(v => String(v.id) !== sid);
+        scheduleUI(() => window.renderAdminRichiesteMembri?.(), { priority: 'high' });
+    } else if (collectionName === 'calendario_avvento') {
+        calendarioAvvento = (calendarioAvvento || []).filter(v => String(v.id) !== sid);
+        scheduleUI(() => { window.renderCalendarioSezione?.(); window.renderAdminCalendario?.(); }, { priority: 'high' });
+    } else if (collectionName === 'calendario_mesi') {
+        calendarioMesi = (calendarioMesi || []).filter(v => String(v.id) !== sid);
+        scheduleUI(() => { window.renderCalendarioSezione?.(); window.renderAdminCalendario?.(); }, { priority: 'high' });
+    }
+}
+window.applyLocalRemove = applyLocalRemove;
+
+
+
 // --- CACHE SESSIONE (riduce letture a refresh/login ripetuti) ---
 const FS_CACHE_TTL_MS = 15 * 60 * 1000; // 15 minuti
 function fsCacheGet(key) {
@@ -781,7 +856,8 @@ window.delDinamico = async (col, id) => {
     const res = await Swal.fire({ title: 'Rimuovere?', icon: 'warning', showCancelButton: true, confirmButtonColor: '#8b0000', background: '#111', color: '#fff' });
     if(res.isConfirmed) {
         await deleteDoc(doc(db, col, id));
-        logSystemEvent('dinamico', 'elimina', `Rimosso elemento da ${col} (id ${id})`, { col, id });
+        applyLocalRemove(col, id);
+        logSystemEvent(\'dinamico\', 'elimina', `Rimosso elemento da ${col} (id ${id})`, { col, id });
         vampireToast("Elemento rimosso correttamente.", "success");
     }
 };
@@ -1058,6 +1134,7 @@ window.eliminaVampiro = async (id) => {
     });
     if(res.isConfirmed) {
         await deleteDoc(doc(db, "membri", id));
+        applyLocalRemove("membri", id);
         logSystemEvent('membro', 'elimina', `Eliminato definitivamente membro ${id}`, { id });
         vampireToast("Vampiro rimosso dal registro.", "success");
     }
@@ -1477,6 +1554,7 @@ window.adminDeleteMat = async (id) => {
     const res = await Swal.fire({ title: 'Elimina transazione materiale?', icon: 'warning', showCancelButton: true, confirmButtonColor: '#8b0000', background: '#111' });
     if(res.isConfirmed) { 
         await deleteDoc(doc(db, "vendite_materiali", id));
+        applyLocalRemove('vendite_materiali', id);
         logSystemEvent('materiali', 'elimina', `Eliminata vendita materiali id ${id}`, { id }); 
         vampireToast("Record rimosso con successo.", "success"); 
     }
@@ -2006,6 +2084,7 @@ window.adminUpdateItem = async () => {
         if (editId && editId !== n) {
             await setDoc(doc(db, "inventario", n), { qty: q, categoria: c, foto, imageFileName });
             await deleteDoc(doc(db, "inventario", editId));
+        applyLocalRemove("inventario", editId);
             logSystemEvent('inventario', 'rinomina', `Inventario: "${editId}" → "${n}" (qty ${q})`, { da: editId, a: n, qty: q, categoria: c });
             vampireToast(`Oggetto rinominato in "${n}" e aggiornato.`, "success");
         } else {
@@ -2030,6 +2109,7 @@ window.adminDeleteItem = async (item) => {
     const res = await Swal.fire({ title: 'Eliminare?', icon: 'warning', showCancelButton: true, confirmButtonColor: '#8b0000', background: '#111' });
     if(res.isConfirmed) { 
         await deleteDoc(doc(db, "inventario", item));
+        applyLocalRemove("inventario", item);
         logSystemEvent('inventario', 'elimina', `Eliminato oggetto inventario ${item}`, { item }); 
         if ((document.getElementById('admin-item-edit-id')?.value || '') === item) {
             window.resetFormInventarioAdmin();
@@ -2042,6 +2122,7 @@ window.adminDeleteVendita = async (id) => {
     const res = await Swal.fire({ title: 'Elimina Vendita', icon: 'question', showCancelButton: true, confirmButtonColor: '#8b0000', background: '#111' });
     if(res.isConfirmed) { 
         await deleteDoc(doc(db, "vendite", id));
+        applyLocalRemove('vendite', id);
         logSystemEvent('vendita', 'elimina', `Eliminata vendita id ${id}`, { id }); 
         vampireToast("Record di vendita eliminato.", "success"); 
     }
@@ -2051,6 +2132,7 @@ window.adminDeleteLog = async (id) => {
     const res = await Swal.fire({ title: 'Elimina Log', icon: 'warning', showCancelButton: true, confirmButtonColor: '#8b0000', background: '#111' });
     if(res.isConfirmed) { 
         await deleteDoc(doc(db, "logs", id));
+        applyLocalRemove('logs', id);
         logSystemEvent('admin', 'elimina_log_inv', `Eliminato log inventario ${id}`, { id }); 
         vampireToast("Log di movimento epurato.", "success"); 
     }
@@ -2060,6 +2142,7 @@ window.adminDeleteSaldoLog = async (id) => {
     const res = await Swal.fire({ title: 'Rimuovi Log Saldo?', icon: 'warning', showCancelButton: true, confirmButtonColor: '#8b0000', background: '#111' });
     if(res.isConfirmed) { 
         await deleteDoc(doc(db, "saldo_logs", id));
+        applyLocalRemove("saldo_logs", id);
         logSystemEvent('admin', 'elimina_log_saldo', `Eliminato log saldo ${id}`, { id }); 
         vampireToast("Log transazione rimosso.", "success"); 
     }
@@ -3394,6 +3477,7 @@ window.eliminaTipoMateriale = async (id) => {
     if (!res.isConfirmed) return;
     try {
         await deleteDoc(doc(db, 'tipi_materiale', id));
+        applyLocalRemove('tipi_materiale', id);
         logSystemEvent('materiali', 'elimina_tipo', `Eliminato tipo materiale ${id}`, { id });
         vampireToast('Tipo rimosso.', 'success');
     } catch (err) {
@@ -3720,6 +3804,7 @@ window.eliminaNodoAlbero = async (id) => {
     if (!res.isConfirmed) return;
     try {
         await deleteDoc(doc(db, 'albero_genealogico', id));
+        applyLocalRemove('albero_genealogico', id);
         logSystemEvent('albero', 'elimina', `Eliminato nodo albero ${id}`, { id });
         vampireToast('Nodo rimosso.', 'success');
     } catch (err) {
@@ -4652,6 +4737,7 @@ window.eliminaRichiestaMembro = async function(id) {
     if (!conf.isConfirmed) return;
     try {
         await deleteDoc(doc(db, 'richieste_membri', id));
+        applyLocalRemove('richieste_membri', id);
         vampireToast('Richiesta eliminata.', 'success');
         window.renderAdminRichiesteMembri();
     } catch (err) {
@@ -5367,6 +5453,7 @@ window.eliminaAvventoGiorno = async function(id) {
     if (!res.isConfirmed) return;
     try {
         await deleteDoc(doc(db, 'calendario_avvento', id));
+        applyLocalRemove('calendario_avvento', id);
         logSystemEvent('calendario', 'avvento_elimina', `Eliminato giorno avvento ${id}`, { id });
         vampireToast('Giorno rimosso.', 'success');
     } catch (err) {
@@ -5453,6 +5540,7 @@ window.eliminaMeseCal = async function(id) {
     if (!res.isConfirmed) return;
     try {
         await deleteDoc(doc(db, 'calendario_mesi', id));
+        applyLocalRemove('calendario_mesi', id);
         logSystemEvent('calendario', 'mese_elimina', `Eliminato mese ${id}`, { id });
         vampireToast('Mese rimosso.', 'success');
     } catch (err) {
