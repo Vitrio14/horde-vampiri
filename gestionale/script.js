@@ -2509,6 +2509,16 @@ function startFirestoreListeners() {
         richieste: 0,
         systemLogs: 0
     };
+    // Cache one-shot: evita onSnapshot continui (ogni update = letture)
+    const _onceLoaded = {
+        inventario: false,
+        logs: false,
+        saldoLogs: false,
+        calendario: false,
+        albero: false,
+        tipiMateriale: false,
+        richieste: false
+    };
 
     function _safeUnsub(key) {
         const fn = _unsubs[key];
@@ -2640,8 +2650,9 @@ function startFirestoreListeners() {
 
     // ========== LAZY ATTACH ==========
     function attachTipiMateriale() {
-        if (_unsubs.tipiMateriale) return;
-        _unsubs.tipiMateriale = onSnapshot(collection(db, "tipi_materiale"), (snapshot) => {
+        if (_onceLoaded.tipiMateriale) return;
+        _onceLoaded.tipiMateriale = true;
+        getDocs(collection(db, "tipi_materiale")).then((snapshot) => {
             tipiMateriale = snapshot.docs.map(d => ({ id: d.id, ...d.data() }));
             scheduleUI(() => {
                 if (typeof window.popolaSelectTipiMateriale === 'function') window.popolaSelectTipiMateriale();
@@ -2649,147 +2660,117 @@ function startFirestoreListeners() {
                 if (document.getElementById('vamp-tipo-mat')) window.onVenditaTipoChange?.();
                 if (document.getElementById('mat-tipo-select')) window.onMatTipoChange?.();
             });
-        });
+        }).catch((err) => console.warn('[tipi_materiale]', err));
     }
 
-
-
     function attachInventario() {
-        if (_unsubs.inventario) return;
-        _unsubs.inventario = onSnapshot(collection(db, "inventario"), (snapshot) => {
-            inventarioDati = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
-            const prio = (isSectionActive('inventario') || isAdminVisible()) ? 'high' : 'normal';
+        if (_onceLoaded.inventario) return;
+        _onceLoaded.inventario = true;
+        getDocs(collection(db, "inventario")).then((snapshot) => {
+            inventarioDati = snapshot.docs.map(d => ({ id: d.id, ...d.data() }));
             scheduleUI(() => {
-                if (isSectionActive('inventario')) {
-                    window.renderInventario?.();
-                    window.renderLogs?.();
-                    window.popolaSelectOggetti?.();
-                }
+                window.renderInventario?.();
+                window.popolaSelectOggetti?.();
                 if (isAdminVisible()) window.renderAdminTable?.();
-            }, { priority: prio });
-        });
+            });
+        }).catch((err) => console.warn('[inventario]', err));
     }
 
     function attachLogs() {
-        if (_unsubs.logs) return;
-        const applyLogsSnap = (snap) => {
-            logs = snap.docs.map(d => ({ id: d.id, ...d.data() }));
-            scheduleUI(() => {
-                if (isSectionActive('inventario')) window.renderLogs?.();
-                if (isAdminVisible()) window.renderAdminLogs?.();
-            }, { priority: 'high' });
-        };
-        _unsubs.logs = onSnapshot(
-            query(collection(db, "logs"), orderBy("timestamp", "desc"), limit(80)),
-            applyLogsSnap,
-            (err) => {
-                console.warn('[logs] orderBy fallito, fallback:', err?.code || err);
-                _unsubs.logs = onSnapshot(query(collection(db, "logs"), limit(80)), applyLogsSnap);
-            }
-        );
+        if (_onceLoaded.logs) return;
+        _onceLoaded.logs = true;
+        getDocs(query(collection(db, "logs"), orderBy("timestamp", "desc"), limit(50)))
+            .then((snap) => {
+                logs = snap.docs.map(d => ({ id: d.id, ...d.data() }));
+                scheduleUI(() => {
+                    window.renderLogs?.();
+                    if (isAdminVisible()) window.renderAdminLogs?.();
+                });
+            })
+            .catch(() => {
+                getDocs(query(collection(db, "logs"), limit(50))).then((snap) => {
+                    logs = snap.docs.map(d => ({ id: d.id, ...d.data() }));
+                    scheduleUI(() => { window.renderLogs?.(); if (isAdminVisible()) window.renderAdminLogs?.(); });
+                }).catch((e) => console.warn('[logs]', e));
+            });
     }
 
     function attachSaldoLogs() {
-        if (_unsubs.saldoLogs) return;
-        const applySaldoLogsSnap = (snap) => {
-            saldoLogs = snap.docs.map(d => ({ id: d.id, ...d.data() }));
-            scheduleUI(() => {
-                if (isSectionActive('saldo')) window.renderSaldoLogs?.();
-                if (isAdminVisible()) window.renderAdminSaldoLogs?.();
-            }, { priority: 'high' });
-        };
-        _unsubs.saldoLogs = onSnapshot(
-            query(collection(db, "saldo_logs"), orderBy("timestamp", "desc"), limit(80)),
-            applySaldoLogsSnap,
-            (err) => {
-                console.warn('[saldo_logs] orderBy fallito, fallback:', err?.code || err);
-                _unsubs.saldoLogs = onSnapshot(query(collection(db, "saldo_logs"), limit(80)), applySaldoLogsSnap);
-            }
-        );
+        if (_onceLoaded.saldoLogs) return;
+        _onceLoaded.saldoLogs = true;
+        getDocs(query(collection(db, "saldo_logs"), orderBy("timestamp", "desc"), limit(50)))
+            .then((snap) => {
+                saldoLogs = snap.docs.map(d => ({ id: d.id, ...d.data() }));
+                scheduleUI(() => {
+                    window.renderSaldoLogs?.();
+                    if (isAdminVisible()) window.renderAdminSaldoLogs?.();
+                });
+            })
+            .catch(() => {
+                getDocs(query(collection(db, "saldo_logs"), limit(50))).then((snap) => {
+                    saldoLogs = snap.docs.map(d => ({ id: d.id, ...d.data() }));
+                    scheduleUI(() => { window.renderSaldoLogs?.(); if (isAdminVisible()) window.renderAdminSaldoLogs?.(); });
+                }).catch((e) => console.warn('[saldo_logs]', e));
+            });
     }
 
     function attachCalendario() {
-        if (!_unsubs.calendarioAvvento) {
-            _unsubs.calendarioAvvento = onSnapshot(collection(db, "calendario_avvento"), (snapshot) => {
-                calendarioAvvento = snapshot.docs.map(d => ({ id: d.id, ...d.data() }));
+        if (_onceLoaded.calendario) return;
+        _onceLoaded.calendario = true;
+        Promise.all([
+            getDocs(collection(db, "calendario_avvento")),
+            getDocs(collection(db, "calendario_mesi"))
+        ]).then(([av, me]) => {
+            calendarioAvvento = av.docs.map(d => ({ id: d.id, ...d.data() }));
+            calendarioMesi = me.docs.map(d => ({ id: d.id, ...d.data() }));
+            scheduleUI(() => {
                 if (isSectionActive('calendario') || isAdminVisible()) {
-                    scheduleUI(() => {
-                        window.renderCalendarioSezione?.();
-                        window.renderAdminCalendario?.();
-                    });
+                    window.renderCalendarioSezione?.();
+                    window.renderAdminCalendario?.();
                 }
             });
-        }
-        if (!_unsubs.calendarioMesi) {
-            _unsubs.calendarioMesi = onSnapshot(collection(db, "calendario_mesi"), (snapshot) => {
-                calendarioMesi = snapshot.docs.map(d => ({ id: d.id, ...d.data() }));
-                if (isSectionActive('calendario') || isAdminVisible()) {
-                    scheduleUI(() => {
-                        window.renderCalendarioSezione?.();
-                        window.renderAdminCalendario?.();
-                    });
-                }
-            });
-        }
+        }).catch((err) => console.warn('[calendario]', err));
     }
 
     function attachAlbero() {
-        if (_unsubs.albero) return;
-        _unsubs.albero = onSnapshot(collection(db, "albero_genealogico"), (snapshot) => {
+        if (_onceLoaded.albero) return;
+        _onceLoaded.albero = true;
+        getDocs(collection(db, "albero_genealogico")).then((snapshot) => {
             alberoNodi = snapshot.docs.map(d => ({ id: d.id, ...d.data() }));
             window._alberoDirty = true;
-            if (isSectionActive('albero')) {
-                scheduleUI(() => window.renderAlbero?.({ preservePan: true }));
-            }
-            if (isAdminVisible()) {
-                scheduleUI(() => {
+            scheduleUI(() => {
+                if (isSectionActive('albero')) window.renderAlbero?.({ preservePan: true });
+                if (isAdminVisible()) {
                     window.renderAdminAlbero?.();
                     window.popolaSelectParentAlbero?.();
-                });
-            }
-        });
+                }
+            });
+        }).catch((err) => console.warn('[albero]', err));
     }
 
     function attachRichieste() {
         if (!currentUser?.isAdmin) return;
-        if (_unsubs.richieste) return;
-        _unsubs.richieste = onSnapshot(
-            query(collection(db, "richieste_membri"), where("stato", "==", "pending"), limit(50)),
-            (snap) => {
-            const pendingNow = snap.docs.map(d => ({ id: d.id, ...d.data() }));
-            const byId = new Map((richiesteMembri || []).map(r => [r.id, r]));
-            for (const [id, r] of [...byId.entries()]) {
-                if ((r.stato || 'pending') === 'pending' && !pendingNow.find(x => x.id === id)) byId.delete(id);
-            }
-            pendingNow.forEach(r => byId.set(r.id, r));
-            richiesteMembri = [...byId.values()];
-            try {
-                const pending = richiesteMembri.filter(r => (r.stato || 'pending') === 'pending').length;
-                document.querySelectorAll('.admin-menu-card[data-admin-view="richieste-membri"] h3').forEach(h => {
-                    h.textContent = pending > 0 ? `📩 Richieste Membri (${pending})` : '📩 Richieste Membri';
-                });
-                const view = document.getElementById('admin-view-richieste-membri');
-                if (view && view.style.display !== 'none' && typeof window.renderAdminRichiesteMembri === 'function') {
-                    window.renderAdminRichiesteMembri();
-                }
-            } catch (e) { console.warn('[richieste_membri] ui', e); }
-        }, (err) => console.error('[richieste_membri]', err));
+        if (_onceLoaded.richieste) return;
+        _onceLoaded.richieste = true;
+        getDocs(query(collection(db, "richieste_membri"), where("stato", "==", "pending"), limit(50)))
+            .then((snap) => {
+                const pendingNow = snap.docs.map(d => ({ id: d.id, ...d.data() }));
+                const byId = new Map((richiesteMembri || []).map(r => [r.id, r]));
+                pendingNow.forEach(r => byId.set(r.id, r));
+                richiesteMembri = [...byId.values()];
+                try {
+                    const pending = richiesteMembri.filter(r => (r.stato || 'pending') === 'pending').length;
+                    document.querySelectorAll('.admin-menu-card[data-admin-view="richieste-membri"] h3').forEach(h => {
+                        h.textContent = pending > 0 ? `📩 Richieste Membri (${pending})` : '📩 Richieste Membri';
+                    });
+                } catch (e) { console.warn('[richieste_membri] ui', e); }
+            })
+            .catch((err) => console.error('[richieste_membri]', err));
     }
 
     function attachSystemLogs() {
-        if (!currentUser?.isAdmin) return;
-        if (_unsubs.systemLogs) return;
-        _unsubs.systemLogs = onSnapshot(
-            query(collection(db, "system_logs"), orderBy("timestamp", "desc"), limit(150)),
-            (snap) => {
-                systemLogs = snap.docs.map(d => ({ id: d.id, ...d.data() }));
-                if (typeof window.renderSystemLogs === 'function' &&
-                    document.getElementById('admin-view-system-logs')?.style.display !== 'none') {
-                    window.renderSystemLogs();
-                }
-            },
-            (err) => console.warn('[system_logs]', err?.code || err?.message || err)
-        );
+        // Disattivato: i log di sistema si leggono solo da Backup on-demand
+        return;
     }
 
     /** Dipendenze per sezione membro */
@@ -2855,8 +2836,7 @@ function startFirestoreListeners() {
 
         if (id === 'gestione') {
             const wanted = new Set();
-            if (currentUser?.isAdmin) wanted.add('richieste');
-
+            // Niente listener al solo menu: solo quando apri la sotto-vista
             if (adminViewId === 'inventario' || adminViewId === 'finanze') {
                 wanted.add('inventario');
                 wanted.add('logs');
@@ -2870,8 +2850,6 @@ function startFirestoreListeners() {
                 window.loadStoricoVenditeIfNeeded?.();
                 window.loadStoricoMaterialiIfNeeded?.();
             }
-            if (!adminViewId && currentUser?.isAdmin) wanted.add('richieste');
-
             _syncDeps(wanted, true);
             return;
         }
@@ -2883,9 +2861,7 @@ function startFirestoreListeners() {
     window.releaseSectionData = function(prevId, nextId) {
         if (!prevId || prevId === nextId) return;
         if (prevId === 'gestione' && nextId !== 'gestione') {
-            const wanted = new Set();
-            if (currentUser?.isAdmin) wanted.add('richieste');
-            _syncDeps(wanted, true);
+            _syncDeps(new Set(), true);
         }
         // Non staccare listener sezioni membro: evita ri-letture a ogni cambio tab
     };
@@ -2895,9 +2871,7 @@ function startFirestoreListeners() {
     };
 
     window.releaseAdminViewData = function() {
-        const wanted = new Set();
-        if (currentUser?.isAdmin) wanted.add('richieste');
-        _syncDeps(wanted, true);
+        _syncDeps(new Set(), true);
     };
 
     console.info('[Firestore] Core Generale attivo. Sezioni: attach/detach on-demand.');
@@ -4674,143 +4648,251 @@ window.eliminaRichiestaMembro = async function(id) {
 
 // ========== STORICO SETTIMANA + BACKUP ==========
 const _loadedArchivioWeeks = new Set();
+let _backupDocs = [];
+const BACKUP_COLS_WITH_WEEK = new Set(['vendite', 'vendite_materiali']);
+
+function _backupCollectWeekKeys() {
+    const keys = new Set();
+    const cur = (typeof getWeekYearKey === 'function') ? getWeekYearKey(new Date()) : null;
+    if (cur) keys.add(cur);
+    (vendite || []).forEach(v => { if (v.settimanaEtichetta) keys.add(v.settimanaEtichetta); });
+    (venditeMateriali || []).forEach(m => { if (m.settimanaEtichetta) keys.add(m.settimanaEtichetta); });
+    // ultime ~26 settimane anche senza dati in memoria
+    try {
+        const d = new Date();
+        for (let i = 0; i < 26; i++) {
+            if (typeof getWeekYearKey === 'function') keys.add(getWeekYearKey(new Date(d)));
+            d.setDate(d.getDate() - 7);
+        }
+    } catch (_) {}
+    return [...keys].filter(Boolean).sort().reverse();
+}
+
+function _backupLabelWeek(k) {
+    const cur = (typeof getWeekYearKey === 'function') ? getWeekYearKey(new Date()) : '';
+    const base = (typeof getWeekRangeLabel === 'function') ? getWeekRangeLabel(k) : k;
+    return base + (k === cur ? ' · corrente' : '');
+}
+
 window.setupArchivioWeekSelect = function() {
     const sel = document.getElementById('archivio-week-select');
     if (!sel) return;
-    const current = getWeekYearKey(new Date());
-    const keys = new Set([current]);
-    (vendite||[]).forEach(v => { if (v.settimanaEtichetta) keys.add(v.settimanaEtichetta); });
-    (venditeMateriali||[]).forEach(m => { if (m.settimanaEtichetta) keys.add(m.settimanaEtichetta); });
-    try { const d=new Date(); for(let i=1;i<=16;i++){ d.setDate(d.getDate()-7); keys.add(getWeekYearKey(new Date(d))); } } catch(_){}
-    const sorted=[...keys].sort().reverse();
-    const prev=sel.value;
-    sel.innerHTML=sorted.map(k=>`<option value="${k}">${typeof getWeekRangeLabel==='function'?getWeekRangeLabel(k):k}${k===current?' · corrente':''}</option>`).join('');
-    sel.value=sorted.includes(prev)?prev:current;
-};
-window.onArchivioWeekChange=function(){ window.renderArchivioGestione?.(); window.renderAdminMateriali?.(); };
-window.loadArchivioWeekFromSelect=async function(){
-    const week=document.getElementById('archivio-week-select')?.value;
-    if(!week) return vampireToast('Seleziona una settimana.','error');
-    await window.loadStoricoWeek(week);
-    window.renderArchivioGestione?.(); window.renderAdminMateriali?.();
-    vampireToast('Settimana caricata.','success');
-};
-window.loadStoricoWeek=async function(weekKey){
-    if(!weekKey) return;
-    try{
-        const [sv,sm]=await Promise.all([
-            getDocs(query(collection(db,'vendite'),where('settimanaEtichetta','==',weekKey),limit(500))),
-            getDocs(query(collection(db,'vendite_materiali'),where('settimanaEtichetta','==',weekKey),limit(500)))
-        ]);
-        const byV=new Map((vendite||[]).map(v=>[v.id,v])); sv.docs.forEach(d=>byV.set(d.id,{id:d.id,...d.data()})); vendite=[...byV.values()];
-        const byM=new Map((venditeMateriali||[]).map(m=>[m.id,m])); sm.docs.forEach(d=>byM.set(d.id,{id:d.id,...d.data()})); venditeMateriali=[...byM.values()];
-        _loadedArchivioWeeks.add(weekKey);
-    }catch(err){ vampireToast('Errore: '+(err.message||err),'error'); }
+    const sorted = _backupCollectWeekKeys();
+    const current = (typeof getWeekYearKey === 'function') ? getWeekYearKey(new Date()) : sorted[0];
+    const prev = sel.value;
+    sel.innerHTML = sorted.map(k =>
+        `<option value="${k}">${_backupLabelWeek(k)}</option>`
+    ).join('');
+    sel.value = sorted.includes(prev) ? prev : current;
 };
 
-let _backupDocs=[];
-const BACKUP_COLS_WITH_WEEK=new Set(['vendite','vendite_materiali']);
-window.initBackupPanel=function(){
-    _backupDocs=[]; window.onBackupCollectionChange();
-    const st=document.getElementById('backup-status'); if(st) st.textContent='';
-    const tb=document.getElementById('backup-tbody'); if(tb) tb.innerHTML='<tr><td style="opacity:0.5;text-align:center;padding:24px;">Seleziona collezione e carica.</td></tr>';
-    const weekSel=document.getElementById('backup-week');
-    if(weekSel){
-        const keys=new Set([getWeekYearKey(new Date())]);
-        (vendite||[]).forEach(v=>{if(v.settimanaEtichetta)keys.add(v.settimanaEtichetta);});
-        (venditeMateriali||[]).forEach(m=>{if(m.settimanaEtichetta)keys.add(m.settimanaEtichetta);});
-        try{const d=new Date();for(let i=0;i<20;i++){keys.add(getWeekYearKey(new Date(d)));d.setDate(d.getDate()-7);}}catch(_){}
-        const cur=getWeekYearKey(new Date());
-        weekSel.innerHTML='<option value="">— Tutte —</option>'+[...keys].sort().reverse().map(k=>`<option value="${k}">${typeof getWeekRangeLabel==='function'?getWeekRangeLabel(k):k}${k===cur?' · corrente':''}</option>`).join('');
+window.onArchivioWeekChange = function() {
+    window.renderArchivioGestione?.();
+    window.renderAdminMateriali?.();
+};
+
+window.loadArchivioWeekFromSelect = async function() {
+    const week = document.getElementById('archivio-week-select')?.value;
+    if (!week) return vampireToast('Seleziona una settimana.', 'error');
+    await window.loadStoricoWeek(week);
+    window.renderArchivioGestione?.();
+    window.renderAdminMateriali?.();
+    vampireToast('Settimana caricata.', 'success');
+};
+
+window.loadStoricoWeek = async function(weekKey) {
+    if (!weekKey) return;
+    try {
+        const [sv, sm] = await Promise.all([
+            getDocs(query(collection(db, 'vendite'), where('settimanaEtichetta', '==', weekKey), limit(500))),
+            getDocs(query(collection(db, 'vendite_materiali'), where('settimanaEtichetta', '==', weekKey), limit(500)))
+        ]);
+        const byV = new Map((vendite || []).map(v => [v.id, v]));
+        sv.docs.forEach(d => byV.set(d.id, { id: d.id, ...d.data() }));
+        vendite = [...byV.values()];
+        const byM = new Map((venditeMateriali || []).map(m => [m.id, m]));
+        sm.docs.forEach(d => byM.set(d.id, { id: d.id, ...d.data() }));
+        venditeMateriali = [...byM.values()];
+        _loadedArchivioWeeks.add(weekKey);
+    } catch (err) {
+        console.warn('[loadStoricoWeek]', err);
+        vampireToast('Errore: ' + (err.message || err), 'error');
     }
 };
-window.onBackupCollectionChange=function(){
-    const col=document.getElementById('backup-collection')?.value||'vendite';
-    const wrap=document.getElementById('backup-week-wrap');
-    if(wrap) wrap.style.display=BACKUP_COLS_WITH_WEEK.has(col)?'':'none';
+
+window.initBackupPanel = function() {
+    _backupDocs = [];
+    const st = document.getElementById('backup-status');
+    if (st) st.textContent = '';
+    const tb = document.getElementById('backup-tbody');
+    if (tb) tb.innerHTML = '<tr><td style="opacity:0.5;text-align:center;padding:24px;">Seleziona collezione e carica.</td></tr>';
+    const thead = document.getElementById('backup-thead');
+    if (thead) thead.innerHTML = '<th>Anteprima</th>';
+    window.onBackupCollectionChange();
 };
-window.backupLoadPreview=async function(full=false){
-    if(!currentUser?.isAdmin) return vampireToast('Solo il gestore.','error');
-    const col=document.getElementById('backup-collection')?.value||'vendite';
-    const week=document.getElementById('backup-week')?.value||'';
-    const lim=Math.min(2000,Math.max(50,Number(document.getElementById('backup-limit')?.value)||500));
-    const st=document.getElementById('backup-status'); if(st) st.textContent=full?'Caricamento completo…':'Anteprima…';
-    try{
-        const pageSize=full?400:lim; let all=[]; let lastDoc=null; let pages=0; const maxPages=full?50:1;
-        const useTs=['system_logs','logs','saldo_logs','comunicazioni','documenti','richieste_membri','vendite','vendite_materiali'].includes(col);
-        while(pages<maxPages){
-            const parts=[];
-            if(BACKUP_COLS_WITH_WEEK.has(col)&&week) parts.push(where('settimanaEtichetta','==',week));
-            if(useTs) parts.push(orderBy('timestamp','desc'));
-            if(lastDoc) parts.push(startAfter(lastDoc));
+
+window.onBackupCollectionChange = function() {
+    const col = document.getElementById('backup-collection')?.value || 'vendite';
+    const wrap = document.getElementById('backup-week-wrap');
+    const weekSel = document.getElementById('backup-week');
+    const showWeek = BACKUP_COLS_WITH_WEEK.has(col);
+    if (wrap) wrap.style.display = showWeek ? '' : 'none';
+    if (weekSel && showWeek) {
+        const sorted = _backupCollectWeekKeys();
+        const prev = weekSel.value;
+        weekSel.innerHTML = '<option value="">— Tutte le settimane —</option>' +
+            sorted.map(k => `<option value="${k}">${_backupLabelWeek(k)}</option>`).join('');
+        if (prev && sorted.includes(prev)) weekSel.value = prev;
+    }
+};
+
+window.backupLoadPreview = async function(full = false) {
+    if (!currentUser?.isAdmin) return vampireToast('Solo il gestore.', 'error');
+    const col = document.getElementById('backup-collection')?.value || 'vendite';
+    const week = document.getElementById('backup-week')?.value || '';
+    const lim = Math.min(2000, Math.max(50, Number(document.getElementById('backup-limit')?.value) || 500));
+    const st = document.getElementById('backup-status');
+    if (st) st.textContent = full ? 'Caricamento completo…' : 'Anteprima…';
+    try {
+        const pageSize = full ? 400 : lim;
+        let all = [];
+        let lastDoc = null;
+        let pages = 0;
+        const maxPages = full ? 50 : 1;
+        const useTs = ['system_logs', 'logs', 'saldo_logs', 'comunicazioni', 'documenti', 'richieste_membri', 'vendite', 'vendite_materiali'].includes(col);
+        while (pages < maxPages) {
+            const parts = [];
+            if (BACKUP_COLS_WITH_WEEK.has(col) && week) {
+                parts.push(where('settimanaEtichetta', '==', week));
+            }
+            if (useTs) parts.push(orderBy('timestamp', 'desc'));
+            if (lastDoc) parts.push(startAfter(lastDoc));
             parts.push(limit(pageSize));
-            const snap=await getDocs(query(collection(db,col),...parts));
-            if(snap.empty) break;
-            snap.docs.forEach(d=>all.push({id:d.id,...d.data()}));
-            lastDoc=snap.docs[snap.docs.length-1]; pages++;
-            if(st) st.textContent=`Caricati ${all.length}…`;
-            if(!full||snap.docs.length<pageSize) break;
+            const snap = await getDocs(query(collection(db, col), ...parts));
+            if (snap.empty) break;
+            snap.docs.forEach(d => all.push({ id: d.id, ...d.data() }));
+            lastDoc = snap.docs[snap.docs.length - 1];
+            pages++;
+            if (st) st.textContent = `Caricati ${all.length}…`;
+            if (!full || snap.docs.length < pageSize) break;
         }
-        if(BACKUP_COLS_WITH_WEEK.has(col)&&week) all=all.filter(d=>d.settimanaEtichetta===week);
-        _backupDocs=all; window.renderBackupPreview();
-        if(st) st.textContent=`${_backupDocs.length} documenti`+(full?' (completo)':' (anteprima)');
-        vampireToast(_backupDocs.length+' documenti pronti.','success');
-    }catch(err){ console.error(err); if(st) st.textContent='Errore'; vampireToast('Errore: '+(err.message||err),'error'); }
+        if (BACKUP_COLS_WITH_WEEK.has(col) && week) {
+            all = all.filter(d => d.settimanaEtichetta === week);
+        }
+        _backupDocs = all;
+        window.renderBackupPreview();
+        if (st) st.textContent = `${_backupDocs.length} documenti` + (full ? ' (completo)' : ' (anteprima)') + (week ? ` · ${week}` : '');
+        vampireToast(_backupDocs.length + ' documenti pronti.', 'success');
+    } catch (err) {
+        console.error('[backupLoad]', err);
+        if (st) st.textContent = 'Errore';
+        vampireToast('Errore caricamento: ' + (err.message || err), 'error');
+    }
 };
-window.renderBackupPreview=function(){
-    const thead=document.getElementById('backup-thead'), tbody=document.getElementById('backup-tbody');
-    if(!thead||!tbody) return;
-    if(!_backupDocs.length){ thead.innerHTML='<th>Anteprima</th>'; tbody.innerHTML='<tr><td style="opacity:0.5;text-align:center;padding:24px;">Nessun documento.</td></tr>'; return; }
-    const keyCount={}; _backupDocs.slice(0,40).forEach(d=>Object.keys(d).forEach(k=>{keyCount[k]=(keyCount[k]||0)+1;}));
-    const preferred=['id','timestamp','settimanaEtichetta','nome','vampiro','materiale','qty','azione','tipo','utente','dettagli','stato','grado','codice'];
-    const keys=[...new Set([...preferred.filter(k=>keyCount[k]),...Object.keys(keyCount).sort((a,b)=>keyCount[b]-keyCount[a])])].filter(k=>k!=='meta'&&k!=='userAgent'&&k!=='dataUrl').slice(0,8);
-    thead.innerHTML=keys.map(k=>`<th>${k}</th>`).join('');
-    tbody.innerHTML=_backupDocs.slice(0,100).map(docu=>'<tr>'+keys.map(k=>{
-        let v=docu[k]; if(v==null)v=''; else if(typeof v==='object')v=JSON.stringify(v).slice(0,80); else v=String(v);
-        if(k==='timestamp'&&/^\d{10,}$/.test(v)){ try{v=new Date(Number(v)).toLocaleString('it-IT');}catch(_){} }
-        return `<td style="text-align:left;max-width:160px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;">${String(v).replace(/</g,'&lt;').slice(0,60)}</td>`;
-    }).join('')+'</tr>').join('')+(_backupDocs.length>100?`<tr><td colspan="${keys.length}" style="opacity:0.6;text-align:center;">… +${_backupDocs.length-100} nell'export</td></tr>`:'');
+
+window.renderBackupPreview = function() {
+    const thead = document.getElementById('backup-thead');
+    const tbody = document.getElementById('backup-tbody');
+    if (!thead || !tbody) return;
+    if (!_backupDocs.length) {
+        thead.innerHTML = '<th>Anteprima</th>';
+        tbody.innerHTML = '<tr><td style="opacity:0.5;text-align:center;padding:24px;">Nessun documento.</td></tr>';
+        return;
+    }
+    const keyCount = {};
+    _backupDocs.slice(0, 40).forEach(d => {
+        Object.keys(d).forEach(k => { keyCount[k] = (keyCount[k] || 0) + 1; });
+    });
+    const preferred = ['id', 'timestamp', 'settimanaEtichetta', 'nome', 'vampiro', 'materiale', 'qty', 'azione', 'tipo', 'utente', 'dettagli', 'stato', 'grado', 'codice'];
+    const keys = [...new Set([
+        ...preferred.filter(k => keyCount[k]),
+        ...Object.keys(keyCount).sort((a, b) => keyCount[b] - keyCount[a])
+    ])].filter(k => k !== 'meta' && k !== 'userAgent' && k !== 'dataUrl').slice(0, 8);
+
+    thead.innerHTML = keys.map(k => `<th>${k}</th>`).join('');
+    tbody.innerHTML = _backupDocs.slice(0, 100).map(docu => {
+        return '<tr>' + keys.map(k => {
+            let v = docu[k];
+            if (v == null) v = '';
+            else if (typeof v === 'object') v = JSON.stringify(v).slice(0, 80);
+            else v = String(v);
+            if (k === 'timestamp' && /^\d{10,}$/.test(v)) {
+                try { v = new Date(Number(v)).toLocaleString('it-IT'); } catch (_) {}
+            }
+            return `<td style="text-align:left;max-width:160px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;">${String(v).replace(/</g, '&lt;').slice(0, 60)}</td>`;
+        }).join('') + '</tr>';
+    }).join('') + (_backupDocs.length > 100
+        ? `<tr><td colspan="${keys.length}" style="opacity:0.6;text-align:center;">… +${_backupDocs.length - 100} nell'export</td></tr>`
+        : '');
 };
-function _backupToCSV(rows){
-    if(!rows.length) return '';
-    const keys=[...new Set(rows.flatMap(r=>Object.keys(r)))].filter(k=>k!=='dataUrl'||rows.length<20);
-    const esc=v=>{ if(v==null)return '""'; if(typeof v==='object')v=JSON.stringify(v); return '"'+String(v).replace(/"/g,'""')+'"'; };
-    return '\uFEFF'+[keys.map(esc).join(',')].concat(rows.map(r=>keys.map(k=>esc(r[k])).join(','))).join('\n');
+
+function _backupToCSV(rows) {
+    if (!rows.length) return '';
+    const keys = [...new Set(rows.flatMap(r => Object.keys(r)))].filter(k => k !== 'dataUrl' || rows.length < 20);
+    const esc = (v) => {
+        if (v == null) return '""';
+        if (typeof v === 'object') v = JSON.stringify(v);
+        return '"' + String(v).replace(/"/g, '""') + '"';
+    };
+    return '\uFEFF' + [keys.map(esc).join(',')].concat(rows.map(r => keys.map(k => esc(r[k])).join(','))).join('\n');
 }
-window.backupDownloadCSV=function(){
-    if(!_backupDocs.length) return vampireToast('Carica prima i dati.','error');
-    const col=document.getElementById('backup-collection')?.value||'backup';
-    const week=document.getElementById('backup-week')?.value||'';
-    const blob=new Blob([_backupToCSV(_backupDocs)],{type:'text/csv;charset=utf-8'});
-    const a=document.createElement('a'); a.href=URL.createObjectURL(blob);
-    a.download=`backup-${col}${week?'-'+week:''}-${new Date().toISOString().slice(0,10)}.csv`; a.click(); URL.revokeObjectURL(a.href);
-    vampireToast(`CSV: ${_backupDocs.length} righe.`,'success');
+
+window.backupDownloadCSV = function() {
+    if (!_backupDocs.length) return vampireToast('Carica prima i dati.', 'error');
+    const col = document.getElementById('backup-collection')?.value || 'backup';
+    const week = document.getElementById('backup-week')?.value || '';
+    const blob = new Blob([_backupToCSV(_backupDocs)], { type: 'text/csv;charset=utf-8' });
+    const a = document.createElement('a');
+    a.href = URL.createObjectURL(blob);
+    a.download = `backup-${col}${week ? '-' + week : ''}-${new Date().toISOString().slice(0, 10)}.csv`;
+    a.click();
+    URL.revokeObjectURL(a.href);
+    vampireToast(`CSV: ${_backupDocs.length} righe.`, 'success');
 };
-window.backupDeleteFiltered=async function(){
-    if(!currentUser?.isAdmin) return vampireToast('Solo il gestore.','error');
-    if(!_backupDocs.length) return vampireToast('Carica prima i documenti.','error');
-    const col=document.getElementById('backup-collection')?.value||'';
-    const promptText=col==='membri'?'ELIMINA MEMBRI':'ELIMINA';
-    const conf=await Swal.fire({title:`Eliminare ${_backupDocs.length} documenti?`,html:`<p>Collezione: <strong style="color:#c5a059;">${col}</strong></p><p>Digita <strong>${promptText}</strong></p>`,input:'text',showCancelButton:true,confirmButtonColor:'#8b0000',background:'#111',color:'#fff'});
-    if(!conf.isConfirmed||conf.value!==promptText) return vampireToast('Annullato.','info');
-    const ids=_backupDocs.map(d=>d.id).filter(Boolean); let done=0;
-    const st=document.getElementById('backup-status');
-    try{
-        for(let i=0;i<ids.length;i+=400){
-            const chunk=ids.slice(i,i+400); const batch=writeBatch(db);
-            chunk.forEach(id=>batch.delete(doc(db,col,id))); await batch.commit(); done+=chunk.length;
-            if(st) st.textContent=`Eliminati ${done}/${ids.length}…`;
+
+window.backupDeleteFiltered = async function() {
+    if (!currentUser?.isAdmin) return vampireToast('Solo il gestore.', 'error');
+    if (!_backupDocs.length) return vampireToast('Carica prima i documenti.', 'error');
+    const col = document.getElementById('backup-collection')?.value || '';
+    const promptText = col === 'membri' ? 'ELIMINA MEMBRI' : 'ELIMINA';
+    const conf = await Swal.fire({
+        title: `Eliminare ${_backupDocs.length} documenti?`,
+        html: `<p>Collezione: <strong style="color:#c5a059;">${col}</strong></p><p>Digita <strong>${promptText}</strong></p>`,
+        input: 'text',
+        showCancelButton: true,
+        confirmButtonColor: '#8b0000',
+        background: '#111',
+        color: '#fff'
+    });
+    if (!conf.isConfirmed || conf.value !== promptText) return vampireToast('Annullato.', 'info');
+    const ids = _backupDocs.map(d => d.id).filter(Boolean);
+    let done = 0;
+    const st = document.getElementById('backup-status');
+    try {
+        for (let i = 0; i < ids.length; i += 400) {
+            const chunk = ids.slice(i, i + 400);
+            const batch = writeBatch(db);
+            chunk.forEach(id => batch.delete(doc(db, col, id)));
+            await batch.commit();
+            done += chunk.length;
+            if (st) st.textContent = `Eliminati ${done}/${ids.length}…`;
         }
-        const idSet=new Set(ids);
-        if(col==='vendite') vendite=(vendite||[]).filter(v=>!idSet.has(v.id));
-        if(col==='vendite_materiali') venditeMateriali=(venditeMateriali||[]).filter(v=>!idSet.has(v.id));
-        if(col==='system_logs') systemLogs=(systemLogs||[]).filter(v=>!idSet.has(v.id));
-        if(col==='logs') logs=(logs||[]).filter(v=>!idSet.has(v.id));
-        if(col==='saldo_logs') saldoLogs=(saldoLogs||[]).filter(v=>!idSet.has(v.id));
-        vampireToast(`Eliminati ${done} da ${col}.`,'success');
-        _backupDocs=[]; window.renderBackupPreview(); if(st) st.textContent=`Eliminati ${done}.`;
-    }catch(err){ vampireToast('Errore: '+(err.message||err)+(done?` (ok ${done})`:''),'error'); }
+        const idSet = new Set(ids);
+        if (col === 'vendite') vendite = (vendite || []).filter(v => !idSet.has(v.id));
+        if (col === 'vendite_materiali') venditeMateriali = (venditeMateriali || []).filter(v => !idSet.has(v.id));
+        if (col === 'system_logs') systemLogs = (systemLogs || []).filter(v => !idSet.has(v.id));
+        if (col === 'logs') logs = (logs || []).filter(v => !idSet.has(v.id));
+        if (col === 'saldo_logs') saldoLogs = (saldoLogs || []).filter(v => !idSet.has(v.id));
+        vampireToast(`Eliminati ${done} da ${col}.`, 'success');
+        _backupDocs = [];
+        window.renderBackupPreview();
+        if (st) st.textContent = `Eliminati ${done}.`;
+    } catch (err) {
+        vampireToast('Errore: ' + (err.message || err) + (done ? ` (ok ${done})` : ''), 'error');
+    }
 };
+
+console.info('[Backup] modulo attivo: onBackupCollectionChange, backupLoadPreview, initBackupPanel');
 
 // ========== LOG DI SISTEMA (UI + filtri) ==========
 function formatSystemLogDate(ts) {
