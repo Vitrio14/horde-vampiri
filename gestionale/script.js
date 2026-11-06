@@ -857,7 +857,7 @@ window.delDinamico = async (col, id) => {
     if(res.isConfirmed) {
         await deleteDoc(doc(db, col, id));
         applyLocalRemove(col, id);
-        logSystemEvent(\'dinamico\', 'elimina', `Rimosso elemento da ${col} (id ${id})`, { col, id });
+        logSystemEvent('dinamico', 'elimina', `Rimosso elemento da ${col} (id ${id})`, { col, id });
         vampireToast("Elemento rimosso correttamente.", "success");
     }
 };
