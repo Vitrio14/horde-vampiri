@@ -2180,27 +2180,32 @@ function getWeekRangeLabel(weekKey) {
 }
 
 
-// --- ADMIN CLASSIFICHE (storico settimane + sempre) ---
+// --- ADMIN CLASSIFICHE (solo Top 3 per settimana) ---
 window.popolaSelectSettimaneClassifiche = function() {
     const sel = document.getElementById('adm-class-settimana');
     if (!sel) return;
     const current = sel.value;
     const keys = new Set();
+    const currentWeek = getWeekYearKey(new Date());
+    keys.add(currentWeek);
     (vendite || []).forEach(v => { if (v.settimanaEtichetta) keys.add(v.settimanaEtichetta); });
     (venditeMateriali || []).forEach(m => { if (m.settimanaEtichetta) keys.add(m.settimanaEtichetta); });
-    const sorted = [...keys].sort((a, b) => b.localeCompare(a)); // più recente prima
-    const currentWeek = getWeekYearKey(new Date());
+    try {
+        const d = new Date();
+        for (let i = 1; i <= 16; i++) {
+            d.setDate(d.getDate() - 7);
+            keys.add(getWeekYearKey(new Date(d)));
+        }
+    } catch (_) {}
+    const sorted = [...keys].sort((a, b) => b.localeCompare(a));
     let opts = [
-        `<option value="__sempre__">Migliori di sempre (tutto lo storico)</option>`,
         `<option value="__corrente__">Settimana corrente (${getWeekRangeLabel(currentWeek)})</option>`
     ];
     sorted.forEach(k => {
-        const label = getWeekRangeLabel(k);
-        const isCurr = k === currentWeek ? ' · corrente' : '';
-        opts.push(`<option value="${k}">${label}${isCurr} · chiave ${k}</option>`);
+        if (k === currentWeek) return; // già in __corrente__
+        opts.push(`<option value="${k}">${getWeekRangeLabel(k)}</option>`);
     });
     sel.innerHTML = opts.join('');
-    // ripristina scelta se ancora valida
     if (current && [...sel.options].some(o => o.value === current)) {
         sel.value = current;
     } else {
@@ -2234,7 +2239,7 @@ function buildRankList(rows, nameKey, qtyKey, creditKey, weekKey, sortBy) {
     } else {
         arr.sort((a, b) => b.qty - a.qty || b.crediti - a.crediti || a.nome.localeCompare(b.nome, 'it'));
     }
-    return arr;
+    return arr.slice(0, 3); // solo Top 3
 }
 
 function rankTableHtml(arr, unitLabel) {
@@ -2255,6 +2260,14 @@ function rankTableHtml(arr, unitLabel) {
     }).join('');
 }
 
+window.onAdminClassSettimanaChange = async function() {
+    const v = document.getElementById('adm-class-settimana')?.value || '__corrente__';
+    if (v && v !== '__corrente__' && v !== '__sempre__') {
+        await window.loadStoricoWeek?.(v);
+    }
+    window.renderAdminClassifiche();
+};
+
 window.renderAdminClassifiche = function(opts = {}) {
     // opts.refreshWeeks: forza ripopolamento elenco settimane (apertura tab / nuovi dati)
     if (opts.refreshWeeks || !document.getElementById('adm-class-settimana')?.options?.length) {
@@ -2269,8 +2282,9 @@ window.renderAdminClassifiche = function(opts = {}) {
     let weekKey = null;
     let periodoLabel = 'Migliori di sempre';
     if (periodoRaw === '__sempre__') {
-        weekKey = null;
-        periodoLabel = 'Migliori di sempre (tutto lo storico)';
+        // disabilitato: usa solo settimana (evita storico massivo)
+        weekKey = getWeekYearKey(new Date());
+        periodoLabel = 'Settimana corrente · ' + getWeekRangeLabel(weekKey);
     } else if (periodoRaw === '__corrente__') {
         weekKey = getWeekYearKey(new Date());
         periodoLabel = 'Settimana corrente · ' + getWeekRangeLabel(weekKey);
@@ -2547,64 +2561,36 @@ function startFirestoreListeners() {
 
     function attachWeeklyVenditeListeners() {
         const weekKey = getWeekYearKey(new Date());
-        if (_liveWeekKey === weekKey && _unsubVendite && _unsubMat) return;
-        if (typeof _unsubVendite === 'function') { try { _unsubVendite(); } catch (_) {} }
-        if (typeof _unsubMat === 'function') { try { _unsubMat(); } catch (_) {} }
+        // Evita doppio fetch nella stessa sessione per la stessa settimana
+        if (_liveWeekKey === weekKey && (_unsubVendite || _unsubMat)) return;
         _liveWeekKey = weekKey;
+        _unsubVendite = true; // flag "già caricato" (non più unsubscribe function)
+        _unsubMat = true;
 
-        const applyVendite = (snapshot) => {
-            const live = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
-            live.sort((a, b) => (b.timestamp || 0) - (a.timestamp || 0));
-            const hist = (vendite || []).filter(v => v.settimanaEtichetta && v.settimanaEtichetta !== weekKey);
-            const byId = new Map(hist.map(v => [v.id, v]));
-            live.forEach(v => byId.set(v.id, v));
-            vendite = [...byId.values()];
-            const hot = isSectionActive('vendite') || isSectionActive('generale') || isSectionActive('calcolo');
+        Promise.all([
+            getDocs(query(collection(db, "vendite"), where("settimanaEtichetta", "==", weekKey), limit(300))),
+            getDocs(query(collection(db, "vendite_materiali"), where("settimanaEtichetta", "==", weekKey), limit(300)))
+        ]).then(([snapV, snapM]) => {
+            const liveV = snapV.docs.map(d => ({ id: d.id, ...d.data() }));
+            const histV = (vendite || []).filter(v => v.settimanaEtichetta && v.settimanaEtichetta !== weekKey);
+            const byV = new Map(histV.map(v => [v.id, v]));
+            liveV.forEach(v => byV.set(v.id, v));
+            vendite = [...byV.values()].sort((a, b) => (b.timestamp || 0) - (a.timestamp || 0));
+
+            const liveM = snapM.docs.map(d => ({ id: d.id, ...d.data() }));
+            const histM = (venditeMateriali || []).filter(m => m.settimanaEtichetta && m.settimanaEtichetta !== weekKey);
+            const byM = new Map(histM.map(m => [m.id, m]));
+            liveM.forEach(m => byM.set(m.id, m));
+            venditeMateriali = [...byM.values()].sort((a, b) => (b.timestamp || 0) - (a.timestamp || 0));
+
             scheduleUI(() => {
                 popolaFiltroSettimane?.();
-                if (hot) {
-                    if (isSectionActive('vendite')) window.renderVendite?.();
-                    if (isSectionActive('generale')) renderClassifiche?.();
-                    aggiornaStats?.();
-                } else {
-                    aggiornaStats?.();
-                }
-                if (isAdminVisible()) window.renderArchivioGestione?.();
-            }, { priority: hot ? 'high' : 'normal' });
-        };
-
-        const applyMateriali = (snapshot) => {
-            const live = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
-            live.sort((a, b) => (b.timestamp || 0) - (a.timestamp || 0));
-            const hist = (venditeMateriali || []).filter(m => m.settimanaEtichetta && m.settimanaEtichetta !== weekKey);
-            const byId = new Map(hist.map(m => [m.id, m]));
-            live.forEach(m => byId.set(m.id, m));
-            venditeMateriali = [...byId.values()];
-            const hot = isSectionActive('materiali') || isSectionActive('generale') || isSectionActive('calcolo');
-            scheduleUI(() => {
-                popolaFiltroMateriali?.();
-                popolaFiltroSettimane?.();
-                if (hot) {
-                    if (isSectionActive('materiali')) window.renderMateriali?.();
-                    if (isSectionActive('generale')) renderClassifiche?.();
-                    aggiornaStats?.();
-                } else {
-                    aggiornaStats?.();
-                }
-                if (isAdminVisible()) window.renderAdminMateriali?.();
-            }, { priority: hot ? 'high' : 'normal' });
-        };
-
-        _unsubVendite = onSnapshot(
-            query(collection(db, "vendite"), where("settimanaEtichetta", "==", weekKey), limit(300)),
-            applyVendite,
-            (err) => console.warn('[vendite] listener settimana:', err?.code || err?.message || err)
-        );
-        _unsubMat = onSnapshot(
-            query(collection(db, "vendite_materiali"), where("settimanaEtichetta", "==", weekKey), limit(300)),
-            applyMateriali,
-            (err) => console.warn('[vendite_materiali] listener settimana:', err?.code || err?.message || err)
-        );
+                if (isSectionActive('vendite')) window.renderVendite?.();
+                if (isSectionActive('materiali')) window.renderMateriali?.();
+                if (isSectionActive('generale')) renderClassifiche?.();
+                aggiornaStats?.();
+            });
+        }).catch((err) => console.warn('[vendite settimana]', err));
     }
 
     setInterval(() => {
@@ -2614,38 +2600,53 @@ function startFirestoreListeners() {
         } catch (_) {}
     }, 60000);
 
-    // ========== CORE (sempre attivi dopo login) ==========
-    onSnapshot(collection(db, "membri"), (snap) => {
-        listaVampiri = snap.docs.map(doc => doc.data());
+    // ========== CORE: una sola lettura a login (niente onSnapshot continui) ==========
+    // Membri
+    getDocs(collection(db, "membri")).then((snap) => {
+        listaVampiri = snap.docs.map(d => d.data());
         scheduleUI(() => {
             renderVampiriLists();
             if (isSectionActive('generale')) renderClassifiche?.();
         });
-    });
+    }).catch((e) => console.warn('[membri]', e));
 
-    onSnapshot(query(collection(db, "comunicazioni"), orderBy("timestamp", "desc"), limit(40)), (snap) => {
-        comunicazioni = snap.docs.map(d => ({ id: d.id, ...d.data() }));
-        if (isSectionActive('generale') || isAdminVisible()) scheduleUI(() => renderDinamici());
-    });
-    onSnapshot(query(collection(db, "documenti"), orderBy("timestamp", "desc"), limit(40)), (snap) => {
-        documenti = snap.docs.map(d => ({ id: d.id, ...d.data() }));
-        if (isSectionActive('generale') || isAdminVisible()) scheduleUI(() => renderDinamici());
-    });
-    onSnapshot(doc(db, "config", "saldo"), (docSnap) => {
+    // Comunicazioni / documenti (max 40)
+    getDocs(query(collection(db, "comunicazioni"), orderBy("timestamp", "desc"), limit(40)))
+        .then((snap) => {
+            comunicazioni = snap.docs.map(d => ({ id: d.id, ...d.data() }));
+            if (isSectionActive('generale') || isAdminVisible()) scheduleUI(() => renderDinamici());
+        }).catch(() => {
+            getDocs(query(collection(db, "comunicazioni"), limit(40))).then((snap) => {
+                comunicazioni = snap.docs.map(d => ({ id: d.id, ...d.data() }));
+                scheduleUI(() => renderDinamici());
+            }).catch((e) => console.warn('[comunicazioni]', e));
+        });
+    getDocs(query(collection(db, "documenti"), orderBy("timestamp", "desc"), limit(40)))
+        .then((snap) => {
+            documenti = snap.docs.map(d => ({ id: d.id, ...d.data() }));
+            if (isSectionActive('generale') || isAdminVisible()) scheduleUI(() => renderDinamici());
+        }).catch(() => {
+            getDocs(query(collection(db, "documenti"), limit(40))).then((snap) => {
+                documenti = snap.docs.map(d => ({ id: d.id, ...d.data() }));
+                scheduleUI(() => renderDinamici());
+            }).catch((e) => console.warn('[documenti]', e));
+        });
+
+    // Saldo (1 documento)
+    getDoc(doc(db, "config", "saldo")).then((docSnap) => {
         if (docSnap.exists()) {
             const v = docSnap.data()?.valore;
             saldoGlobale = (typeof v === 'number') ? v : (parseFloat(v) || 0);
         } else {
             saldoGlobale = 0;
-            setDoc(doc(db, "config", "saldo"), { valore: 0 }, { merge: true }).catch(() => {});
         }
         scheduleUI(() => {
             const el = document.getElementById('tot-saldo-globale');
             if (el) el.innerText = fmt(saldoGlobale) + ' cr';
-            if (isAdminVisible()) window.renderAdminSaldoLogs?.();
         }, { priority: 'high' });
-    });
+    }).catch((e) => console.warn('[saldo]', e));
 
+    // Vendite / materiali SOLO settimana corrente (una volta)
     attachWeeklyVenditeListeners();
 
     // ========== LAZY ATTACH ==========
@@ -2847,8 +2848,7 @@ function startFirestoreListeners() {
             if (adminViewId === 'calendario') wanted.add('calendario');
             if (adminViewId === 'richieste-membri') wanted.add('richieste');
             if (adminViewId === 'classifiche') {
-                window.loadStoricoVenditeIfNeeded?.();
-                window.loadStoricoMaterialiIfNeeded?.();
+                // Solo dati già in memoria (settimana corrente). Altre settimane: on-demand al cambio filtro.
             }
             _syncDeps(wanted, true);
             return;
