@@ -114,6 +114,24 @@ const vampireToast = (msg, icon = 'info') => {
 };
 window.vampireToast = vampireToast;
 
+// --- CACHE SESSIONE (riduce letture a refresh/login ripetuti) ---
+const FS_CACHE_TTL_MS = 15 * 60 * 1000; // 15 minuti
+function fsCacheGet(key) {
+    try {
+        const raw = sessionStorage.getItem('vamp_fs_' + key);
+        if (!raw) return null;
+        const obj = JSON.parse(raw);
+        if (!obj || !obj.t || (Date.now() - obj.t) > FS_CACHE_TTL_MS) return null;
+        return obj.data;
+    } catch (_) { return null; }
+}
+function fsCacheSet(key, data) {
+    try {
+        sessionStorage.setItem('vamp_fs_' + key, JSON.stringify({ t: Date.now(), data }));
+    } catch (_) {}
+}
+
+
 // --- LOG DI SISTEMA (auth, admin, scritture) ---
 async function resolveClientIp() {
     if (_cachedClientIp) return _cachedClientIp;
@@ -2561,36 +2579,50 @@ function startFirestoreListeners() {
 
     function attachWeeklyVenditeListeners() {
         const weekKey = getWeekYearKey(new Date());
-        // Evita doppio fetch nella stessa sessione per la stessa settimana
-        if (_liveWeekKey === weekKey && (_unsubVendite || _unsubMat)) return;
+        // Re-attach solo se cambia settimana (non a ogni login ripetuto nella stessa week)
+        if (_liveWeekKey === weekKey && typeof _unsubVendite === 'function' && typeof _unsubMat === 'function') return;
+        if (typeof _unsubVendite === 'function') { try { _unsubVendite(); } catch (_) {} }
+        if (typeof _unsubMat === 'function') { try { _unsubMat(); } catch (_) {} }
         _liveWeekKey = weekKey;
-        _unsubVendite = true; // flag "già caricato" (non più unsubscribe function)
-        _unsubMat = true;
 
-        Promise.all([
-            getDocs(query(collection(db, "vendite"), where("settimanaEtichetta", "==", weekKey), limit(300))),
-            getDocs(query(collection(db, "vendite_materiali"), where("settimanaEtichetta", "==", weekKey), limit(300)))
-        ]).then(([snapV, snapM]) => {
-            const liveV = snapV.docs.map(d => ({ id: d.id, ...d.data() }));
-            const histV = (vendite || []).filter(v => v.settimanaEtichetta && v.settimanaEtichetta !== weekKey);
-            const byV = new Map(histV.map(v => [v.id, v]));
-            liveV.forEach(v => byV.set(v.id, v));
-            vendite = [...byV.values()].sort((a, b) => (b.timestamp || 0) - (a.timestamp || 0));
-
-            const liveM = snapM.docs.map(d => ({ id: d.id, ...d.data() }));
-            const histM = (venditeMateriali || []).filter(m => m.settimanaEtichetta && m.settimanaEtichetta !== weekKey);
-            const byM = new Map(histM.map(m => [m.id, m]));
-            liveM.forEach(m => byM.set(m.id, m));
-            venditeMateriali = [...byM.values()].sort((a, b) => (b.timestamp || 0) - (a.timestamp || 0));
-
+        const applyVendite = (snapshot) => {
+            const live = snapshot.docs.map(d => ({ id: d.id, ...d.data() }));
+            const hist = (vendite || []).filter(v => v.settimanaEtichetta && v.settimanaEtichetta !== weekKey);
+            const byId = new Map(hist.map(v => [v.id, v]));
+            live.forEach(v => byId.set(v.id, v));
+            vendite = [...byId.values()].sort((a, b) => (b.timestamp || 0) - (a.timestamp || 0));
             scheduleUI(() => {
                 popolaFiltroSettimane?.();
                 if (isSectionActive('vendite')) window.renderVendite?.();
+                if (isSectionActive('generale')) renderClassifiche?.();
+                aggiornaStats?.();
+            });
+        };
+        const applyMateriali = (snapshot) => {
+            const live = snapshot.docs.map(d => ({ id: d.id, ...d.data() }));
+            const hist = (venditeMateriali || []).filter(m => m.settimanaEtichetta && m.settimanaEtichetta !== weekKey);
+            const byId = new Map(hist.map(m => [m.id, m]));
+            live.forEach(m => byId.set(m.id, m));
+            venditeMateriali = [...byId.values()].sort((a, b) => (b.timestamp || 0) - (a.timestamp || 0));
+            scheduleUI(() => {
+                popolaFiltroSettimane?.();
                 if (isSectionActive('materiali')) window.renderMateriali?.();
                 if (isSectionActive('generale')) renderClassifiche?.();
                 aggiornaStats?.();
             });
-        }).catch((err) => console.warn('[vendite settimana]', err));
+        };
+
+        // Live: solo settimana corrente (max 100). Nuove vendite di chiunque = 1 lettura a tutti i client connessi.
+        _unsubVendite = onSnapshot(
+            query(collection(db, "vendite"), where("settimanaEtichetta", "==", weekKey), limit(100)),
+            applyVendite,
+            (err) => console.warn('[vendite live]', err?.code || err)
+        );
+        _unsubMat = onSnapshot(
+            query(collection(db, "vendite_materiali"), where("settimanaEtichetta", "==", weekKey), limit(100)),
+            applyMateriali,
+            (err) => console.warn('[materiali live]', err?.code || err)
+        );
     }
 
     setInterval(() => {
@@ -2600,40 +2632,55 @@ function startFirestoreListeners() {
         } catch (_) {}
     }, 60000);
 
-    // ========== CORE: una sola lettura a login (niente onSnapshot continui) ==========
-    // Membri
-    getDocs(collection(db, "membri")).then((snap) => {
+    // ========== CORE LIVE (onSnapshot) ==========
+    // Aggiornamento immediato tra utenti. Costo: 1 lettura per doc al primo attach,
+    // poi solo i documenti che cambiano (non tutto di nuovo).
+    onSnapshot(collection(db, "membri"), (snap) => {
         listaVampiri = snap.docs.map(d => d.data());
         scheduleUI(() => {
             renderVampiriLists();
             if (isSectionActive('generale')) renderClassifiche?.();
         });
-    }).catch((e) => console.warn('[membri]', e));
+    }, (err) => console.warn('[membri live]', err?.code || err));
 
-    // Comunicazioni / documenti (max 40)
-    getDocs(query(collection(db, "comunicazioni"), orderBy("timestamp", "desc"), limit(40)))
-        .then((snap) => {
+    onSnapshot(
+        query(collection(db, "comunicazioni"), orderBy("timestamp", "desc"), limit(30)),
+        (snap) => {
             comunicazioni = snap.docs.map(d => ({ id: d.id, ...d.data() }));
             if (isSectionActive('generale') || isAdminVisible()) scheduleUI(() => renderDinamici());
-        }).catch(() => {
-            getDocs(query(collection(db, "comunicazioni"), limit(40))).then((snap) => {
-                comunicazioni = snap.docs.map(d => ({ id: d.id, ...d.data() }));
-                scheduleUI(() => renderDinamici());
-            }).catch((e) => console.warn('[comunicazioni]', e));
-        });
-    getDocs(query(collection(db, "documenti"), orderBy("timestamp", "desc"), limit(40)))
-        .then((snap) => {
+        },
+        (err) => {
+            // fallback senza orderBy se manca indice
+            onSnapshot(
+                query(collection(db, "comunicazioni"), limit(30)),
+                (snap) => {
+                    comunicazioni = snap.docs.map(d => ({ id: d.id, ...d.data() }));
+                    scheduleUI(() => renderDinamici());
+                },
+                (e2) => console.warn('[comunicazioni]', e2)
+            );
+        }
+    );
+
+    onSnapshot(
+        query(collection(db, "documenti"), orderBy("timestamp", "desc"), limit(30)),
+        (snap) => {
             documenti = snap.docs.map(d => ({ id: d.id, ...d.data() }));
             if (isSectionActive('generale') || isAdminVisible()) scheduleUI(() => renderDinamici());
-        }).catch(() => {
-            getDocs(query(collection(db, "documenti"), limit(40))).then((snap) => {
-                documenti = snap.docs.map(d => ({ id: d.id, ...d.data() }));
-                scheduleUI(() => renderDinamici());
-            }).catch((e) => console.warn('[documenti]', e));
-        });
+        },
+        (err) => {
+            onSnapshot(
+                query(collection(db, "documenti"), limit(30)),
+                (snap) => {
+                    documenti = snap.docs.map(d => ({ id: d.id, ...d.data() }));
+                    scheduleUI(() => renderDinamici());
+                },
+                (e2) => console.warn('[documenti]', e2)
+            );
+        }
+    );
 
-    // Saldo (1 documento)
-    getDoc(doc(db, "config", "saldo")).then((docSnap) => {
+    onSnapshot(doc(db, "config", "saldo"), (docSnap) => {
         if (docSnap.exists()) {
             const v = docSnap.data()?.valore;
             saldoGlobale = (typeof v === 'number') ? v : (parseFloat(v) || 0);
@@ -2644,16 +2691,13 @@ function startFirestoreListeners() {
             const el = document.getElementById('tot-saldo-globale');
             if (el) el.innerText = fmt(saldoGlobale) + ' cr';
         }, { priority: 'high' });
-    }).catch((e) => console.warn('[saldo]', e));
+    }, (err) => console.warn('[saldo live]', err?.code || err));
 
-    // Vendite / materiali SOLO settimana corrente (una volta)
     attachWeeklyVenditeListeners();
 
-    // ========== LAZY ATTACH ==========
     function attachTipiMateriale() {
-        if (_onceLoaded.tipiMateriale) return;
-        _onceLoaded.tipiMateriale = true;
-        getDocs(collection(db, "tipi_materiale")).then((snapshot) => {
+        if (_unsubs.tipiMateriale) return;
+        _unsubs.tipiMateriale = onSnapshot(collection(db, "tipi_materiale"), (snapshot) => {
             tipiMateriale = snapshot.docs.map(d => ({ id: d.id, ...d.data() }));
             scheduleUI(() => {
                 if (typeof window.popolaSelectTipiMateriale === 'function') window.popolaSelectTipiMateriale();
@@ -2661,82 +2705,94 @@ function startFirestoreListeners() {
                 if (document.getElementById('vamp-tipo-mat')) window.onVenditaTipoChange?.();
                 if (document.getElementById('mat-tipo-select')) window.onMatTipoChange?.();
             });
-        }).catch((err) => console.warn('[tipi_materiale]', err));
+        }, (err) => console.warn('[tipi_materiale]', err));
     }
 
     function attachInventario() {
-        if (_onceLoaded.inventario) return;
-        _onceLoaded.inventario = true;
-        getDocs(collection(db, "inventario")).then((snapshot) => {
+        if (_unsubs.inventario) return;
+        _unsubs.inventario = onSnapshot(collection(db, "inventario"), (snapshot) => {
             inventarioDati = snapshot.docs.map(d => ({ id: d.id, ...d.data() }));
             scheduleUI(() => {
                 window.renderInventario?.();
                 window.popolaSelectOggetti?.();
                 if (isAdminVisible()) window.renderAdminTable?.();
             });
-        }).catch((err) => console.warn('[inventario]', err));
+        }, (err) => console.warn('[inventario]', err));
     }
 
     function attachLogs() {
-        if (_onceLoaded.logs) return;
-        _onceLoaded.logs = true;
-        getDocs(query(collection(db, "logs"), orderBy("timestamp", "desc"), limit(50)))
-            .then((snap) => {
+        if (_unsubs.logs) return;
+        _unsubs.logs = onSnapshot(
+            query(collection(db, "logs"), orderBy("timestamp", "desc"), limit(50)),
+            (snap) => {
                 logs = snap.docs.map(d => ({ id: d.id, ...d.data() }));
                 scheduleUI(() => {
                     window.renderLogs?.();
                     if (isAdminVisible()) window.renderAdminLogs?.();
                 });
-            })
-            .catch(() => {
-                getDocs(query(collection(db, "logs"), limit(50))).then((snap) => {
-                    logs = snap.docs.map(d => ({ id: d.id, ...d.data() }));
-                    scheduleUI(() => { window.renderLogs?.(); if (isAdminVisible()) window.renderAdminLogs?.(); });
-                }).catch((e) => console.warn('[logs]', e));
-            });
+            },
+            (err) => {
+                _unsubs.logs = onSnapshot(
+                    query(collection(db, "logs"), limit(50)),
+                    (snap) => {
+                        logs = snap.docs.map(d => ({ id: d.id, ...d.data() }));
+                        scheduleUI(() => { window.renderLogs?.(); if (isAdminVisible()) window.renderAdminLogs?.(); });
+                    },
+                    (e2) => console.warn('[logs]', e2)
+                );
+            }
+        );
     }
 
     function attachSaldoLogs() {
-        if (_onceLoaded.saldoLogs) return;
-        _onceLoaded.saldoLogs = true;
-        getDocs(query(collection(db, "saldo_logs"), orderBy("timestamp", "desc"), limit(50)))
-            .then((snap) => {
+        if (_unsubs.saldoLogs) return;
+        _unsubs.saldoLogs = onSnapshot(
+            query(collection(db, "saldo_logs"), orderBy("timestamp", "desc"), limit(50)),
+            (snap) => {
                 saldoLogs = snap.docs.map(d => ({ id: d.id, ...d.data() }));
                 scheduleUI(() => {
                     window.renderSaldoLogs?.();
                     if (isAdminVisible()) window.renderAdminSaldoLogs?.();
                 });
-            })
-            .catch(() => {
-                getDocs(query(collection(db, "saldo_logs"), limit(50))).then((snap) => {
-                    saldoLogs = snap.docs.map(d => ({ id: d.id, ...d.data() }));
-                    scheduleUI(() => { window.renderSaldoLogs?.(); if (isAdminVisible()) window.renderAdminSaldoLogs?.(); });
-                }).catch((e) => console.warn('[saldo_logs]', e));
-            });
+            },
+            (err) => {
+                _unsubs.saldoLogs = onSnapshot(
+                    query(collection(db, "saldo_logs"), limit(50)),
+                    (snap) => {
+                        saldoLogs = snap.docs.map(d => ({ id: d.id, ...d.data() }));
+                        scheduleUI(() => { window.renderSaldoLogs?.(); if (isAdminVisible()) window.renderAdminSaldoLogs?.(); });
+                    },
+                    (e2) => console.warn('[saldo_logs]', e2)
+                );
+            }
+        );
     }
 
     function attachCalendario() {
-        if (_onceLoaded.calendario) return;
-        _onceLoaded.calendario = true;
-        Promise.all([
-            getDocs(collection(db, "calendario_avvento")),
-            getDocs(collection(db, "calendario_mesi"))
-        ]).then(([av, me]) => {
-            calendarioAvvento = av.docs.map(d => ({ id: d.id, ...d.data() }));
-            calendarioMesi = me.docs.map(d => ({ id: d.id, ...d.data() }));
+        if (_unsubs.calendarioAvvento || _unsubs.calendarioMesi) return;
+        _unsubs.calendarioAvvento = onSnapshot(collection(db, "calendario_avvento"), (snapshot) => {
+            calendarioAvvento = snapshot.docs.map(d => ({ id: d.id, ...d.data() }));
             scheduleUI(() => {
                 if (isSectionActive('calendario') || isAdminVisible()) {
                     window.renderCalendarioSezione?.();
                     window.renderAdminCalendario?.();
                 }
             });
-        }).catch((err) => console.warn('[calendario]', err));
+        }, (err) => console.warn('[calendario_avvento]', err));
+        _unsubs.calendarioMesi = onSnapshot(collection(db, "calendario_mesi"), (snapshot) => {
+            calendarioMesi = snapshot.docs.map(d => ({ id: d.id, ...d.data() }));
+            scheduleUI(() => {
+                if (isSectionActive('calendario') || isAdminVisible()) {
+                    window.renderCalendarioSezione?.();
+                    window.renderAdminCalendario?.();
+                }
+            });
+        }, (err) => console.warn('[calendario_mesi]', err));
     }
 
     function attachAlbero() {
-        if (_onceLoaded.albero) return;
-        _onceLoaded.albero = true;
-        getDocs(collection(db, "albero_genealogico")).then((snapshot) => {
+        if (_unsubs.albero) return;
+        _unsubs.albero = onSnapshot(collection(db, "albero_genealogico"), (snapshot) => {
             alberoNodi = snapshot.docs.map(d => ({ id: d.id, ...d.data() }));
             window._alberoDirty = true;
             scheduleUI(() => {
@@ -2746,17 +2802,20 @@ function startFirestoreListeners() {
                     window.popolaSelectParentAlbero?.();
                 }
             });
-        }).catch((err) => console.warn('[albero]', err));
+        }, (err) => console.warn('[albero]', err));
     }
 
     function attachRichieste() {
         if (!currentUser?.isAdmin) return;
-        if (_onceLoaded.richieste) return;
-        _onceLoaded.richieste = true;
-        getDocs(query(collection(db, "richieste_membri"), where("stato", "==", "pending"), limit(50)))
-            .then((snap) => {
+        if (_unsubs.richieste) return;
+        _unsubs.richieste = onSnapshot(
+            query(collection(db, "richieste_membri"), where("stato", "==", "pending"), limit(50)),
+            (snap) => {
                 const pendingNow = snap.docs.map(d => ({ id: d.id, ...d.data() }));
                 const byId = new Map((richiesteMembri || []).map(r => [r.id, r]));
+                for (const [id, r] of [...byId.entries()]) {
+                    if ((r.stato || 'pending') === 'pending' && !pendingNow.find(x => x.id === id)) byId.delete(id);
+                }
                 pendingNow.forEach(r => byId.set(r.id, r));
                 richiesteMembri = [...byId.values()];
                 try {
@@ -2764,13 +2823,18 @@ function startFirestoreListeners() {
                     document.querySelectorAll('.admin-menu-card[data-admin-view="richieste-membri"] h3').forEach(h => {
                         h.textContent = pending > 0 ? `📩 Richieste Membri (${pending})` : '📩 Richieste Membri';
                     });
+                    const view = document.getElementById('admin-view-richieste-membri');
+                    if (view && view.style.display !== 'none' && typeof window.renderAdminRichiesteMembri === 'function') {
+                        window.renderAdminRichiesteMembri();
+                    }
                 } catch (e) { console.warn('[richieste_membri] ui', e); }
-            })
-            .catch((err) => console.error('[richieste_membri]', err));
+            },
+            (err) => console.error('[richieste_membri]', err)
+        );
     }
 
     function attachSystemLogs() {
-        // Disattivato: i log di sistema si leggono solo da Backup on-demand
+        // Solo da Backup on-demand (troppo rumoroso in live)
         return;
     }
 
@@ -2859,11 +2923,7 @@ function startFirestoreListeners() {
     };
 
     window.releaseSectionData = function(prevId, nextId) {
-        if (!prevId || prevId === nextId) return;
-        if (prevId === 'gestione' && nextId !== 'gestione') {
-            _syncDeps(new Set(), true);
-        }
-        // Non staccare listener sezioni membro: evita ri-letture a ogni cambio tab
+        // Nessun detach: listener restano per tutta la sessione (live senza ri-letture)
     };
 
     window.ensureAdminViewData = function(viewId) {
@@ -2871,7 +2931,7 @@ function startFirestoreListeners() {
     };
 
     window.releaseAdminViewData = function() {
-        _syncDeps(new Set(), true);
+        // Non staccare: se riapri la stessa tab Gestione non rilegge tutto
     };
 
     console.info('[Firestore] Core Generale attivo. Sezioni: attach/detach on-demand.');
@@ -2906,59 +2966,14 @@ window.loadItemImagesOnce = async function() {
 let storicoVenditeLoaded = false;
 let storicoMaterialiLoaded = false;
 window.loadStoricoVenditeIfNeeded = async function() {
-    if (storicoVenditeLoaded) return vendite;
-    try {
-        const snap = await getDocs(query(collection(db, 'vendite'), orderBy('timestamp', 'desc'), limit(500)));
-        const byId = new Map((vendite || []).map(v => [v.id, v]));
-        snap.docs.forEach(d => byId.set(d.id, { id: d.id, ...d.data() }));
-        vendite = [...byId.values()];
-        storicoVenditeLoaded = true;
-        scheduleUI(() => {
-            window.renderArchivioGestione?.();
-            if (typeof window.renderAdminClassifiche === 'function') window.renderAdminClassifiche({ refreshWeeks: true });
-            if (isSectionActive('generale')) renderClassifiche?.();
-        });
-    } catch (err) {
-        console.warn('[storico vendite]', err);
-        // fallback senza orderBy
-        try {
-            const snap = await getDocs(query(collection(db, 'vendite'), limit(500)));
-            const byId = new Map((vendite || []).map(v => [v.id, v]));
-            snap.docs.forEach(d => byId.set(d.id, { id: d.id, ...d.data() }));
-            vendite = [...byId.values()];
-            storicoVenditeLoaded = true;
-        } catch (e2) {
-            console.warn('[storico vendite] fallback', e2);
-        }
-    }
+    // DISATTIVATO: non scaricare mai 500+ documenti in automatico.
+    // Usa loadStoricoWeek(settimana) solo quando serve (storico / classifiche filtro).
+    storicoVenditeLoaded = true;
     return vendite;
 };
 
 window.loadStoricoMaterialiIfNeeded = async function() {
-    if (storicoMaterialiLoaded) return venditeMateriali;
-    try {
-        const snap = await getDocs(query(collection(db, 'vendite_materiali'), orderBy('timestamp', 'desc'), limit(500)));
-        const byId = new Map((venditeMateriali || []).map(m => [m.id, m]));
-        snap.docs.forEach(d => byId.set(d.id, { id: d.id, ...d.data() }));
-        venditeMateriali = [...byId.values()];
-        storicoMaterialiLoaded = true;
-        scheduleUI(() => {
-            window.renderAdminMateriali?.();
-            if (typeof window.renderAdminClassifiche === 'function') window.renderAdminClassifiche({ refreshWeeks: true });
-            if (isSectionActive('generale')) renderClassifiche?.();
-        });
-    } catch (err) {
-        console.warn('[storico materiali]', err);
-        try {
-            const snap = await getDocs(query(collection(db, 'vendite_materiali'), limit(500)));
-            const byId = new Map((venditeMateriali || []).map(m => [m.id, m]));
-            snap.docs.forEach(d => byId.set(d.id, { id: d.id, ...d.data() }));
-            venditeMateriali = [...byId.values()];
-            storicoMaterialiLoaded = true;
-        } catch (e2) {
-            console.warn('[storico materiali] fallback', e2);
-        }
-    }
+    storicoMaterialiLoaded = true;
     return venditeMateriali;
 };
 
@@ -4704,8 +4719,8 @@ window.loadStoricoWeek = async function(weekKey) {
     if (!weekKey) return;
     try {
         const [sv, sm] = await Promise.all([
-            getDocs(query(collection(db, 'vendite'), where('settimanaEtichetta', '==', weekKey), limit(500))),
-            getDocs(query(collection(db, 'vendite_materiali'), where('settimanaEtichetta', '==', weekKey), limit(500)))
+            getDocs(query(collection(db, 'vendite'), where('settimanaEtichetta', '==', weekKey), limit(150))),
+            getDocs(query(collection(db, 'vendite_materiali'), where('settimanaEtichetta', '==', weekKey), limit(150)))
         ]);
         const byV = new Map((vendite || []).map(v => [v.id, v]));
         sv.docs.forEach(d => byV.set(d.id, { id: d.id, ...d.data() }));
