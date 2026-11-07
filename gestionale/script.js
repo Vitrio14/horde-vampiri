@@ -1358,7 +1358,9 @@ window.updateMatTot = () => {
 };
 
 window.registraVenditaMateriali = async () => {
+    if (window._matVenditaBusy) return;
     try {
+        window._matVenditaBusy = true;
         const nomeEl = document.getElementById('mat-vamp-nome');
         const tipoSel = document.getElementById('mat-tipo-select');
         const acqEl = document.getElementById('mat-acquirente');
@@ -1422,6 +1424,8 @@ window.registraVenditaMateriali = async () => {
     } catch (error) {
         console.error("Errore salvataggio materiali: ", error);
         vampireToast("Errore durante la registrazione.", "error");
+    } finally {
+        window._matVenditaBusy = false;
     }
 };
 
@@ -1595,6 +1599,7 @@ function renderClassifiche() {
 }
 
 window.movimentoSaldo = async () => {
+    if (window._saldoActionBusy) return;
     let nome = (currentUser && !currentUser.isAdmin) ? currentUser.nome : document.getElementById('saldo-nome').value;
     const importo = parseInt(document.getElementById('saldo-importo').value);
     const azione = document.getElementById('saldo-azione').value;
@@ -1602,27 +1607,46 @@ window.movimentoSaldo = async () => {
     if(!nome || !importo || !motivo) return vampireToast("Compila tutti i campi richiesti.", "error");
     const nuovoSaldo = azione === "preleva" ? saldoGlobale - importo : saldoGlobale + importo;
     if(nuovoSaldo < 0) return vampireToast("Saldo insufficiente!", "error");
-    const now = new Date();
-    await setDoc(doc(db, "config", "saldo"), { valore: nuovoSaldo }, { merge: true });
-    const logEntry = {
-        utente: nome, tipo: azione, qty: importo, motivo, timestamp: Date.now(),
-        dataStr: now.toLocaleDateString('it-IT'), ora: now.toLocaleTimeString('it-IT')
-    };
-    await addDoc(collection(db, "saldo_logs"), logEntry);
-    logSystemEvent('saldo', logEntry.azione || 'movimento', `Saldo ${logEntry.azione || ''}: ${logEntry.nome || '?'} · ${logEntry.importo || 0} cr · ${logEntry.motivo || ''}`, { nome: logEntry.nome, importo: logEntry.importo, azione: logEntry.azione });
-    // Aggiornamento ottimistico: UI subito, senza attendere idle del listener
-    saldoGlobale = nuovoSaldo;
-    saldoLogs = [logEntry, ...saldoLogs].slice(0, 80);
-    forceRefreshAfterWrite('saldo');
-    vampireToast(`Operazione di ${azione} completata.`, "success");
-    document.getElementById('saldo-importo').value = ""; document.getElementById('saldo-motivo').value = "";
+    window._saldoActionBusy = true;
+    try {
+        const now = new Date();
+        await setDoc(doc(db, "config", "saldo"), { valore: nuovoSaldo }, { merge: true });
+        const logEntry = {
+            utente: nome, tipo: azione, qty: importo, motivo, timestamp: Date.now(),
+            dataStr: now.toLocaleDateString('it-IT'), ora: now.toLocaleTimeString('it-IT')
+        };
+        const logRef = await addDoc(collection(db, "saldo_logs"), logEntry);
+        logSystemEvent('saldo', azione || 'movimento', `Saldo ${azione || ''}: ${nome || '?'} · ${importo || 0} cr · ${motivo || ''}`, { nome, importo, tipo: azione, motivo });
+        // Ottimistico con id: evita doppio se onSnapshot arriva prima del prepend
+        saldoGlobale = nuovoSaldo;
+        const withId = { id: logRef.id, ...logEntry };
+        if (!saldoLogs.some(l => l.id === logRef.id)) {
+            saldoLogs = [withId, ...saldoLogs.filter(l => l.id !== logRef.id)].slice(0, 80);
+        }
+        forceRefreshAfterWrite('saldo');
+        vampireToast(`Operazione di ${azione} completata.`, "success");
+        document.getElementById('saldo-importo').value = ""; document.getElementById('saldo-motivo').value = "";
+    } catch (err) {
+        console.error(err);
+        vampireToast("Errore movimento saldo: " + (err.message || err), "error");
+    } finally {
+        window._saldoActionBusy = false;
+    }
 };
 
 window.renderSaldoLogs = () => {
     const box = document.getElementById('saldo-logs-box');
     if(!box) return;
     const searchTerm = document.getElementById('search-saldo-logs').value.toLowerCase();
-    box.innerHTML = saldoLogs.filter(l => (l.utente || "").toLowerCase().includes(searchTerm) || (l.motivo || "").toLowerCase().includes(searchTerm))
+    const seen = new Set();
+    const unique = [];
+    for (const l of (saldoLogs || [])) {
+        const key = l.id ? `id:${l.id}` : `t:${l.timestamp}|${l.qty}|${l.utente}|${l.tipo}`;
+        if (seen.has(key)) continue;
+        seen.add(key);
+        unique.push(l);
+    }
+    box.innerHTML = unique.filter(l => (l.utente || "").toLowerCase().includes(searchTerm) || (l.motivo || "").toLowerCase().includes(searchTerm))
         .map(l => `
         <div class="log-entry">
             <div class="log-main">
@@ -1771,6 +1795,7 @@ window.eseguiCalcolo = () => {
 };
 
 window.registraVendita = async () => {
+    if (window._venditaBusy) return;
     let nome = (currentUser && !currentUser.isAdmin) ? currentUser.nome : document.getElementById('vamp-nome').value;
     const tipoId = document.getElementById('vamp-tipo-mat')?.value || "";
     const qty = parseInt(document.getElementById('vamp-qty').value);
@@ -1820,14 +1845,22 @@ window.registraVendita = async () => {
         ora: now.toLocaleTimeString('it-IT'),
         settimanaEtichetta: getWeekYearKey(now)
     };
-    await addDoc(collection(db, "vendite"), vendEntry);
-    logSystemEvent('vendita', 'registra', `Vendita: ${vendEntry.vampiro || '?'} · ${vendEntry.materiale || vendEntry.tipo || '?'} x${vendEntry.qty || 0}`, { vampiro: vendEntry.vampiro, qty: vendEntry.qty, totale: vendEntry.totale });
-    forceRefreshAfterWrite('vendite');
-    vampireToast("Vendita sigillata nel registro.", "success");
-    document.getElementById('vamp-qty').value = "";
-    document.getElementById('vamp-note').value = "";
-    document.getElementById('vamp-foto').value = "";
-    window.updateVenditaPreview();
+    window._venditaBusy = true;
+    try {
+        await addDoc(collection(db, "vendite"), vendEntry);
+        logSystemEvent('vendita', 'registra', `Vendita: ${vendEntry.nome || '?'} · ${vendEntry.materiale || vendEntry.tipo || '?'} x${vendEntry.qty || 0}`, { vampiro: vendEntry.nome, qty: vendEntry.qty, totale: vendEntry.totale });
+        forceRefreshAfterWrite('vendite');
+        vampireToast("Vendita sigillata nel registro.", "success");
+        document.getElementById('vamp-qty').value = "";
+        document.getElementById('vamp-note').value = "";
+        document.getElementById('vamp-foto').value = "";
+        window.updateVenditaPreview();
+    } catch (err) {
+        console.error(err);
+        vampireToast("Errore registrazione vendita: " + (err.message || err), "error");
+    } finally {
+        window._venditaBusy = false;
+    }
 };
 
 window.renderVendite = () => {
@@ -1876,6 +1909,7 @@ window.renderInventario = () => {
 };
 
 window.openInvQuickAction = async (itemID) => {
+    if (window._invActionBusy) return; // anti doppio click / doppio submit
     let utente = (currentUser && !currentUser.isAdmin) ? currentUser.nome : document.getElementById('inv-user-name').value;
     if(!utente) return vampireToast("Identificati prima di operare!", "error");
     const item = inventarioDati.find(i => i.id === itemID);
@@ -1952,20 +1986,31 @@ window.openInvQuickAction = async (itemID) => {
         const { action, qty, motivo } = formValues;
         const newQty = action === "prendi" ? item.qty - qty : item.qty + qty;
         if (newQty < 0) return vampireToast("Scorte insufficienti nel deposito.", "error");
-        const now = new Date();
-        await updateDoc(doc(db, "inventario", itemID), { qty: newQty });
-        const logEntry = {
-            utente, tipo: action, item: itemID, qty, motivo, timestamp: Date.now(),
-            dataStr: now.toLocaleDateString('it-IT'), ora: now.toLocaleTimeString('it-IT')
-        };
-        await addDoc(collection(db, "logs"), logEntry);
-        logSystemEvent('inventario', logEntry.azione || 'movimento', `Inventario: ${logEntry.user || '?'} · ${logEntry.item || '?'} · ${logEntry.azione || ''} ${logEntry.qty || ''}`, { user: logEntry.user, item: logEntry.item, azione: logEntry.azione, qty: logEntry.qty });
-        // Ottimistico: qty + log subito in memoria e in UI
-        const idx = inventarioDati.findIndex(i => i.id === itemID);
-        if (idx >= 0) inventarioDati[idx] = { ...inventarioDati[idx], qty: newQty };
-        logs = [logEntry, ...logs].slice(0, 80);
-        forceRefreshAfterWrite('inventario');
-        vampireToast(`Oggetto ${action === 'prendi' ? 'prelevato' : 'depositato'} con successo.`, "success");
+        window._invActionBusy = true;
+        try {
+            const now = new Date();
+            await updateDoc(doc(db, "inventario", itemID), { qty: newQty });
+            const logEntry = {
+                utente, tipo: action, item: itemID, qty, motivo, timestamp: Date.now(),
+                dataStr: now.toLocaleDateString('it-IT'), ora: now.toLocaleTimeString('it-IT')
+            };
+            const logRef = await addDoc(collection(db, "logs"), logEntry);
+            logSystemEvent('inventario', action || 'movimento', `Inventario: ${utente || '?'} · ${itemID || '?'} · ${action || ''} ${qty || ''}`, { utente, item: itemID, tipo: action, qty });
+            // Ottimistico con id: evita doppio se onSnapshot arriva prima del prepend
+            const idx = inventarioDati.findIndex(i => i.id === itemID);
+            if (idx >= 0) inventarioDati[idx] = { ...inventarioDati[idx], qty: newQty };
+            const withId = { id: logRef.id, ...logEntry };
+            if (!logs.some(l => l.id === logRef.id)) {
+                logs = [withId, ...logs.filter(l => l.id !== logRef.id)].slice(0, 80);
+            }
+            forceRefreshAfterWrite('inventario');
+            vampireToast(`Oggetto ${action === 'prendi' ? 'prelevato' : 'depositato'} con successo.`, "success");
+        } catch (err) {
+            console.error(err);
+            vampireToast("Errore movimento inventario: " + (err.message || err), "error");
+        } finally {
+            window._invActionBusy = false;
+        }
     }
 };
 
@@ -1973,7 +2018,16 @@ window.renderLogs = () => {
     const logElement = document.getElementById('inv-logs');
     if(!logElement) return;
     const searchTerm = document.getElementById('search-logs').value.toLowerCase();
-    logElement.innerHTML = logs.filter(l => (l.utente || "").toLowerCase().includes(searchTerm) || (l.item || "").toLowerCase().includes(searchTerm) || (l.motivo && l.motivo.toLowerCase().includes(searchTerm)))
+    // Dedup by id (o timestamp+item+qty se manca id) — evita doppi visualizzati
+    const seen = new Set();
+    const unique = [];
+    for (const l of (logs || [])) {
+        const key = l.id ? `id:${l.id}` : `t:${l.timestamp}|${l.item}|${l.qty}|${l.utente}|${l.tipo}`;
+        if (seen.has(key)) continue;
+        seen.add(key);
+        unique.push(l);
+    }
+    logElement.innerHTML = unique.filter(l => (l.utente || "").toLowerCase().includes(searchTerm) || (l.item || "").toLowerCase().includes(searchTerm) || (l.motivo && l.motivo.toLowerCase().includes(searchTerm)))
         .map(l => `
         <div class="log-entry">
             <div class="log-main">
@@ -2172,7 +2226,15 @@ window.renderAdminLogs = () => {
     const logBox = document.getElementById('admin-logs-box');
     if(!logBox) return;
     const searchTerm = document.getElementById('search-admin-logs').value.toLowerCase();
-    logBox.innerHTML = logs.filter(l => (l.utente || "").toLowerCase().includes(searchTerm) || (l.item || "").toLowerCase().includes(searchTerm))
+    const seen = new Set();
+    const unique = [];
+    for (const l of (logs || [])) {
+        const key = l.id ? `id:${l.id}` : `t:${l.timestamp}|${l.item}|${l.qty}|${l.utente}|${l.tipo}`;
+        if (seen.has(key)) continue;
+        seen.add(key);
+        unique.push(l);
+    }
+    logBox.innerHTML = unique.filter(l => (l.utente || "").toLowerCase().includes(searchTerm) || (l.item || "").toLowerCase().includes(searchTerm))
         .map(l => `
         <div class="log-entry">
             <div class="log-main">
@@ -2190,7 +2252,15 @@ window.renderAdminSaldoLogs = () => {
     const logBox = document.getElementById('admin-saldo-logs-box');
     if(!logBox) return;
     const searchTerm = document.getElementById('search-admin-saldo-logs').value.toLowerCase();
-    logBox.innerHTML = saldoLogs.filter(l => (l.utente || "").toLowerCase().includes(searchTerm) || (l.motivo || "").toLowerCase().includes(searchTerm))
+    const seen = new Set();
+    const unique = [];
+    for (const l of (saldoLogs || [])) {
+        const key = l.id ? `id:${l.id}` : `t:${l.timestamp}|${l.qty}|${l.utente}|${l.tipo}`;
+        if (seen.has(key)) continue;
+        seen.add(key);
+        unique.push(l);
+    }
+    logBox.innerHTML = unique.filter(l => (l.utente || "").toLowerCase().includes(searchTerm) || (l.motivo || "").toLowerCase().includes(searchTerm))
         .map(l => `
         <div class="log-entry">
             <div class="log-main">
@@ -2808,7 +2878,10 @@ function startFirestoreListeners() {
         _unsubs.logs = onSnapshot(
             query(collection(db, "logs"), orderBy("timestamp", "desc"), limit(50)),
             (snap) => {
-                logs = snap.docs.map(d => ({ id: d.id, ...d.data() }));
+                // Sostituisci intero array deduplicato per id (niente doppioni da race ottimistico)
+                const byId = new Map();
+                snap.docs.forEach(d => byId.set(d.id, { id: d.id, ...d.data() }));
+                logs = [...byId.values()].sort((a, b) => (b.timestamp || 0) - (a.timestamp || 0));
                 scheduleUI(() => {
                     window.renderLogs?.();
                     if (isAdminVisible()) window.renderAdminLogs?.();
@@ -2818,7 +2891,9 @@ function startFirestoreListeners() {
                 _unsubs.logs = onSnapshot(
                     query(collection(db, "logs"), limit(50)),
                     (snap) => {
-                        logs = snap.docs.map(d => ({ id: d.id, ...d.data() }));
+                        const byId = new Map();
+                        snap.docs.forEach(d => byId.set(d.id, { id: d.id, ...d.data() }));
+                        logs = [...byId.values()].sort((a, b) => (b.timestamp || 0) - (a.timestamp || 0));
                         scheduleUI(() => { window.renderLogs?.(); if (isAdminVisible()) window.renderAdminLogs?.(); });
                     },
                     (e2) => console.warn('[logs]', e2)
@@ -2832,7 +2907,9 @@ function startFirestoreListeners() {
         _unsubs.saldoLogs = onSnapshot(
             query(collection(db, "saldo_logs"), orderBy("timestamp", "desc"), limit(50)),
             (snap) => {
-                saldoLogs = snap.docs.map(d => ({ id: d.id, ...d.data() }));
+                const byId = new Map();
+                snap.docs.forEach(d => byId.set(d.id, { id: d.id, ...d.data() }));
+                saldoLogs = [...byId.values()].sort((a, b) => (b.timestamp || 0) - (a.timestamp || 0));
                 scheduleUI(() => {
                     window.renderSaldoLogs?.();
                     if (isAdminVisible()) window.renderAdminSaldoLogs?.();
@@ -2842,7 +2919,9 @@ function startFirestoreListeners() {
                 _unsubs.saldoLogs = onSnapshot(
                     query(collection(db, "saldo_logs"), limit(50)),
                     (snap) => {
-                        saldoLogs = snap.docs.map(d => ({ id: d.id, ...d.data() }));
+                        const byId = new Map();
+                        snap.docs.forEach(d => byId.set(d.id, { id: d.id, ...d.data() }));
+                        saldoLogs = [...byId.values()].sort((a, b) => (b.timestamp || 0) - (a.timestamp || 0));
                         scheduleUI(() => { window.renderSaldoLogs?.(); if (isAdminVisible()) window.renderAdminSaldoLogs?.(); });
                     },
                     (e2) => console.warn('[saldo_logs]', e2)
