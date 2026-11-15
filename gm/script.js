@@ -392,7 +392,7 @@ const listFilters = {
     media: '',
     commands: '',
     admin: '',
-    players: { text: '', grado: 'all', ferale: 'all', inattivo: 'all', questLibro: 'all', clan: 'all' },
+    players: { text: '', grado: 'all', ferale: 'all', inattivo: 'all', questLibro: 'all', clan: 'all', razza: 'all' },
     rito: { text: '', tipo: 'all', archived: 'no' },
     tempi: { text: '', status: 'attivo', tipo: 'all' },
     abbraccio: { text: '', status: 'all' },
@@ -582,8 +582,22 @@ function buildPlayersFilterBarHtml(insideFolder) {
         const cls = isActive ? 'filter-chip active' : 'filter-chip';
         return `<button type="button" class="${cls}" data-filter-group="clan" onclick="onPlayersClanFilter('${g.key}')">${escapeAttr(g.label)}</button>`;
     }).join('');
+    const razze = [
+        { key: 'all', label: 'Tutte' },
+        { key: 'Drakovich', label: 'Drakovich' },
+        { key: 'Nosferatu', label: 'Nosferatu' },
+        { key: 'Strigoi', label: 'Strigoi' },
+        { key: 'Banshee', label: 'Banshee' },
+        { key: '', label: 'Senza razza' }
+    ];
+    const razzaChips = razze.map(g => {
+        const isActive = (f.razza || 'all') === g.key;
+        const cls = isActive ? 'filter-chip active' : 'filter-chip';
+        const keyAttr = g.key === '' ? '__none__' : g.key;
+        return `<button type="button" class="${cls}" data-filter-group="razza" onclick="onPlayersRazzaFilter('${keyAttr}')">${g.label}</button>`;
+    }).join('');
     const hint = insideFolder
-        ? 'Cerca per nome o note · filtra per grado / ferale / inattivo / quest libro / clan'
+        ? 'Cerca per nome o note · filtra per grado / ferale / inattivo / quest libro / clan / razza'
         : 'Cerca cartella per nome';
     return `
         <div class="section-filter-bar" style="grid-column: 1 / -1;" data-filter-bar="players">
@@ -616,6 +630,10 @@ function buildPlayersFilterBarHtml(insideFolder) {
             <div class="section-filter-chips">
                 <span class="filter-chips-label">Clan</span>
                 ${clanChips}
+            </div>
+            <div class="section-filter-chips">
+                <span class="filter-chips-label">Razza</span>
+                ${razzaChips}
             </div>` : ''}
         </div>`;
 }
@@ -753,6 +771,22 @@ function onPlayersClanFilter(key) {
     applyListFilter('players');
 }
 
+function onPlayersRazzaFilter(key) {
+    const razza = key === '__none__' ? '' : (key || 'all');
+    listFilters.players.razza = razza;
+    const bar = document.querySelector('[data-filter-bar="players"]');
+    if (bar) {
+        bar.querySelectorAll('.filter-chip[data-filter-group="razza"]').forEach(btn => {
+            const onclick = btn.getAttribute('onclick') || '';
+            const m = onclick.match(/onPlayersRazzaFilter\('([^']+)'\)/);
+            const k = m ? m[1] : '';
+            const mapped = k === '__none__' ? '' : k;
+            btn.classList.toggle('active', mapped === listFilters.players.razza);
+        });
+    }
+    applyListFilter('players');
+}
+
 function onRitoTipoFilter(key) {
     listFilters.rito.tipo = key;
     const bar = document.querySelector('[data-filter-bar="rito"]');
@@ -788,6 +822,7 @@ function applyListFilter(sectionKey) {
     let inattivoFilter = null;
     let questLibroFilter = null;
     let clanFilter = null;
+    let razzaFilter = null;
     let tipoFilter = null;
     let statusFilter = null;
     let tempoTipoFilter = null;
@@ -803,6 +838,7 @@ function applyListFilter(sectionKey) {
             inattivoFilter = listFilters[sectionKey].inattivo;
             questLibroFilter = listFilters[sectionKey].questLibro;
             clanFilter = listFilters[sectionKey].clan;
+            razzaFilter = listFilters[sectionKey].razza;
         }
         if (sectionKey === 'rito') {
             tipoFilter = listFilters[sectionKey].tipo;
@@ -849,6 +885,10 @@ function applyListFilter(sectionKey) {
             } else {
                 show = ids.indexOf(clanFilter) !== -1;
             }
+        }
+        if (show && razzaFilter != null && razzaFilter !== 'all') {
+            const r = (el.getAttribute('data-razza') || '').trim();
+            show = (r === razzaFilter);
         }
         if (show && tipoFilter != null && tipoFilter !== 'all') {
             const t = el.getAttribute('data-exit-type') || '';
@@ -2508,6 +2548,16 @@ function addPlayer() {
                     <option value="Ospite">Ospite</option>
                 </select>
                 <label style="display:block; text-align:left; margin: 8px 0 4px 4px; color: #a0a0a0; font-size:13px; font-weight:600;">
+                    Razza
+                </label>
+                <select id="player-razza" class="swal2-select">
+                    <option value="">— Nessuna —</option>
+                    <option value="Drakovich">Drakovich</option>
+                    <option value="Nosferatu">Nosferatu</option>
+                    <option value="Strigoi">Strigoi</option>
+                    <option value="Banshee">Banshee</option>
+                </select>
+                <label style="display:block; text-align:left; margin: 8px 0 4px 4px; color: #a0a0a0; font-size:13px; font-weight:600;">
                     Genitori (checkbox + cerca)
                 </label>
                 ${parentMultiHtml}
@@ -2532,6 +2582,7 @@ function addPlayer() {
                     name: name.trim(),
                     notes: document.getElementById('player-notes').value,
                     grado: document.getElementById('player-grado').value || '',
+                    razza: document.getElementById('player-razza').value || '',
                     parentIds
                 };
             }
@@ -2541,6 +2592,7 @@ function addPlayer() {
                     name: result.value.name,
                     notes: result.value.notes,
                     grado: result.value.grado,
+                    razza: result.value.razza || '',
                     parentIds: result.value.parentIds || [],
                     quests: [],
                     folderId: currentPlayersFolder.id
@@ -2650,6 +2702,9 @@ function loadPlayers() {
                         const gradoBadge = p.grado
                             ? `<div class="status grado-status grado-${String(p.grado).toLowerCase()}">${p.grado}</div>`
                             : '';
+                        const razzaBadge = p.razza
+                            ? `<div class="status razza-status razza-${String(p.razza).toLowerCase()}">${escapeAttr(p.razza)}</div>`
+                            : '';
                         const punBadge = (typeof formatPunizioneFlagHtml === 'function')
                             ? formatPunizioneFlagHtml(p.id, p.name)
                             : '';
@@ -2681,11 +2736,12 @@ function loadPlayers() {
                         const childrenBadge = formatChildrenBadgeHtml(p.id, p.name, myChildren);
                         const parentNamesForFilter = pParentIds.map(id => (playersMapFamily[id] && playersMapFamily[id].name) || '').join(' ');
                         const childNamesForFilter = myChildren.map(c => c.name || '').join(' ');
-                        const filterText = [p.name, p.notes, p.grado, (p.quests || []).join(' '), p.ferale ? 'ferale' : '', p.inattivo ? 'inattivo' : '', p.questLibro ? 'quest libro' : '', parentNamesForFilter, childNamesForFilter, 'genitori', 'figli', clanNamesForFilter].filter(Boolean).join(' ');
+                        const filterText = [p.name, p.notes, p.grado, p.razza, (p.quests || []).join(' '), p.ferale ? 'ferale' : '', p.inattivo ? 'inattivo' : '', p.questLibro ? 'quest libro' : '', parentNamesForFilter, childNamesForFilter, 'genitori', 'figli', clanNamesForFilter].filter(Boolean).join(' ');
                         container.innerHTML += `
-                            <div class="${cardClass}" data-filter-text="${escapeAttr(filterText)}" data-grado="${escapeAttr(p.grado || '')}" data-ferale="${p.ferale ? '1' : '0'}" data-inattivo="${p.inattivo ? '1' : '0'}" data-quest-libro="${p.questLibro ? '1' : '0'}" data-clan-ids="${escapeAttr(clanIdsAttr)}">
+                            <div class="${cardClass}" data-filter-text="${escapeAttr(filterText)}" data-grado="${escapeAttr(p.grado || '')}" data-razza="${escapeAttr(p.razza || '')}" data-ferale="${p.ferale ? '1' : '0'}" data-inattivo="${p.inattivo ? '1' : '0'}" data-quest-libro="${p.questLibro ? '1' : '0'}" data-clan-ids="${escapeAttr(clanIdsAttr)}">
                                 <h3>${p.name}</h3>
                                 ${gradoBadge}
+                                ${razzaBadge}
                                 ${feraleBadge}
                                 ${inattivoBadge}
                                 ${questLibroBadge}
@@ -2992,6 +3048,12 @@ function openPlayerModal(playerId) {
                         const label = g || '— Nessuno —';
                         return `<option value="${g}" ${gradoVal === g ? 'selected' : ''}>${label}</option>`;
                     }).join('');
+                const razzaVal = player.razza || '';
+                const razzaOptions = ['', 'Drakovich', 'Nosferatu', 'Strigoi', 'Banshee']
+                    .map(r => {
+                        const label = r || '— Nessuna —';
+                        return `<option value="${r}" ${razzaVal === r ? 'selected' : ''}>${label}</option>`;
+                    }).join('');
 
                 Swal.fire({
                     title: player.name + titleSuffix,
@@ -3002,6 +3064,13 @@ function openPlayerModal(playerId) {
                         </label>
                         <select id="player-grado-edit" class="swal2-select">
                             ${gradoOptions}
+                        </select>
+
+                        <label style="display:block; text-align:left; margin: 8px 0 4px 4px; color: #a0a0a0; font-size:13px; font-weight:600;">
+                            Razza
+                        </label>
+                        <select id="player-razza-edit" class="swal2-select">
+                            ${razzaOptions}
                         </select>
 
                         <label style="display:block; text-align:left; margin: 8px 0 4px 4px; color: #a0a0a0; font-size:13px; font-weight:600;">
@@ -3067,6 +3136,7 @@ function openPlayerModal(playerId) {
                             notes: document.getElementById('player-notes-edit').value,
                             quests: selectedQuests,
                             grado: document.getElementById('player-grado-edit').value || '',
+                            razza: document.getElementById('player-razza-edit').value || '',
                             parentIds
                         };
                     }
@@ -3078,6 +3148,7 @@ function openPlayerModal(playerId) {
                                 notes: result.value.notes,
                                 quests: result.value.quests,
                                 grado: result.value.grado,
+                                razza: result.value.razza || '',
                                 parentIds: result.value.parentIds || []
                             })
                             .then(() => {

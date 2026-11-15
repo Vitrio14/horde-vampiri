@@ -543,3 +543,41 @@ button.status.clan-badge:hover{background:rgba(139,92,246,0.35)!important;color:
 .card .notes-list li {
     margin-bottom: 0;
 }
+
+
+/* ========== RAZZA PLAYER ========== */
+.status.razza-status {
+    display: inline-block;
+    margin: 0 0 8px 0;
+    padding: 4px 10px;
+    font-size: 0.65rem;
+    font-weight: 800;
+    letter-spacing: 0.8px;
+    text-transform: uppercase;
+    font-family: 'Cinzel', serif;
+    border-left: 3px solid #fff;
+}
+.razza-drakovich {
+    background: rgba(185, 28, 28, 0.15);
+    color: #f87171;
+    border-color: #dc2626;
+    box-shadow: inset 5px 0 15px rgba(220, 38, 38, 0.2);
+}
+.razza-nosferatu {
+    background: rgba(107, 114, 128, 0.18);
+    color: #d1d5db;
+    border-color: #9ca3af;
+    box-shadow: inset 5px 0 15px rgba(107, 114, 128, 0.2);
+}
+.razza-strigoi {
+    background: rgba(124, 58, 237, 0.15);
+    color: #c4b5fd;
+    border-color: #8b5cf6;
+    box-shadow: inset 5px 0 15px rgba(139, 92, 246, 0.2);
+}
+.razza-banshee {
+    background: rgba(14, 165, 233, 0.14);
+    color: #7dd3fc;
+    border-color: #0ea5e9;
+    box-shadow: inset 5px 0 15px rgba(14, 165, 233, 0.18);
+}
