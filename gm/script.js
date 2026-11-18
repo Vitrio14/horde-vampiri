@@ -4543,11 +4543,10 @@ function buildEventParticipantRow(p, eventId, eventName) {
     const btnLabel = isCons ? 'Annulla consegna' : 'Consegna';
     const btnColor = isCons ? '#e74c3c' : '#2ecc71';
     const safeEvent = (eventName || '').replace(/'/g, "\\'");
-    // Checkbox solo per i da consegnare (selezione multipla)
-    const checkCell = isCons
-        ? '<td></td>'
-        : `<td style="width:36px;text-align:center;">
+    // Checkbox su tutte le righe: serve sia per consegna batch sia per rimozione batch
+    const checkCell = `<td style="width:36px;text-align:center;">
             <input type="checkbox" class="event-fr-check" value="${p.id}"
+                data-status="${isCons ? 'consegnato' : 'non_consegnato'}"
                 style="width:auto;margin:0;accent-color:#2ecc71;cursor:pointer;transform:scale(1.15);">
            </td>`;
     const when = formatDateTime(p.createdAt);
@@ -4559,11 +4558,17 @@ function buildEventParticipantRow(p, eventId, eventName) {
         <td><b>${p.playerName}</b>${whenHtml}${p.note ? `<br><small style="color:#a0a0a0;">${p.note}</small>` : ''}</td>
         <td>${formatNumber(p.quantity)}</td>
         <td>${st}</td>
-        <td>
+        <td style="white-space:nowrap;">
             <button type="button"
                 onclick="toggleSingleFrammentoStatus('${p.id}', '${nextStatus}', '${eventId}', '${safeEvent}')"
-                style="padding:6px 10px;font-size:0.7rem;border:1px solid ${btnColor};color:${btnColor};background:transparent;cursor:pointer;border-radius:0;text-transform:uppercase;">
+                style="padding:6px 10px;font-size:0.7rem;border:1px solid ${btnColor};color:${btnColor};background:transparent;cursor:pointer;border-radius:0;text-transform:uppercase;margin-right:6px;">
                 ${btnLabel}
+            </button>
+            <button type="button"
+                onclick="removeEventFrammento('${p.id}', '${eventId}', '${safeEvent}')"
+                title="Rimuovi assegnazione (cancella dal database e dalla scheda player)"
+                style="padding:6px 10px;font-size:0.7rem;border:1px solid #ef4444;color:#f87171;background:transparent;cursor:pointer;border-radius:0;text-transform:uppercase;">
+                <i class="fa-solid fa-trash"></i> Rimuovi
             </button>
         </td>
     </tr>`;
@@ -4596,8 +4601,10 @@ function refreshEventFrammentiViewRows() {
             ? `(${pending.length} da consegnare)`
             : '(nessuno in sospeso)';
     }
+    // Barra batch: visibile se ci sono assegnazioni (per consegna e/o rimozione)
+    const totalPart = (pending ? pending.length : 0) + (delivered ? delivered.length : 0);
     if (batchBar) {
-        batchBar.style.display = pending.length > 0 ? 'flex' : 'none';
+        batchBar.style.display = totalPart > 0 ? 'flex' : 'none';
     }
     if (selectAll) {
         selectAll.checked = false;
@@ -4672,7 +4679,7 @@ function openEventFrammentiView(eventId, eventName) {
         }
 
         const safeEventName = (eventName || '').replace(/'/g, "\\'");
-        const batchBarDisplay = pending.length > 0 ? 'flex' : 'none';
+        const batchBarDisplay = participants.length > 0 ? 'flex' : 'none';
 
         const isRep = !!ev.repeatable;
         const byPlayerAgg = {};
@@ -4749,6 +4756,14 @@ function openEventFrammentiView(eventId, eventName) {
                             style="padding:8px 12px;font-size:0.72rem;border:1px solid #8b5cf6;color:#a78bfa;background:transparent;cursor:pointer;text-transform:uppercase;">
                             <i class="fa-solid fa-bolt"></i> Consegna tutti
                         </button>
+                        <button type="button" onclick="removeSelectedEventFrammenti('${eventId}', '${safeEventName}')"
+                            style="padding:8px 12px;font-size:0.72rem;border:1px solid #ef4444;color:#f87171;background:transparent;cursor:pointer;text-transform:uppercase;">
+                            <i class="fa-solid fa-trash"></i> Rimuovi selezionati
+                        </button>
+                        <button type="button" onclick="removeAllEventFrammenti('${eventId}', '${safeEventName}')"
+                            style="padding:8px 12px;font-size:0.72rem;border:1px solid #991b1b;color:#fca5a5;background:transparent;cursor:pointer;text-transform:uppercase;">
+                            <i class="fa-solid fa-trash-can"></i> Rimuovi tutti
+                        </button>
                     </div>
 
                     <table class="frammenti-recap-table">
@@ -4807,15 +4822,19 @@ function toggleEventFrSelectAll(forceChecked) {
     if (selectAll) selectAll.checked = checked;
 }
 
-/** Consegna in batch gli ID selezionati (checkbox) */
+/** Consegna in batch gli ID selezionati (checkbox) — solo quelli ancora “da consegnare” */
 function deliverSelectedFrammenti(eventId, eventName) {
     const boxes = document.querySelectorAll('.event-fr-check:checked');
-    const ids = Array.from(boxes).map(b => b.value).filter(Boolean);
+    // Ignora i già consegnati: la consegna batch vale solo per i pending
+    const ids = Array.from(boxes)
+        .filter(b => (b.getAttribute('data-status') || '') !== 'consegnato')
+        .map(b => b.value)
+        .filter(Boolean);
     if (ids.length === 0) {
         Swal.fire({
             icon: 'info',
             title: 'Nessuna selezione',
-            text: 'Seleziona almeno un player da consegnare (checkbox a sinistra).',
+            text: 'Seleziona almeno un player ancora da consegnare (checkbox a sinistra).',
             background: '#131a25'
         });
         return;
@@ -4890,6 +4909,113 @@ function toggleSingleFrammentoStatus(frammentoId, nextStatus, eventId, eventName
     db.collection('frammenti').doc(frammentoId).update({ status: nextStatus }).then(() => {
         showToast(nextStatus === 'consegnato' ? 'Frammenti consegnati al player' : 'Consegna annullata');
         openEventFrammentiView(eventId, eventName);
+    });
+}
+
+/**
+ * Rimuove UNA assegnazione frammenti dall'evento (cancella il documento in Firestore).
+ * Così non compare più né qui né nella scheda del player.
+ */
+function removeEventFrammento(frammentoId, eventId, eventName) {
+    Swal.fire({
+        title: 'Rimuovere questa assegnazione?',
+        html: '<p style="text-align:left;">I frammenti verranno <b>eliminati dal database</b> e spariranno anche dalla scheda del player. L\'azione non si può annullare.</p>',
+        icon: 'warning',
+        showCancelButton: true,
+        confirmButtonText: 'Rimuovi',
+        cancelButtonText: 'Annulla',
+        confirmButtonColor: '#ef4444',
+        background: '#131a25'
+    }).then(result => {
+        if (!result.isConfirmed) return;
+        db.collection('frammenti').doc(frammentoId).delete().then(() => {
+            showToast('Assegnazione rimossa');
+            openEventFrammentiView(eventId, eventName);
+        }).catch(err => {
+            console.error('removeEventFrammento', err);
+            showToast('Errore durante la rimozione');
+        });
+    });
+}
+
+/**
+ * Rimuove le assegnazioni selezionate (checkbox) dall'evento.
+ * Funziona sia su “da consegnare” sia su “già consegnati”.
+ */
+function removeSelectedEventFrammenti(eventId, eventName) {
+    const boxes = document.querySelectorAll('.event-fr-check:checked');
+    const ids = Array.from(boxes).map(b => b.value).filter(Boolean);
+    if (ids.length === 0) {
+        Swal.fire({
+            icon: 'info',
+            title: 'Nessuna selezione',
+            text: 'Seleziona almeno un’assegnazione da rimuovere (checkbox a sinistra).',
+            background: '#131a25'
+        });
+        return;
+    }
+    Swal.fire({
+        title: 'Rimuovere selezionati?',
+        html: `<p style="text-align:left;">Stai per <b>eliminare ${ids.length}</b> assegnazion${ids.length === 1 ? 'e' : 'i'} dal database.</p>
+               <p style="text-align:left;color:#9ca3af;font-size:0.9rem;">Spariranno anche dalle schede player. Non si può annullare.</p>`,
+        icon: 'warning',
+        showCancelButton: true,
+        confirmButtonText: 'Rimuovi selezionati',
+        cancelButtonText: 'Annulla',
+        confirmButtonColor: '#ef4444',
+        background: '#131a25'
+    }).then(result => {
+        if (!result.isConfirmed) return;
+        const deletes = ids.map(id => db.collection('frammenti').doc(id).delete());
+        Promise.all(deletes).then(() => {
+            showToast(ids.length === 1
+                ? '1 assegnazione rimossa'
+                : ids.length + ' assegnazioni rimosse');
+            openEventFrammentiView(eventId, eventName);
+        }).catch(err => {
+            console.error('removeSelectedEventFrammenti', err);
+            showToast('Errore durante la rimozione');
+        });
+    });
+}
+
+/**
+ * Rimuove TUTTE le assegnazioni di questo evento (consegnate e non).
+ */
+function removeAllEventFrammenti(eventId, eventName) {
+    const data = window._eventFrammentiData;
+    if (!data || !data.participants || data.participants.length === 0) {
+        Swal.fire({
+            icon: 'info',
+            title: 'Niente da rimuovere',
+            text: 'Non ci sono assegnazioni per questo evento.',
+            background: '#131a25'
+        });
+        return;
+    }
+    const ids = data.participants.map(p => p.id).filter(Boolean);
+    Swal.fire({
+        title: 'Rimuovere TUTTE le assegnazioni?',
+        html: `<p style="text-align:left;">Stai per <b>eliminare tutte le ${ids.length}</b> assegnazioni di questo evento dal database.</p>
+               <p style="text-align:left;color:#9ca3af;font-size:0.9rem;">Spariranno anche dalle schede player. Non si può annullare.</p>`,
+        icon: 'warning',
+        showCancelButton: true,
+        confirmButtonText: 'Rimuovi tutto',
+        cancelButtonText: 'Annulla',
+        confirmButtonColor: '#991b1b',
+        background: '#131a25'
+    }).then(result => {
+        if (!result.isConfirmed) return;
+        const deletes = ids.map(id => db.collection('frammenti').doc(id).delete());
+        Promise.all(deletes).then(() => {
+            showToast(ids.length === 1
+                ? '1 assegnazione rimossa'
+                : 'Tutte le ' + ids.length + ' assegnazioni rimosse');
+            openEventFrammentiView(eventId, eventName);
+        }).catch(err => {
+            console.error('removeAllEventFrammenti', err);
+            showToast('Errore durante la rimozione');
+        });
     });
 }
 
