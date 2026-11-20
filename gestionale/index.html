@@ -321,18 +321,19 @@
             <img src="../assets/logo.png" alt="Logo" class="logo-img" id="main-logo" >
             <h1>Horde RP V5 <span style="font-weight:300; opacity:0.4; margin:0 5px;">|</span> Vampiri</h1>
         </div>
-        <div class="nav-links">
-            <a href="../" class="nav-link" title="Torna al Portale">Home</a>
-            <div class="nav-link" onclick="window.showSection('albero')">Albero</div>
-            <div class="nav-link active" onclick="window.showSection('generale')">Generale</div>
-            <div class="nav-link" onclick="window.showSection('vendite')">Vendite</div>
-            <div class="nav-link" onclick="window.showSection('materiali')">Vendita Materiali</div>
-            <div class="nav-link" onclick="window.showSection('saldo')">Saldo</div>
-            <div class="nav-link" onclick="window.showSection('calcolo')">Calcolo</div>
-            <div class="nav-link" onclick="window.showSection('inventario')">Inventario</div>
-            <div class="nav-link" onclick="window.showSection('calendario')">Calendario</div>
-            <div class="nav-link" onclick="window.showSection('gestione')">Gestione</div>
-        </div>
+<div class="nav-links">
+    <a href="../" class="nav-link" title="Torna al Portale">Home</a>
+    <div class="nav-link" onclick="window.showSection('albero')">Albero</div>
+    <div class="nav-link active" onclick="window.showSection('generale')">Generale</div>
+    <div class="nav-link" onclick="window.showSection('vendite')">Vendite</div>
+    <div class="nav-link" onclick="window.showSection('materiali')">Vendita Materiali</div>
+    <div class="nav-link" onclick="window.showSection('saldo')">Saldo</div>
+    <div class="nav-link" onclick="window.showSection('calcolo')">Calcolo</div>
+    <div class="nav-link" onclick="window.showSection('inventario')">Inventario</div>
+    <div class="nav-link" onclick="window.showSection('calendario')">Calendario</div>
+    <a href="https://manuale-vampiri.vitriotv.com" class="nav-link" target="_blank" rel="noopener">Manuale</a>
+    <div class="nav-link" onclick="window.showSection('gestione')">Gestione</div>
+</div>
         <div class="nav-logout">
             <button type="button" id="nav-hamburger" class="nav-hamburger" aria-label="Apri menu sezioni" title="Menu" aria-expanded="false">
                 <span></span><span></span><span></span>
@@ -1688,12 +1689,8 @@
                 if (typeof window.renderAdminPermessiGestioneTable === 'function') window.renderAdminPermessiGestioneTable();
             }
             if (viewId === 'classifiche') {
-                Promise.all([
-                    window.loadStoricoVenditeIfNeeded?.() || Promise.resolve(),
-                    window.loadStoricoMaterialiIfNeeded?.() || Promise.resolve()
-                ]).finally(() => {
-                    if (typeof window.renderAdminClassifiche === 'function') window.renderAdminClassifiche({ refreshWeeks: true });
-                });
+                // Solo Top 3 dalla settimana già in memoria (niente storico massivo)
+                if (typeof window.renderAdminClassifiche === 'function') window.renderAdminClassifiche({ refreshWeeks: true });
             }
             if (viewId === 'storico-vendite') {
                 if (typeof window.setupArchivioWeekSelect === 'function') window.setupArchivioWeekSelect();
