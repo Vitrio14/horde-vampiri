@@ -184,7 +184,7 @@ label {
     padding-left: 8px;
 }
 
-input[type="text"], input[type="email"], input[type="password"], textarea {
+input[type="text"], input[type="email"], input[type="password"], textarea, select {
     width: 100%; 
     padding: 14px 20px; 
     background: rgba(10, 10, 10, 0.6); 
@@ -197,11 +197,28 @@ input[type="text"], input[type="email"], input[type="password"], textarea {
     border-left: 4px solid var(--gold-accent);
 }
 
-input[type="text"]:focus, input[type="email"]:focus, input[type="password"]:focus, textarea:focus {
+input[type="text"]:focus, input[type="email"]:focus, input[type="password"]:focus, textarea:focus, select:focus {
     border-color: var(--blood-red); 
     box-shadow: inset 4px 0 0 var(--blood-red), 0 0 15px rgba(139, 0, 0, 0.2); 
     background: rgba(0,0,0,0.8);
     outline: none;
+}
+
+select {
+    appearance: none;
+    -webkit-appearance: none;
+    -moz-appearance: none;
+    cursor: pointer;
+    background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='12' height='8' viewBox='0 0 12 8'%3E%3Cpath fill='%23c5a059' d='M1.41 0L6 4.58 10.59 0 12 1.41l-6 6-6-6z'/%3E%3C/svg%3E");
+    background-repeat: no-repeat;
+    background-position: right 16px center;
+    padding-right: 40px;
+}
+
+select option {
+    background: #121212;
+    color: #e0e0e0;
+    padding: 10px;
 }
 
 textarea {
@@ -267,6 +284,45 @@ textarea {
 .btn-discord { border-color: #5865F2; color: #7289da; }
 .btn-discord::before { background: linear-gradient(90deg, #404eed, #5865F2); }
 .btn-discord:hover { box-shadow: 0 5px 20px rgba(88, 101, 242, 0.45); border-color: #7289da; color: #fff; }
+
+.btn-edit {
+    border-color: #3498db;
+    color: #5dade2;
+}
+.btn-edit::before {
+    background: linear-gradient(90deg, #1a5276, #3498db);
+}
+.btn-edit:hover {
+    box-shadow: 0 5px 20px rgba(52, 152, 219, 0.45);
+    border-color: #5dade2;
+    color: #fff;
+}
+
+.btn-save {
+    border-color: var(--success-green);
+    color: var(--success-green);
+}
+.btn-save::before {
+    background: linear-gradient(90deg, #1e8449, var(--success-green));
+}
+.btn-save:hover {
+    box-shadow: 0 5px 20px rgba(46, 204, 113, 0.45);
+    border-color: var(--success-green);
+    color: #fff;
+}
+
+.btn-cancel-edit {
+    border-color: #7f8c8d;
+    color: #bdc3c7;
+}
+.btn-cancel-edit::before {
+    background: linear-gradient(90deg, #5d6d6e, #7f8c8d);
+}
+.btn-cancel-edit:hover {
+    box-shadow: 0 5px 20px rgba(127, 140, 141, 0.4);
+    border-color: #bdc3c7;
+    color: #fff;
+}
 
 .nav-link-btn {
     background: transparent;
@@ -610,6 +666,26 @@ textarea {
     margin-bottom: 25px;
 }
 
+/* Form di modifica GM */
+.gm-edit-form .form-group {
+    margin-bottom: 18px;
+}
+
+.gm-edit-form label {
+    margin-bottom: 6px;
+}
+
+.gm-edit-form input,
+.gm-edit-form textarea,
+.gm-edit-form select {
+    font-size: 0.85rem;
+    padding: 10px 14px;
+}
+
+.gm-edit-form textarea {
+    min-height: 90px;
+}
+
 .custom-popup-overlay {
     position: fixed;
     top: 0; left: 0; width: 100%; height: 100%;
@@ -903,4 +979,18 @@ header {
     box-shadow: 0 5px 20px rgba(155, 89, 182, 0.45);
     border-color: #bb8fce;
     color: #fff;
+}
+
+/* Badge categoria */
+.category-badge {
+    display: inline-block;
+    background: rgba(197, 160, 89, 0.15);
+    border: 1px solid rgba(197, 160, 89, 0.35);
+    color: var(--gold-accent);
+    padding: 3px 10px;
+    font-size: 0.7rem;
+    font-family: 'Cinzel', serif;
+    letter-spacing: 1px;
+    text-transform: uppercase;
+    margin-left: 8px;
 }

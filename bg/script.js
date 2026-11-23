@@ -50,6 +50,18 @@ const GM_EMAIL = 'gm.vampiri@horde.it';
 let deviceToken = '';
 let gmSnapshotUnsubscribe = null; // mantenuto per compatibilità / cleanup
 
+const CATEGORY_LABELS = {
+    'Drakovich': 'Drakovich (Vampiri nobiliari)',
+    'Nosferatu': 'Nosferatu (Vampiri alati)',
+    'Stregoi': 'Stregoi (Vampiri bestiali)',
+    'Banshee': 'Banshee (Solo donne)'
+};
+
+function getCategoryLabel(cat) {
+    if (!cat) return '—';
+    return CATEGORY_LABELS[cat] || cat;
+}
+
 const loadingPanel = document.getElementById('loadingPanel');
 const bgFormPanel = document.getElementById('bgFormPanel');
 const bgLockedPanel = document.getElementById('bgLockedPanel');
@@ -233,6 +245,7 @@ function populateFormFields(data) {
     document.getElementById('discordUser').value = data.discordUser || '';
     document.getElementById('charName').value = data.name || '';
     document.getElementById('shadowName').value = data.shadowName || '';
+    document.getElementById('category').value = data.category || '';
     document.getElementById('history').value = data.history || '';
     document.getElementById('events').value = data.events || '';
     document.getElementById('arrival').value = data.arrival || '';
@@ -245,15 +258,16 @@ function populateFormFields(data) {
 function renderPreview(data, targetElement) {
     targetElement.innerHTML = `
         <div class="voice-box"><strong>Nome Utente Discord</strong><p>${data.discordUser || 'Non specificato'}</p></div>
-        <div class="voice-box"><strong>Nome Personaggio</strong><p>${data.name}</p></div>
-        <div class="voice-box"><strong>Nome Ombra</strong><p>${data.shadowName}</p></div>
-        <div class="voice-box"><strong>Storia del Personaggio (Il Passato)</strong><p>${data.history}</p></div>
-        <div class="voice-box"><strong>Eventi Significativi</strong><p>${data.events}</p></div>
-        <div class="voice-box"><strong>Arrivo sull'Isola</strong><p>${data.arrival}</p></div>
-        <div class="voice-box"><strong>Legami</strong><p>${data.bonds}</p></div>
-        <div class="voice-box"><strong>Carattere</strong><p>${data.character}</p></div>
-        <div class="voice-box"><strong>Obiettivi</strong><p>${data.objectives}</p></div>
-        <div class="voice-box"><strong>Paure</strong><p>${data.fears}</p></div>
+        <div class="voice-box"><strong>Nome Personaggio</strong><p>${data.name || '—'}</p></div>
+        <div class="voice-box"><strong>Nome Ombra</strong><p>${data.shadowName || '—'}</p></div>
+        <div class="voice-box"><strong>Categoria / Dinastia</strong><p>${getCategoryLabel(data.category)}</p></div>
+        <div class="voice-box"><strong>Storia del Personaggio (Il Passato)</strong><p>${data.history || '—'}</p></div>
+        <div class="voice-box"><strong>Eventi Significativi</strong><p>${data.events || '—'}</p></div>
+        <div class="voice-box"><strong>Arrivo sull'Isola</strong><p>${data.arrival || '—'}</p></div>
+        <div class="voice-box"><strong>Legami</strong><p>${data.bonds || '—'}</p></div>
+        <div class="voice-box"><strong>Carattere</strong><p>${data.character || '—'}</p></div>
+        <div class="voice-box"><strong>Obiettivi</strong><p>${data.objectives || '—'}</p></div>
+        <div class="voice-box"><strong>Paure</strong><p>${data.fears || '—'}</p></div>
     `;
 }
 
@@ -275,6 +289,12 @@ bgForm.addEventListener('submit', (e) => {
     e.preventDefault();
     if (!deviceToken) return;
 
+    const categoryValue = document.getElementById('category').value.trim();
+    if (!categoryValue) {
+        triggerChronicaAlert('Campo obbligatorio', 'Devi selezionare una categoria / dinastia.');
+        return;
+    }
+
     document.getElementById('btnSubmitBg').disabled = true;
 
     const finalPayload = {
@@ -282,6 +302,7 @@ bgForm.addEventListener('submit', (e) => {
         discordUser: document.getElementById('discordUser').value.trim(),
         name: document.getElementById('charName').value.trim(),
         shadowName: document.getElementById('shadowName').value.trim(),
+        category: categoryValue,
         history: document.getElementById('history').value.trim(),
         events: document.getElementById('events').value.trim(),
         arrival: document.getElementById('arrival').value.trim(),
@@ -306,7 +327,8 @@ bgForm.addEventListener('submit', (e) => {
                 [
                     { name: "👤 Discord User", value: finalPayload.discordUser, inline: true },
                     { name: "🦇 Nome Personaggio", value: finalPayload.name, inline: true },
-                    { name: "🌑 Nome Ombra", value: finalPayload.shadowName, inline: true }
+                    { name: "🌑 Nome Ombra", value: finalPayload.shadowName, inline: true },
+                    { name: "🩸 Categoria", value: getCategoryLabel(finalPayload.category), inline: true }
                 ]
             );
 
@@ -358,6 +380,7 @@ let currentGmTab = 'da_revisionare';
 let currentDetailDocId = null;
 let currentSearchQuery = '';
 let isGmLoading = false;
+let isGmEditMode = false;
 
 const gmListView = document.getElementById('gmListView');
 const gmDetailView = document.getElementById('gmDetailView');
@@ -404,6 +427,7 @@ if (btnRefreshGmList) {
 }
 
 document.getElementById('btnBackToList').addEventListener('click', () => {
+    isGmEditMode = false;
     showGmListView();
 });
 
@@ -411,6 +435,7 @@ function showGmListView() {
     gmDetailView.classList.add('hidden');
     gmListView.classList.remove('hidden');
     currentDetailDocId = null;
+    isGmEditMode = false;
 }
 
 function showGmDetailView() {
@@ -432,6 +457,7 @@ function loadGmDashboard() {
     showGmListView();
     currentGmTab = 'da_revisionare';
     currentSearchQuery = '';
+    isGmEditMode = false;
     if (gmSearchInput) gmSearchInput.value = '';
     if (gmSearchClear) gmSearchClear.classList.add('hidden');
     document.querySelectorAll('.gm-tab').forEach(t => t.classList.remove('active'));
@@ -519,6 +545,8 @@ function renderGmList() {
                 b.discordUser || '',
                 b.name || '',
                 b.shadowName || '',
+                b.category || '',
+                getCategoryLabel(b.category),
                 b.reviewedBy || ''
             ].join(' ').toLowerCase();
             return haystack.includes(currentSearchQuery);
@@ -544,6 +572,7 @@ function renderGmList() {
         const dataInvio = data.submittedAt ? data.submittedAt.toDate().toLocaleString('it-IT') : 'Data Sconosciuta';
         const userDiscord = data.discordUser || 'N/A';
         const reviewerText = data.reviewedBy ? ' — Gestito da: <strong>' + data.reviewedBy + '</strong>' : '';
+        const catLabel = data.category ? ' <span class="category-badge">' + (data.category) + '</span>' : '';
 
         let statusBadge = '';
         if (data.status === 'approvato') statusBadge = '<span style="color:var(--success-green);">[APPROVATO]</span>';
@@ -557,7 +586,7 @@ function renderGmList() {
         bgItem.setAttribute('data-discord', userDiscord);
         bgItem.setAttribute('data-char', data.name || '');
 
-        const charLabel = (data.name || 'Senza nome') + ' (Ombra: ' + (data.shadowName || '-') + ') ' + statusBadge;
+        const charLabel = (data.name || 'Senza nome') + ' (Ombra: ' + (data.shadowName || '-') + ') ' + statusBadge + catLabel;
         bgItem.innerHTML =
             '<div class="bg-item-header">' +
                 '<div class="bg-item-info">' +
@@ -575,6 +604,12 @@ window.openGmDetail = function(docId) {
     if (!data) return;
 
     currentDetailDocId = docId;
+    isGmEditMode = false;
+    renderGmDetailView(data);
+};
+
+function renderGmDetailView(data) {
+    const docId = data.id;
     const dataInvio = data.submittedAt ? data.submittedAt.toDate().toLocaleString('it-IT') : 'Data Sconosciuta';
     const userDiscord = data.discordUser || 'N/A';
 
@@ -603,6 +638,7 @@ window.openGmDetail = function(docId) {
         '<div style="display:flex; justify-content:space-between; align-items:center; flex-wrap:wrap; gap:12px; margin-bottom:20px;">' +
             '<h3 style="margin-bottom:0;">' + (data.name || 'Senza nome') + ' — Ombra: ' + (data.shadowName || '-') + '</h3>' +
             '<div style="display:flex; gap:8px; flex-wrap:wrap;">' +
+                '<button class="btn btn-edit" onclick="enterGmEditMode(\'' + docId + '\')" style="width:auto; padding:10px 14px; font-size:0.7rem;">Modifica contenuto</button>' +
                 '<button class="btn btn-pdf" onclick="generateBackgroundPdf(\'' + docId + '\')" style="width:auto; padding:10px 14px; font-size:0.7rem;">Scarica PDF</button>' +
                 '<button class="btn btn-txt" onclick="generateBackgroundTxt(\'' + docId + '\')" style="width:auto; padding:10px 14px; font-size:0.7rem;">Scarica TXT</button>' +
                 '<button class="btn btn-word" onclick="generateBackgroundDocx(\'' + docId + '\')" style="width:auto; padding:10px 14px; font-size:0.7rem;">Scarica Word</button>' +
@@ -611,6 +647,7 @@ window.openGmDetail = function(docId) {
         '<div class="voice-box"><strong>Nome Utente Discord</strong><p>' + userDiscord + '</p></div>' +
         '<div class="voice-box"><strong>Nome Personaggio</strong><p>' + (data.name || '-') + '</p></div>' +
         '<div class="voice-box"><strong>Nome Ombra</strong><p>' + (data.shadowName || '-') + '</p></div>' +
+        '<div class="voice-box"><strong>Categoria / Dinastia</strong><p>' + getCategoryLabel(data.category) + '</p></div>' +
         '<div class="voice-box"><strong>Storia del Personaggio (Il Passato)</strong><p>' + (data.history || '-') + '</p></div>' +
         '<div class="voice-box"><strong>Eventi Significativi</strong><p>' + (data.events || '-') + '</p></div>' +
         '<div class="voice-box"><strong>Arrivo sull\'Isola</strong><p>' + (data.arrival || '-') + '</p></div>' +
@@ -635,6 +672,173 @@ window.openGmDetail = function(docId) {
 
     showGmDetailView();
     window.scrollTo({ top: 0, behavior: 'smooth' });
+}
+
+/**
+ * Entra in modalità modifica del contenuto del background (GM).
+ * Funziona su qualsiasi stato: da revisionare, approvato, archiviato, da modificare.
+ */
+window.enterGmEditMode = function(docId) {
+    const data = allBackgroundsCache.find(b => b.id === docId);
+    if (!data) return;
+
+    isGmEditMode = true;
+    currentDetailDocId = docId;
+
+    const catOptions = [
+        { value: 'Drakovich', label: 'Drakovich (Vampiri nobiliari)' },
+        { value: 'Nosferatu', label: 'Nosferatu (Vampiri alati)' },
+        { value: 'Stregoi', label: 'Stregoi (Vampiri bestiali)' },
+        { value: 'Banshee', label: 'Banshee (Solo donne)' }
+    ];
+
+    let catSelectHtml = '<select id="edit_category">';
+    catSelectHtml += '<option value="">— Seleziona una categoria —</option>';
+    catOptions.forEach(function(opt) {
+        const selected = (data.category === opt.value) ? ' selected' : '';
+        catSelectHtml += '<option value="' + opt.value + '"' + selected + '>' + opt.label + '</option>';
+    });
+    catSelectHtml += '</select>';
+
+    gmDetailContent.innerHTML =
+        '<div class="status-banner status-da_revisionare" style="margin-bottom:20px;">MODIFICA CONTENUTO BACKGROUND — Le modifiche verranno salvate nel database</div>' +
+        '<div class="gm-edit-form">' +
+            '<div class="form-group">' +
+                '<label for="edit_discordUser">Nome Utente Discord</label>' +
+                '<input type="text" id="edit_discordUser" value="' + escapeHtmlAttr(data.discordUser || '') + '">' +
+            '</div>' +
+            '<div class="form-group">' +
+                '<label for="edit_name">Nome Personaggio</label>' +
+                '<input type="text" id="edit_name" value="' + escapeHtmlAttr(data.name || '') + '">' +
+            '</div>' +
+            '<div class="form-group">' +
+                '<label for="edit_shadowName">Nome Ombra</label>' +
+                '<input type="text" id="edit_shadowName" value="' + escapeHtmlAttr(data.shadowName || '') + '">' +
+            '</div>' +
+            '<div class="form-group">' +
+                '<label for="edit_category">Categoria / Dinastia</label>' +
+                catSelectHtml +
+            '</div>' +
+            '<div class="form-group">' +
+                '<label for="edit_history">Storia del Personaggio (Il Passato)</label>' +
+                '<textarea id="edit_history">' + escapeHtmlText(data.history || '') + '</textarea>' +
+            '</div>' +
+            '<div class="form-group">' +
+                '<label for="edit_events">Eventi Significativi</label>' +
+                '<textarea id="edit_events">' + escapeHtmlText(data.events || '') + '</textarea>' +
+            '</div>' +
+            '<div class="form-group">' +
+                '<label for="edit_arrival">Arrivo sull\'Isola</label>' +
+                '<textarea id="edit_arrival">' + escapeHtmlText(data.arrival || '') + '</textarea>' +
+            '</div>' +
+            '<div class="form-group">' +
+                '<label for="edit_bonds">Legami</label>' +
+                '<textarea id="edit_bonds">' + escapeHtmlText(data.bonds || '') + '</textarea>' +
+            '</div>' +
+            '<div class="form-group">' +
+                '<label for="edit_character">Carattere</label>' +
+                '<textarea id="edit_character">' + escapeHtmlText(data.character || '') + '</textarea>' +
+            '</div>' +
+            '<div class="form-group">' +
+                '<label for="edit_objectives">Obiettivi</label>' +
+                '<textarea id="edit_objectives">' + escapeHtmlText(data.objectives || '') + '</textarea>' +
+            '</div>' +
+            '<div class="form-group">' +
+                '<label for="edit_fears">Paure</label>' +
+                '<textarea id="edit_fears">' + escapeHtmlText(data.fears || '') + '</textarea>' +
+            '</div>' +
+            '<div class="gm-actions">' +
+                '<div class="gm-buttons-group">' +
+                    '<button class="btn btn-save" onclick="saveGmEdit(\'' + docId + '\')">Salva modifiche</button>' +
+                    '<button class="btn btn-cancel-edit" onclick="cancelGmEdit(\'' + docId + '\')">Annulla</button>' +
+                '</div>' +
+            '</div>' +
+        '</div>';
+
+    showGmDetailView();
+    window.scrollTo({ top: 0, behavior: 'smooth' });
+};
+
+function escapeHtmlAttr(str) {
+    return String(str)
+        .replace(/&/g, '&amp;')
+        .replace(/"/g, '&quot;')
+        .replace(/'/g, '&#39;')
+        .replace(/</g, '&lt;')
+        .replace(/>/g, '&gt;');
+}
+
+function escapeHtmlText(str) {
+    return String(str)
+        .replace(/&/g, '&amp;')
+        .replace(/</g, '&lt;')
+        .replace(/>/g, '&gt;');
+}
+
+window.cancelGmEdit = function(docId) {
+    isGmEditMode = false;
+    const data = allBackgroundsCache.find(b => b.id === docId);
+    if (data) {
+        renderGmDetailView(data);
+    } else {
+        showGmListView();
+    }
+};
+
+window.saveGmEdit = function(docId) {
+    const discordUser = (document.getElementById('edit_discordUser') || {}).value || '';
+    const name = (document.getElementById('edit_name') || {}).value || '';
+    const shadowName = (document.getElementById('edit_shadowName') || {}).value || '';
+    const category = (document.getElementById('edit_category') || {}).value || '';
+    const history = (document.getElementById('edit_history') || {}).value || '';
+    const events = (document.getElementById('edit_events') || {}).value || '';
+    const arrival = (document.getElementById('edit_arrival') || {}).value || '';
+    const bonds = (document.getElementById('edit_bonds') || {}).value || '';
+    const character = (document.getElementById('edit_character') || {}).value || '';
+    const objectives = (document.getElementById('edit_objectives') || {}).value || '';
+    const fears = (document.getElementById('edit_fears') || {}).value || '';
+
+    if (!name.trim()) {
+        triggerChronicaAlert('Campo obbligatorio', 'Il nome del personaggio non può essere vuoto.');
+        return;
+    }
+    if (!category.trim()) {
+        triggerChronicaAlert('Campo obbligatorio', 'Devi selezionare una categoria / dinastia.');
+        return;
+    }
+
+    const updateData = {
+        discordUser: discordUser.trim(),
+        name: name.trim(),
+        shadowName: shadowName.trim(),
+        category: category.trim(),
+        history: history.trim(),
+        events: events.trim(),
+        arrival: arrival.trim(),
+        bonds: bonds.trim(),
+        character: character.trim(),
+        objectives: objectives.trim(),
+        fears: fears.trim()
+    };
+
+    db.collection('backgrounds').doc(docId).update(updateData)
+        .then(() => {
+            updateLocalCache(docId, updateData);
+            isGmEditMode = false;
+
+            triggerChronicaAlert('Modifiche salvate', 'Il background è stato aggiornato correttamente nel database.', () => {
+                const updated = allBackgroundsCache.find(b => b.id === docId);
+                if (updated) {
+                    renderGmDetailView(updated);
+                    renderGmList();
+                } else {
+                    showGmListView();
+                }
+            });
+        })
+        .catch(error => {
+            triggerChronicaAlert('Errore Di Registro', 'Impossibile salvare le modifiche: ' + error.message);
+        });
 };
 
 /**
@@ -797,6 +1001,7 @@ function buildBackgroundPlainText(data) {
         'Discord: ' + (data.discordUser || 'N/A'),
         'Inviato: ' + dataInvio,
         'Stato: ' + statusLabel,
+        'Categoria: ' + getCategoryLabel(data.category),
         'Generato il: ' + new Date().toLocaleString('it-IT'),
         '',
         '───────────────────────────────────────────────────────────────',
@@ -808,6 +1013,11 @@ function buildBackgroundPlainText(data) {
         'NOME OMBRA',
         '───────────────────────────────────────────────────────────────',
         (data.shadowName || '—'),
+        '',
+        '───────────────────────────────────────────────────────────────',
+        'CATEGORIA / DINASTIA',
+        '───────────────────────────────────────────────────────────────',
+        getCategoryLabel(data.category),
         '',
         '───────────────────────────────────────────────────────────────',
         'NOME UTENTE DISCORD',
@@ -1035,12 +1245,13 @@ function buildPdfBlob(data) {
             doc.setTextColor(...muted);
             doc.text('Discord: ' + (data.discordUser || 'N/A') + '  |  Inviato: ' + dataInvio + '  |  Stato: ' + statusLabel, pageWidth / 2, y, { align: 'center' });
             y += 5;
-            doc.text('PDF generato il: ' + dataGenerazione, pageWidth / 2, y, { align: 'center' });
+            doc.text('Categoria: ' + getCategoryLabel(data.category) + '  |  PDF generato il: ' + dataGenerazione, pageWidth / 2, y, { align: 'center' });
             y += 10;
 
             const sections = [
                 { title: 'Nome Personaggio', value: data.name },
                 { title: 'Nome Ombra', value: data.shadowName },
+                { title: 'Categoria / Dinastia', value: getCategoryLabel(data.category) },
                 { title: 'Nome Utente Discord', value: data.discordUser },
                 { title: 'Storia del Personaggio (Il Passato)', value: data.history },
                 { title: 'Eventi Significativi', value: data.events },

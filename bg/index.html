@@ -83,6 +83,18 @@
                     </div>
 
                     <div class="form-group">
+                        <label for="category">Categoria / Dinastia</label>
+                        <span class="guide-text">Seleziona la categoria di vampiro a cui appartiene il tuo personaggio. Puoi scegliere una sola opzione tra le quattro dinastie disponibili.</span>
+                        <select id="category" required>
+                            <option value="">— Seleziona una categoria —</option>
+                            <option value="Drakovich">Drakovich (Vampiri nobiliari)</option>
+                            <option value="Nosferatu">Nosferatu (Vampiri alati)</option>
+                            <option value="Stregoi">Stregoi (Vampiri bestiali)</option>
+                            <option value="Banshee">Banshee (Solo donne)</option>
+                        </select>
+                    </div>
+
+                    <div class="form-group">
                         <label for="history">Storia del Personaggio (Il Passato)</label>
                         <span class="guide-text">Racconta dove è cresciuto, la sua estrazione sociale, la sua professione quando era umano e il tipo di vita che conduceva. Questo serve a dare una base solida alle sue origini.</span>
                         <textarea id="history" required></textarea>
@@ -169,7 +181,7 @@
                         <button class="btn" id="btnLogOutAction" style="width: auto; padding: 8px 16px; font-size: 0.8rem;">Chiudi Sessione</button>
                     </div>
                 </div>
-                <p class="subtitle">Esamina i background inviati dai giocatori. Usa “Aggiorna lista” per ricaricare i dati.</p>
+                <p class="subtitle">Esamina i background inviati dai giocatori. Usa “Aggiorna lista” per ricaricare i dati (ottimizzato per piano gratuito).</p>
 
                 <!-- Vista Lista con Tab -->
                 <div id="gmListView">
@@ -180,7 +192,7 @@
     <button class="gm-tab" data-tab="archiviato" id="tabArchiviati">Archiviati <span class="tab-count" id="countArchiviati">0</span></button>
 </div>
                     <div class="gm-search-bar">
-                        <input type="text" id="gmSearchInput" placeholder="Cerca per Discord, nome personaggio, ombra..." autocomplete="off">
+                        <input type="text" id="gmSearchInput" placeholder="Cerca per Discord, nome personaggio, ombra, categoria..." autocomplete="off">
                         <button type="button" id="gmSearchClear" class="gm-search-clear hidden" title="Pulisci ricerca">✕</button>
                     </div>
                     <div id="gmListContainer" class="gm-scroll-container"></div>
