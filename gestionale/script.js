@@ -26,8 +26,7 @@ let saldoLogs = [];
 let systemLogs = []; // log di sistema globali (auth, admin, scritture)
 let saldoGlobale = 0;
 let listaVampiri = [];
-let calendarioAvvento = [];
-let calendarioMesi = [];
+let listaRazze = []; // { id, nome, immagine, descrizione, tradizione, ruolabile, ordine, createdAt }
 let comunicazioni = [];
 let documenti = [];
 let itemImagesLib = []; // { id, fileName, dataUrl, size, createdAt }
@@ -57,7 +56,7 @@ const SEZIONI = {
     saldo: { id: 'saldo', label: 'Saldo' },
     calcolo: { id: 'calcolo', label: 'Calcolo' },
     inventario: { id: 'inventario', label: 'Inventario' },
-    calendario: { id: 'calendario', label: 'Calendario' },
+    razze: { id: 'razze', label: 'Razze' },
     gestione: { id: 'gestione', label: 'Gestione' },
     foto: { id: 'foto', label: 'Foto' }
 };
@@ -72,7 +71,7 @@ const ADMIN_VIEWS = {
     inventario: { id: 'inventario', label: 'Gestione Inventario' },
     materiali: { id: 'materiali', label: 'Tipi Materiale' },
     albero: { id: 'albero', label: 'Albero Genealogico' },
-    calendario: { id: 'calendario', label: 'Calendario' }
+    razze: { id: 'razze', label: 'Razze' }
     // 'permessi-gestione' NON è assegnabile — solo gestore Firebase
 };
 
@@ -177,12 +176,9 @@ function applyLocalRemove(collectionName, id) {
     } else if (collectionName === 'richieste_membri') {
         richiesteMembri = (richiesteMembri || []).filter(v => String(v.id) !== sid);
         scheduleUI(() => window.renderAdminRichiesteMembri?.(), { priority: 'high' });
-    } else if (collectionName === 'calendario_avvento') {
-        calendarioAvvento = (calendarioAvvento || []).filter(v => String(v.id) !== sid);
-        scheduleUI(() => { window.renderCalendarioSezione?.(); window.renderAdminCalendario?.(); }, { priority: 'high' });
-    } else if (collectionName === 'calendario_mesi') {
-        calendarioMesi = (calendarioMesi || []).filter(v => String(v.id) !== sid);
-        scheduleUI(() => { window.renderCalendarioSezione?.(); window.renderAdminCalendario?.(); }, { priority: 'high' });
+    } else if (collectionName === 'razze') {
+        listaRazze = (listaRazze || []).filter(v => String(v.id) !== sid);
+        scheduleUI(() => { window.renderRazzeSezione?.(); window.renderAdminRazze?.(); }, { priority: 'high' });
     }
 }
 window.applyLocalRemove = applyLocalRemove;
@@ -436,7 +432,7 @@ window.mostraRegistrazioneMembro = () => {
 /** Permessi standard per un nuovo Neonato (tutte le sezioni membro + extra foto) */
 const PERMESSI_NUOVO_MEMBRO = [
     'albero', 'generale', 'vendite', 'materiali',
-    'saldo', 'calcolo', 'inventario', 'calendario', 'foto'
+    'saldo', 'calcolo', 'inventario', 'razze', 'foto'
 ];
 
 /**
@@ -718,7 +714,7 @@ function refreshAdminUI() {
     if (typeof window.renderAdminPermessiGestioneTable === 'function') window.renderAdminPermessiGestioneTable();
     if (typeof window.renderAdminClassifiche === 'function') window.renderAdminClassifiche({ refreshWeeks: true });
     if (typeof window.filterAdminMenuCards === 'function') window.filterAdminMenuCards();
-    if (typeof window.renderAdminCalendario === 'function') window.renderAdminCalendario();
+    if (typeof window.renderAdminRazze === 'function') window.renderAdminRazze();
     renderVampiriLists(); 
     renderDinamici(); 
     aggiornaStats(); 
@@ -936,7 +932,7 @@ window.aggiungiVampiro = async () => {
     if(document.getElementById('admin-vamp-password')) document.getElementById('admin-vamp-password').value = "";
     // Reset checkboxes a default
     document.querySelectorAll('.perm-check').forEach(cb => {
-        cb.checked = ['albero','generale','vendite','materiali','saldo','inventario','calendario'].includes(cb.value);
+        cb.checked = ['albero','generale','vendite','materiali','saldo','inventario','razze'].includes(cb.value);
     });
     
     vampireToast("Membro salvato correttamente.", "success");
@@ -1177,14 +1173,85 @@ function contaGradiMembri() {
     return keys.map(k => ({ label: k.label, count: counts[k.label] }));
 }
 
+function normalizzaNomeFamiglia(s) {
+    return String(s || '').toLowerCase().normalize('NFD').replace(/[\u0300-\u036f]/g, '').trim();
+}
+
+/** Contatori famiglie fisse (match sul nome della razza/famiglia assegnata) */
+function contaMembriFamiglie() {
+    const families = [
+        { label: 'Drakovic', keys: ['drakovic', 'drakovic'] },
+        { label: 'Nosferatu', keys: ['nosferatu'] },
+        { label: 'Strigoi', keys: ['strigoi'] },
+        { label: 'Banshee', keys: ['banshee'] }
+    ];
+    // mappa razzaId → bucket famiglia
+    const idToBucket = {};
+    (listaRazze || []).forEach(r => {
+        const n = normalizzaNomeFamiglia(r.nome);
+        for (const f of families) {
+            if (f.keys.some(k => n === k || n.includes(k))) {
+                idToBucket[String(r.id)] = f.label;
+                break;
+            }
+        }
+    });
+    const counts = {};
+    families.forEach(f => { counts[f.label] = 0; });
+    let senza = 0;
+    (listaVampiri || []).forEach(m => {
+        const rid = String(m.razzaId || '');
+        if (!rid) { senza++; return; }
+        const bucket = idToBucket[rid];
+        if (bucket) counts[bucket]++;
+        else {
+            // match diretto se razzaId non in lista ma nome coincidente
+            const r = (listaRazze || []).find(x => String(x.id) === rid);
+            const n = normalizzaNomeFamiglia(r?.nome);
+            let hit = false;
+            for (const f of families) {
+                if (f.keys.some(k => n === k || n.includes(k))) {
+                    counts[f.label]++;
+                    hit = true;
+                    break;
+                }
+            }
+            if (!hit) senza++;
+        }
+    });
+    return { rows: families.map(f => ({ label: f.label, count: counts[f.label] })), senza };
+}
+
 function htmlContatoriRanghi(compact) {
     const rows = contaGradiMembri();
     const total = membriAttivi().length;
+    const nSos = membriSospesi().length;
     const chips = rows.map(r =>
         `<span class="rango-count-chip"><span class="rango-count-label">${r.label}</span><strong class="rango-count-num">${r.count}</strong></span>`
     ).join('');
     const tot = `<span class="rango-count-chip rango-count-tot"><span class="rango-count-label">Totale</span><strong class="rango-count-num">${total}</strong></span>`;
-    return `<div class="rango-count-wrap${compact ? ' is-compact' : ''}">${chips}${tot}</div>`;
+    const inatt = `<span class="rango-count-chip rango-count-inattivi" title="Credenziali sospese"><span class="rango-count-label">Inattivi</span><strong class="rango-count-num">${nSos}</strong></span>`;
+    return `<div class="rango-count-wrap${compact ? ' is-compact' : ''}">${chips}${tot}${inatt}</div>`;
+}
+
+function htmlContatoriFamiglie(compact) {
+    const { rows, senza } = contaMembriFamiglie();
+    const chips = rows.map(r =>
+        `<span class="rango-count-chip rango-count-famiglia"><span class="rango-count-label">${r.label}</span><strong class="rango-count-num">${r.count}</strong></span>`
+    ).join('');
+    const other = `<span class="rango-count-chip" style="border-left-color:#555;"><span class="rango-count-label">Senza famiglia</span><strong class="rango-count-num">${senza}</strong></span>`;
+    return `<div class="rango-count-block">
+        <div class="rango-count-title">Famiglie</div>
+        <div class="rango-count-wrap${compact ? ' is-compact' : ''}">${chips}${other}</div>
+    </div>`;
+}
+
+function htmlBloccoContatoriMembri(compact) {
+    return `<div class="rango-count-block">
+        <div class="rango-count-title">Membri per grado</div>
+        ${htmlContatoriRanghi(compact)}
+    </div>
+    ${htmlContatoriFamiglie(compact)}`;
 }
 
 function renderVampiriLists() {
@@ -1214,11 +1281,11 @@ function renderVampiriLists() {
 
     const attivi = membriAttivi();
 
-    // Contatori ranghi (Generale + Admin Membri) — tutti i membri
+    // Contatori ranghi + famiglie + inattivi (Generale + Admin Membri)
     const counterGen = document.getElementById('membri-ranghi-counter');
-    if (counterGen) counterGen.innerHTML = htmlContatoriRanghi(true);
+    if (counterGen) counterGen.innerHTML = htmlBloccoContatoriMembri(true);
     const counterAdm = document.getElementById('admin-membri-ranghi-counter');
-    if (counterAdm) counterAdm.innerHTML = htmlContatoriRanghi(false);
+    if (counterAdm) counterAdm.innerHTML = htmlBloccoContatoriMembri(false);
 
     // Lista Generale: tutti i membri; sospesi in rosso
     const listaDinamica = document.getElementById('lista-membri-dinamica');
@@ -2643,8 +2710,8 @@ window.refreshActiveSectionUI = () => {
             window.renderLogs?.();
             window.popolaSelectOggetti?.();
             break;
-        case 'calendario':
-            window.renderCalendarioSezione?.();
+        case 'razze':
+            window.renderRazzeSezione?.();
             break;
 case 'albero':
             if (window._alberoDirty) {
@@ -2675,8 +2742,7 @@ function startFirestoreListeners() {
         inventario: null,
         logs: null,
         saldoLogs: null,
-        calendarioAvvento: null,
-        calendarioMesi: null,
+        razze: null,
         albero: null,
         tipiMateriale: null,
         richieste: null,
@@ -2688,7 +2754,7 @@ function startFirestoreListeners() {
         inventario: 0,
         logs: 0,
         saldoLogs: 0,
-        calendario: 0,
+        razze: 0,
         albero: 0,
         tipiMateriale: 0,
         richieste: 0,
@@ -2699,7 +2765,7 @@ function startFirestoreListeners() {
         inventario: false,
         logs: false,
         saldoLogs: false,
-        calendario: false,
+        razze: false,
         albero: false,
         tipiMateriale: false,
         richieste: false
@@ -2789,10 +2855,14 @@ function startFirestoreListeners() {
     // Aggiornamento immediato tra utenti. Costo: 1 lettura per doc al primo attach,
     // poi solo i documenti che cambiano (non tutto di nuovo).
     onSnapshot(collection(db, "membri"), (snap) => {
-        listaVampiri = snap.docs.map(d => d.data());
+        listaVampiri = snap.docs.map(d => ({ id: d.id, ...d.data(), nome: d.data().nome || d.id }));
         scheduleUI(() => {
             renderVampiriLists();
             if (isSectionActive('generale')) renderClassifiche?.();
+            if (isSectionActive('razze') || isAdminVisible()) {
+                window.renderRazzeSezione?.();
+                window.renderAdminRazze?.();
+            }
         });
     }, (err) => console.warn('[membri live]', err?.code || err));
 
@@ -2930,27 +3000,21 @@ function startFirestoreListeners() {
         );
     }
 
-    function attachCalendario() {
-        if (_unsubs.calendarioAvvento || _unsubs.calendarioMesi) return;
-        _unsubs.calendarioAvvento = onSnapshot(collection(db, "calendario_avvento"), (snapshot) => {
-            calendarioAvvento = snapshot.docs.map(d => ({ id: d.id, ...d.data() }));
+    function attachRazze() {
+        if (_unsubs.razze) return;
+        _unsubs.razze = onSnapshot(collection(db, "razze"), (snapshot) => {
+            listaRazze = snapshot.docs.map(d => ({ id: d.id, ...d.data() }));
+            listaRazze.sort((a, b) => (Number(a.ordine) || 0) - (Number(b.ordine) || 0) || String(a.nome || '').localeCompare(String(b.nome || ''), 'it'));
             scheduleUI(() => {
-                if (isSectionActive('calendario') || isAdminVisible()) {
-                    window.renderCalendarioSezione?.();
-                    window.renderAdminCalendario?.();
+                renderVampiriLists?.(); // aggiorna contatori famiglie su Generale / Membri
+                if (isSectionActive('razze') || isAdminVisible()) {
+                    window.renderRazzeSezione?.();
+                    window.renderAdminRazze?.();
                 }
-            });
-        }, (err) => console.warn('[calendario_avvento]', err));
-        _unsubs.calendarioMesi = onSnapshot(collection(db, "calendario_mesi"), (snapshot) => {
-            calendarioMesi = snapshot.docs.map(d => ({ id: d.id, ...d.data() }));
-            scheduleUI(() => {
-                if (isSectionActive('calendario') || isAdminVisible()) {
-                    window.renderCalendarioSezione?.();
-                    window.renderAdminCalendario?.();
-                }
-            });
-        }, (err) => console.warn('[calendario_mesi]', err));
+            }, { priority: 'normal' });
+        }, (err) => console.warn('[razze]', err));
     }
+
 
     function attachAlbero() {
         if (_unsubs.albero) return;
@@ -3008,7 +3072,7 @@ function startFirestoreListeners() {
         calcolo: ['tipiMateriale'],
         saldo: ['saldoLogs'],
         inventario: ['inventario', 'logs'],
-        calendario: ['calendario'],
+        razze: ['razze'],
         albero: ['albero'],
         gestione: []
     };
@@ -3018,7 +3082,7 @@ function startFirestoreListeners() {
         inventario: attachInventario,
         logs: attachLogs,
         saldoLogs: attachSaldoLogs,
-        calendario: attachCalendario,
+        razze: attachRazze,
         albero: attachAlbero,
         richieste: attachRichieste,
         systemLogs: attachSystemLogs
@@ -3029,7 +3093,7 @@ function startFirestoreListeners() {
         inventario: ['inventario'],
         logs: ['logs'],
         saldoLogs: ['saldoLogs'],
-        calendario: ['calendarioAvvento', 'calendarioMesi'],
+        razze: ['razze'],
         albero: ['albero'],
         richieste: ['richieste'],
         systemLogs: ['systemLogs']
@@ -3071,7 +3135,7 @@ function startFirestoreListeners() {
             }
             if (adminViewId === 'materiali') wanted.add('tipiMateriale');
             if (adminViewId === 'albero') wanted.add('albero');
-            if (adminViewId === 'calendario') wanted.add('calendario');
+            if (adminViewId === 'razze') wanted.add('razze');
             if (adminViewId === 'richieste-membri') wanted.add('richieste');
             if (adminViewId === 'classifiche') {
                 // Solo dati già in memoria (settimana corrente). Altre settimane: on-demand al cambio filtro.
@@ -5136,7 +5200,7 @@ window.renderSystemLogs = function() {
     const tipoColor = {
         auth: '#60a5fa', admin: '#c5a059', membro: '#e8a0bf', vendita: '#2ecc71',
         materiali: '#947a44', inventario: '#a78bfa', saldo: '#f59e0b', albero: '#34d399',
-        calendario: '#c084fc', dinamico: '#38bdf8', altro: '#9ca3af'
+        razze: '#c084fc', dinamico: '#38bdf8', altro: '#9ca3af'
     };
 
     tbody.innerHTML = list.map(e => {
@@ -5208,425 +5272,271 @@ window.exportSystemLogsCSV = function() {
 
 
 
-// ========== CALENDARIO (Avvento + Mesi multi-anno) ==========
-const CAL_MESI_NOMI = ['', 'Gennaio', 'Febbraio', 'Marzo', 'Aprile', 'Maggio', 'Giugno', 'Luglio', 'Agosto', 'Settembre', 'Ottobre', 'Novembre', 'Dicembre'];
 
-/** Anno visualizzato (membri) e anno in modifica (admin) */
-let calAnnoView = null;   // null = anno corrente
-let calAnnoAdmin = null;
-
-function calOggi() {
-    const d = new Date();
-    return { y: d.getFullYear(), m: d.getMonth() + 1, day: d.getDate() };
-}
-
-function calAnnoCorrente() {
-    return new Date().getFullYear();
-}
-
-/** Lista anni disponibili: da dati + corrente ± range */
-function calAnniDisponibili() {
-    const set = new Set();
-    const yNow = calAnnoCorrente();
-    for (let y = yNow - 1; y <= yNow + 3; y++) set.add(y);
-    (calendarioMesi || []).forEach(e => {
-        const a = Number(e.anno);
-        if (a >= 2000 && a <= 2100) set.add(a);
-    });
-    return [...set].sort((a, b) => a - b);
-}
-
-function getCalAnnoView() {
-    if (calAnnoView == null) calAnnoView = calAnnoCorrente();
-    return calAnnoView;
-}
-
-function getCalAnnoAdmin() {
-    if (calAnnoAdmin == null) calAnnoAdmin = calAnnoCorrente();
-    return calAnnoAdmin;
-}
-
-function escapeHtmlCal(s) {
+// ========== RAZZE (gestione + vista membri) ==========
+function escapeHtmlRazze(s) {
     return String(s || '').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;');
 }
 
-function popolaSelectAnniCalendario() {
-    const anni = calAnniDisponibili();
-    const yView = getCalAnnoView();
-    const yAdm = getCalAnnoAdmin();
-    const selView = document.getElementById('cal-anno-view');
-    if (selView) {
-        const cur = selView.value;
-        selView.innerHTML = anni.map(y =>
-            `<option value="${y}">${y}${y === calAnnoCorrente() ? ' · corrente' : ''}</option>`
-        ).join('');
-        selView.value = String(anni.includes(Number(cur)) ? cur : yView);
-        calAnnoView = Number(selView.value);
-    }
-    const selAdm = document.getElementById('adm-cal-anno');
-    if (selAdm) {
-        const cur = selAdm.value;
-        // Admin: stessi anni + possibilità di aggiungere anno futuro non ancora in lista
-        const extra = [...anni];
-        const yMax = Math.max(...anni, calAnnoCorrente());
-        for (let y = yMax + 1; y <= yMax + 2; y++) {
-            if (!extra.includes(y)) extra.push(y);
-        }
-        selAdm.innerHTML = extra.map(y =>
-            `<option value="${y}">${y}${y === calAnnoCorrente() ? ' · corrente' : ''}</option>`
-        ).join('');
-        selAdm.value = String(extra.includes(Number(cur)) ? cur : yAdm);
-        calAnnoAdmin = Number(selAdm.value);
-    }
-    // Aggiorna label tab
-    const tabMe = document.getElementById('cal-tab-mesi');
-    if (tabMe) tabMe.textContent = `📆 Calendario ${getCalAnnoView()}`;
-    const tabAdm = document.getElementById('adm-cal-tab-mesi');
-    if (tabAdm) tabAdm.textContent = `📆 Mesi ${getCalAnnoAdmin()}`;
-    const labelAdm = document.getElementById('adm-cal-mesi-title');
-    if (labelAdm) labelAdm.textContent = `Mese ${getCalAnnoAdmin()}`;
+/** Membri assegnati a una razza (campo razzaId sul documento membri) */
+function membriDiRazza(razzaId) {
+    const rid = String(razzaId || '');
+    return (listaVampiri || []).filter(m => String(m.razzaId || '') === rid)
+        .sort((a, b) => String(a.nome || '').localeCompare(String(b.nome || ''), 'it'));
 }
 
-window.onCalAnnoViewChange = function() {
-    const v = Number(document.getElementById('cal-anno-view')?.value);
-    if (v) calAnnoView = v;
-    const tabMe = document.getElementById('cal-tab-mesi');
-    if (tabMe) tabMe.textContent = `📆 Calendario ${getCalAnnoView()}`;
-    renderMesiGrid(calOggi());
-};
-
-window.onCalAnnoAdminChange = function() {
-    const v = Number(document.getElementById('adm-cal-anno')?.value);
-    if (v) calAnnoAdmin = v;
-    const tabAdm = document.getElementById('adm-cal-tab-mesi');
-    if (tabAdm) tabAdm.textContent = `📆 Mesi ${getCalAnnoAdmin()}`;
-    const labelAdm = document.getElementById('adm-cal-mesi-title');
-    if (labelAdm) labelAdm.textContent = `Mese ${getCalAnnoAdmin()}`;
-    window.resetFormMese();
-    window.renderAdminCalendario();
-};
-
-window.switchCalendarioTab = function(tab) {
-    const av = document.getElementById('cal-panel-avvento');
-    const me = document.getElementById('cal-panel-mesi');
-    const bAv = document.getElementById('cal-tab-avvento');
-    const bMe = document.getElementById('cal-tab-mesi');
-    if (!av || !me) return;
-    const isAv = tab === 'avvento';
-    av.style.display = isAv ? 'block' : 'none';
-    me.style.display = isAv ? 'none' : 'block';
-    if (bAv) bAv.classList.toggle('is-active', isAv);
-    if (bMe) bMe.classList.toggle('is-active', !isAv);
-    try { localStorage.setItem('cal_tab', tab); } catch (_) {}
-    window.renderCalendarioSezione();
-};
-
-window.renderCalendarioSezione = function() {
-    const oggi = calOggi();
-    const live = document.getElementById('cal-live-date');
-    if (live) {
-        live.textContent = new Date().toLocaleDateString('it-IT', { weekday: 'long', year: 'numeric', month: 'long', day: 'numeric' });
-    }
-    popolaSelectAnniCalendario();
-    renderAvventoGrid(oggi);
-    renderMesiGrid(oggi);
-};
-
-function renderAvventoGrid(oggi) {
-    const grid = document.getElementById('cal-avvento-grid');
+window.renderRazzeSezione = function() {
+    const grid = document.getElementById('razze-grid');
     if (!grid) return;
-    const q = (document.getElementById('cal-avvento-search')?.value || '').toLowerCase().trim();
-    const byDay = {};
-    (calendarioAvvento || []).forEach(e => {
-        const g = Number(e.giorno);
-        if (g >= 1 && g <= 31) byDay[g] = e;
-    });
-    let html = '';
-    for (let g = 1; g <= 31; g++) {
-        const e = byDay[g] || {};
-        const titolo = e.titolo || '';
-        const premio = e.premio || '';
-        const foto = e.fotoUrl || '';
-        const blob = `${titolo} ${premio} ${e.note || ''}`.toLowerCase();
-        if (q && !blob.includes(q) && String(g) !== q) continue;
-        const isToday = oggi.m === 12 && oggi.day === g;
-        const hasContent = !!(foto || premio || titolo);
-        html += `<div class="cal-day-card${isToday ? ' is-today' : ''}${hasContent ? ' has-content' : ''}" data-day="${g}">
-            <div class="cal-day-num">${g}</div>
-            <div class="cal-day-media">${foto ? `<img src="${String(foto).replace(/"/g,'&quot;')}" alt="" loading="lazy" onerror="this.style.display='none'">` : `<div class="cal-day-empty">🦇</div>`}</div>
-            <div class="cal-day-body">
-                ${titolo ? `<div class="cal-day-title">${escapeHtmlCal(titolo)}</div>` : ''}
-                ${premio ? `<div class="cal-day-premio">🎁 ${escapeHtmlCal(premio)}</div>` : `<div class="cal-day-premio muted">—</div>`}
-            </div>
-            ${isToday ? '<span class="cal-badge-oggi">Oggi</span>' : ''}
-        </div>`;
-    }
-    grid.innerHTML = html || '<p class="cal-empty">Nessun giorno corrisponde al filtro.</p>';
-}
-
-const _calMeseFotoIdx = {};
-
-function renderMesiGrid(oggi) {
-    const grid = document.getElementById('cal-mesi-grid');
-    if (!grid) return;
-    const anno = getCalAnnoView();
-    const q = (document.getElementById('cal-mesi-search')?.value || '').toLowerCase().trim();
-    const byMese = {};
-    (calendarioMesi || []).forEach(e => {
-        if (Number(e.anno) !== anno) return;
-        const m = Number(e.mese);
-        if (m >= 1 && m <= 12) byMese[m] = e;
-    });
-    let html = '';
-    for (let m = 1; m <= 12; m++) {
-        const e = byMese[m] || {};
-        const nome = e.nome || CAL_MESI_NOMI[m];
-        const fotos = Array.isArray(e.foto) ? e.foto.filter(f => f && f.url) : [];
-        if (q && !nome.toLowerCase().includes(q) && !String(m).includes(q)) continue;
-        const isCurrentMonth = oggi.y === anno && oggi.m === m;
-        const isPast = (oggi.y > anno) || (oggi.y === anno && oggi.m > m);
-        const idxKey = `${anno}-${m}`;
-        const idx = Math.min(_calMeseFotoIdx[idxKey] || 0, Math.max(0, fotos.length - 1));
-        _calMeseFotoIdx[idxKey] = idx;
-        const cur = fotos[idx];
-        const multi = fotos.length > 1;
-        html += `<div class="cal-mese-card${isCurrentMonth ? ' is-current' : ''}${isPast ? ' is-past' : ''}" data-mese="${m}">
-            <div class="cal-mese-head"><span class="cal-mese-nome">${escapeHtmlCal(nome)}</span><span class="cal-mese-num">${anno}</span></div>
-            <div class="cal-mese-media">
-                ${cur ? `<img src="${String(cur.url).replace(/"/g,'&quot;')}" alt="" loading="lazy" onerror="this.style.display='none'">` : `<div class="cal-day-empty">🌙</div>`}
-                ${multi ? `<button type="button" class="cal-foto-nav prev" onclick="window.calMeseFotoNav(${m}, -1)" aria-label="Foto precedente">‹</button>
-                    <button type="button" class="cal-foto-nav next" onclick="window.calMeseFotoNav(${m}, 1)" aria-label="Foto successiva">›</button>
-                    <span class="cal-foto-dots">${idx + 1}/${fotos.length}</span>` : ''}
-            </div>
-            ${cur && cur.caption ? `<div class="cal-mese-caption">${escapeHtmlCal(cur.caption)}</div>` : ''}
-            ${isCurrentMonth ? `<span class="cal-badge-oggi">Mese corrente · giorno ${oggi.day}</span>` : ''}
-        </div>`;
-    }
-    grid.innerHTML = html || '<p class="cal-empty">Nessun mese corrisponde al filtro.</p>';
-}
-
-window.calMeseFotoNav = function(mese, delta) {
-    const anno = getCalAnnoView();
-    const e = (calendarioMesi || []).find(x => Number(x.mese) === mese && Number(x.anno) === anno);
-    const fotos = e && Array.isArray(e.foto) ? e.foto.filter(f => f && f.url) : [];
-    if (!fotos.length) return;
-    const idxKey = `${anno}-${mese}`;
-    const cur = _calMeseFotoIdx[idxKey] || 0;
-    _calMeseFotoIdx[idxKey] = (cur + delta + fotos.length) % fotos.length;
-    renderMesiGrid(calOggi());
-};
-
-window.switchAdminCalTab = function(tab) {
-    const av = document.getElementById('adm-cal-avvento');
-    const me = document.getElementById('adm-cal-mesi');
-    const bAv = document.getElementById('adm-cal-tab-avvento');
-    const bMe = document.getElementById('adm-cal-tab-mesi');
-    if (!av || !me) return;
-    const isAv = tab === 'avvento';
-    av.style.display = isAv ? 'block' : 'none';
-    me.style.display = isAv ? 'none' : 'block';
-    if (bAv) bAv.classList.toggle('is-active', isAv);
-    if (bMe) bMe.classList.toggle('is-active', !isAv);
-};
-
-window.renderAdminCalendario = function() {
-    popolaSelectAnniCalendario();
-    const tbody = document.getElementById('adm-cal-avvento-body');
-    if (tbody) {
-        const byDay = {};
-        (calendarioAvvento || []).forEach(e => { byDay[Number(e.giorno)] = e; });
-        let rows = '';
-        for (let g = 1; g <= 31; g++) {
-            const e = byDay[g];
-            if (!e) {
-                rows += `<tr><td>${g}</td><td colspan="3" style="opacity:0.4;">— vuoto —</td>
-                <td><button type="button" class="btn-delete" style="border-color:var(--gold-accent);color:var(--gold-accent);" onclick="window.caricaAvventoGiorno(${g})">Modifica</button></td></tr>`;
-                continue;
-            }
-            const thumb = e.fotoUrl ? `<img src="${String(e.fotoUrl).replace(/"/g,'&quot;')}" style="width:36px;height:36px;object-fit:cover;border-radius:4px;" onerror="this.style.display='none'">` : '—';
-            rows += `<tr>
-                <td><strong>${g}</strong></td>
-                <td>${thumb}</td>
-                <td style="text-align:left;">${escapeHtmlCal(e.titolo || '—')}<br><span style="opacity:0.6;font-size:0.65rem;">${escapeHtmlCal(e.premio || '')}</span></td>
-                <td style="font-size:0.65rem;max-width:120px;word-break:break-word;">${escapeHtmlCal(e.note || '')}</td>
-                <td style="white-space:nowrap;">
-                    <button type="button" class="btn-delete" style="border-color:var(--gold-accent);color:var(--gold-accent);" onclick="window.caricaAvventoGiorno(${g})">Modifica</button>
-                    <button type="button" class="btn-delete" onclick="window.eliminaAvventoGiorno('${e.id}')">X</button>
-                </td>
-            </tr>`;
-        }
-        tbody.innerHTML = rows;
-    }
-    const tbodyM = document.getElementById('adm-cal-mesi-body');
-    if (tbodyM) {
-        const anno = getCalAnnoAdmin();
-        const byMese = {};
-        (calendarioMesi || []).forEach(e => {
-            if (Number(e.anno) !== anno) return;
-            byMese[Number(e.mese)] = e;
+    const q = (document.getElementById('razze-search')?.value || '').toLowerCase().trim();
+    let list = Array.isArray(listaRazze) ? [...listaRazze] : [];
+    list.sort((a, b) => (Number(a.ordine) || 0) - (Number(b.ordine) || 0) || String(a.nome || '').localeCompare(String(b.nome || ''), 'it'));
+    if (q) {
+        list = list.filter(r => {
+            const blob = `${r.nome || ''} ${r.descrizione || ''} ${r.tradizione || ''} ${r.ruolabile || ''}`.toLowerCase();
+            return blob.includes(q);
         });
-        let rows = '';
-        for (let m = 1; m <= 12; m++) {
-            const e = byMese[m];
-            const nome = (e && e.nome) || CAL_MESI_NOMI[m];
-            const fotos = (e && Array.isArray(e.foto)) ? e.foto.filter(f => f && f.url) : [];
-            const thumbs = fotos.slice(0, 3).map(f => `<img src="${String(f.url).replace(/"/g,'&quot;')}" style="width:28px;height:28px;object-fit:cover;border-radius:3px;margin:1px;" onerror="this.style.display='none'">`).join('') || '—';
-            rows += `<tr>
-                <td><strong>${CAL_MESI_NOMI[m]}</strong></td>
-                <td style="text-align:left;">${escapeHtmlCal(nome)}</td>
-                <td>${thumbs}${fotos.length > 3 ? ` <span style="opacity:0.6;">+${fotos.length-3}</span>` : ''}</td>
-                <td>${fotos.length}</td>
-                <td style="white-space:nowrap;">
-                    <button type="button" class="btn-delete" style="border-color:var(--gold-accent);color:var(--gold-accent);" onclick="window.caricaMeseCal(${m})">Modifica</button>
-                    ${e ? `<button type="button" class="btn-delete" onclick="window.eliminaMeseCal('${e.id}')">X</button>` : ''}
-                </td>
-            </tr>`;
+    }
+    if (!list.length) {
+        grid.innerHTML = '<p class="razze-empty">Nessuna razza configurata. Il gestore può aggiungerne da Gestione → Razze.</p>';
+        return;
+    }
+    grid.innerHTML = list.map(r => {
+        const mems = membriDiRazza(r.id);
+        const img = r.immagine
+            ? `<img src="${String(r.immagine).replace(/"/g,'&quot;')}" alt="" loading="lazy" onerror="this.style.display='none'">`
+            : `<div class="razze-img-empty">🦇</div>`;
+        const membriHtml = mems.length
+            ? mems.map(m => {
+                const grado = m.grado ? `<span class="razze-membro-grado">${escapeHtmlRazze(m.grado)}</span>` : '';
+                return `<li><strong>${escapeHtmlRazze(m.nome)}</strong>${grado}</li>`;
+            }).join('')
+            : '<li class="razze-membro-empty">Nessun membro assegnato</li>';
+        const ruolMap = { uomo: 'Solo Uomo', donna: 'Solo Donna', entrambi: 'Uomo e Donna' };
+        const ruolLabel = ruolMap[r.ruolabile] || (r.ruolabile ? escapeHtmlRazze(r.ruolabile) : 'Uomo e Donna');
+        return `<article class="razze-card" data-id="${escapeHtmlRazze(r.id)}">
+            <div class="razze-card-media">${img}</div>
+            <div class="razze-card-body">
+                <h3 class="razze-card-nome">${escapeHtmlRazze(r.nome || '—')}</h3>
+                <div class="razze-card-ruolabile"><span>Ruolabile</span> ${ruolLabel}</div>
+                <p class="razze-card-desc-label">Descrizione</p>
+                <p class="razze-card-desc">${escapeHtmlRazze(r.descrizione || '') || '<span style="opacity:0.4;">—</span>'}</p>
+                <p class="razze-card-desc-label">Tradizione</p>
+                <p class="razze-card-desc razze-card-tradizione">${escapeHtmlRazze(r.tradizione || '') || '<span style="opacity:0.4;">—</span>'}</p>
+                <div class="razze-card-membri">
+                    <div class="razze-membri-title">Membri · ${mems.length}</div>
+                    <ul class="razze-membri-list">${membriHtml}</ul>
+                </div>
+            </div>
+        </article>`;
+    }).join('');
+};
+
+window.renderAdminRazze = function() {
+    const tbody = document.getElementById('adm-razze-body');
+    if (tbody) {
+        const list = [...(listaRazze || [])].sort((a, b) => (Number(a.ordine) || 0) - (Number(b.ordine) || 0) || String(a.nome || '').localeCompare(String(b.nome || ''), 'it'));
+        if (!list.length) {
+            tbody.innerHTML = '<tr><td colspan="5" style="opacity:0.5;text-align:center;padding:20px;">Nessuna razza. Creane una con il form sopra.</td></tr>';
+        } else {
+            tbody.innerHTML = list.map(r => {
+                const nMem = membriDiRazza(r.id).length;
+                const thumb = r.immagine
+                    ? `<img src="${String(r.immagine).replace(/"/g,'&quot;')}" style="width:40px;height:40px;object-fit:cover;border-radius:6px;" onerror="this.style.display='none'">`
+                    : '—';
+                const ruolMap = { uomo: 'Uomo', donna: 'Donna', entrambi: 'Entrambi' };
+                const ruolL = ruolMap[r.ruolabile] || r.ruolabile || 'Entrambi';
+                return `<tr>
+                    <td>${thumb}</td>
+                    <td style="text-align:left;"><strong>${escapeHtmlRazze(r.nome || '—')}</strong>
+                        <div style="font-size:0.65rem;opacity:0.6;max-width:220px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;">${escapeHtmlRazze(r.descrizione || '')}</div>
+                        <div style="font-size:0.62rem;opacity:0.55;max-width:220px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;">Trad.: ${escapeHtmlRazze(r.tradizione || '—')}</div>
+                        <div style="font-size:0.62rem;color:var(--gold-dim);margin-top:2px;">Ruolabile: ${escapeHtmlRazze(ruolL)}</div>
+                    </td>
+                    <td>${nMem}</td>
+                    <td>${r.ordine != null ? r.ordine : 0}</td>
+                    <td style="white-space:nowrap;">
+                        <button type="button" class="btn-delete" style="border-color:var(--gold-accent);color:var(--gold-accent);" onclick="window.caricaRazza('${String(r.id).replace(/'/g,"\\'")}')">Modifica</button>
+                        <button type="button" class="btn-delete" onclick="window.eliminaRazza('${String(r.id).replace(/'/g,"\\'")}')">X</button>
+                    </td>
+                </tr>`;
+            }).join('');
         }
-        tbodyM.innerHTML = rows;
+    }
+    // Select razza per assegnazione membri
+    const selRazza = document.getElementById('adm-razze-assegna-razza');
+    if (selRazza) {
+        const cur = selRazza.value;
+        const opts = ['<option value="">— Seleziona razza —</option>'].concat(
+            (listaRazze || []).map(r => `<option value="${escapeHtmlRazze(r.id)}">${escapeHtmlRazze(r.nome || r.id)}</option>`)
+        );
+        selRazza.innerHTML = opts.join('');
+        if (cur && [...selRazza.options].some(o => o.value === cur)) selRazza.value = cur;
+    }
+    const selMembro = document.getElementById('adm-razze-assegna-membro');
+    if (selMembro) {
+        const cur = selMembro.value;
+        const opts = ['<option value="">— Seleziona membro —</option>'].concat(
+            (listaVampiri || []).slice().sort((a,b)=>String(a.nome||'').localeCompare(String(b.nome||''),'it'))
+                .map(m => {
+                    const razzaNome = m.razzaId ? ((listaRazze || []).find(r => r.id === m.razzaId)?.nome || m.razzaId) : '—';
+                    return `<option value="${escapeHtmlRazze(m.nome)}">${escapeHtmlRazze(m.nome)} (${escapeHtmlRazze(razzaNome)})</option>`;
+                })
+        );
+        selMembro.innerHTML = opts.join('');
+        if (cur && [...selMembro.options].some(o => o.value === cur)) selMembro.value = cur;
+    }
+    // Tabella assegnazioni
+    const tAs = document.getElementById('adm-razze-assegnazioni-body');
+    if (tAs) {
+        const withRazza = (listaVampiri || []).filter(m => m.razzaId);
+        if (!withRazza.length) {
+            tAs.innerHTML = '<tr><td colspan="4" style="opacity:0.5;text-align:center;padding:16px;">Nessun membro assegnato a una razza.</td></tr>';
+        } else {
+            tAs.innerHTML = withRazza
+                .sort((a,b)=>String(a.nome||'').localeCompare(String(b.nome||''),'it'))
+                .map(m => {
+                    const rn = (listaRazze || []).find(r => r.id === m.razzaId)?.nome || m.razzaId || '—';
+                    return `<tr>
+                        <td style="text-align:left;"><strong>${escapeHtmlRazze(m.nome)}</strong></td>
+                        <td>${escapeHtmlRazze(m.grado || '—')}</td>
+                        <td style="text-align:left;">${escapeHtmlRazze(rn)}</td>
+                        <td><button type="button" class="btn-delete" onclick="window.rimuoviMembroDaRazza('${String(m.nome).replace(/'/g,"\\'")}')">Rimuovi</button></td>
+                    </tr>`;
+                }).join('');
+        }
     }
 };
 
-window.caricaAvventoGiorno = function(giorno) {
-    const e = (calendarioAvvento || []).find(x => Number(x.giorno) === Number(giorno));
-    document.getElementById('adm-av-giorno').value = String(giorno);
-    document.getElementById('adm-av-titolo').value = e?.titolo || '';
-    document.getElementById('adm-av-premio').value = e?.premio || '';
-    document.getElementById('adm-av-foto').value = e?.fotoUrl || '';
-    document.getElementById('adm-av-note').value = e?.note || '';
-    document.getElementById('adm-av-edit-id').value = e?.id || '';
-    window.switchAdminCalTab('avvento');
-};
-
-window.resetFormAvvento = function() {
-    ['adm-av-titolo','adm-av-premio','adm-av-foto','adm-av-note','adm-av-edit-id'].forEach(id => {
+window.resetFormRazza = function() {
+    ['adm-razza-nome','adm-razza-immagine','adm-razza-descrizione','adm-razza-tradizione','adm-razza-edit-id'].forEach(id => {
         const el = document.getElementById(id);
         if (el) el.value = '';
     });
+    const o = document.getElementById('adm-razza-ordine');
+    if (o) o.value = '0';
+    const ru = document.getElementById('adm-razza-ruolabile');
+    if (ru) ru.value = 'entrambi';
 };
 
-window.salvaAvventoGiorno = async function() {
-    if (!hasAdminPerm('calendario') && !currentUser?.isAdmin) return vampireToast('Non hai il permesso Calendario.', 'error');
-    const giorno = Number(document.getElementById('adm-av-giorno')?.value);
-    if (!giorno || giorno < 1 || giorno > 31) return vampireToast('Seleziona un giorno valido (1-31).', 'error');
+window.caricaRazza = function(id) {
+    const r = (listaRazze || []).find(x => String(x.id) === String(id));
+    if (!r) return vampireToast('Razza non trovata.', 'error');
+    document.getElementById('adm-razza-edit-id').value = r.id || '';
+    document.getElementById('adm-razza-nome').value = r.nome || '';
+    document.getElementById('adm-razza-immagine').value = r.immagine || '';
+    document.getElementById('adm-razza-descrizione').value = r.descrizione || '';
+    const tr = document.getElementById('adm-razza-tradizione');
+    if (tr) tr.value = r.tradizione || '';
+    document.getElementById('adm-razza-ordine').value = r.ordine != null ? r.ordine : 0;
+    const ru = document.getElementById('adm-razza-ruolabile');
+    if (ru) ru.value = r.ruolabile || 'entrambi';
+    window.apriAdminView?.('razze');
+};
+
+window.salvaRazza = async function() {
+    if (!hasAdminPerm('razze') && !currentUser?.isAdmin) return vampireToast('Non hai il permesso Razze.', 'error');
+    const nome = (document.getElementById('adm-razza-nome')?.value || '').trim();
+    if (!nome) return vampireToast('Inserisci il nome della razza.', 'error');
+    const immagine = (document.getElementById('adm-razza-immagine')?.value || '').trim();
+    const descrizione = (document.getElementById('adm-razza-descrizione')?.value || '').trim();
+    const tradizione = (document.getElementById('adm-razza-tradizione')?.value || '').trim();
+    let ruolabile = (document.getElementById('adm-razza-ruolabile')?.value || 'entrambi').trim();
+    if (!['uomo', 'donna', 'entrambi'].includes(ruolabile)) ruolabile = 'entrambi';
+    const ordine = Number(document.getElementById('adm-razza-ordine')?.value) || 0;
+    const editId = (document.getElementById('adm-razza-edit-id')?.value || '').trim();
     const data = {
-        giorno,
-        titolo: (document.getElementById('adm-av-titolo')?.value || '').trim(),
-        premio: (document.getElementById('adm-av-premio')?.value || '').trim(),
-        fotoUrl: (document.getElementById('adm-av-foto')?.value || '').trim(),
-        note: (document.getElementById('adm-av-note')?.value || '').trim(),
+        nome,
+        immagine,
+        descrizione,
+        tradizione,
+        ruolabile,
+        ordine,
         updatedAt: Date.now()
     };
     try {
-        await setDoc(doc(db, 'calendario_avvento', String(giorno)), data, { merge: true });
-        logSystemEvent('calendario', 'avvento_salva', `Avvento giorno ${giorno}`, { giorno });
-        vampireToast(`Giorno ${giorno} salvato.`, 'success');
-        window.resetFormAvvento();
+        if (editId) {
+            await setDoc(doc(db, 'razze', editId), data, { merge: true });
+            logSystemEvent('razze', 'modifica', `Razza aggiornata: ${nome}`, { id: editId, nome });
+            vampireToast(`Razza "${nome}" aggiornata.`, 'success');
+        } else {
+            data.createdAt = Date.now();
+            const ref = await addDoc(collection(db, 'razze'), data);
+            logSystemEvent('razze', 'crea', `Razza creata: ${nome}`, { id: ref.id, nome });
+            vampireToast(`Razza "${nome}" creata.`, 'success');
+        }
+        window.resetFormRazza();
     } catch (err) {
         vampireToast('Errore: ' + (err.message || err), 'error');
     }
 };
 
-window.eliminaAvventoGiorno = async function(id) {
-    if (!hasAdminPerm('calendario') && !currentUser?.isAdmin) return vampireToast('Non hai il permesso Calendario.', 'error');
-    const res = await Swal.fire({ title: 'Rimuovere giorno avvento?', icon: 'warning', showCancelButton: true, confirmButtonColor: '#8b0000', background: '#111', color: '#fff' });
+window.eliminaRazza = async function(id) {
+    if (!hasAdminPerm('razze') && !currentUser?.isAdmin) return vampireToast('Non hai il permesso Razze.', 'error');
+    const r = (listaRazze || []).find(x => String(x.id) === String(id));
+    const nome = r?.nome || id;
+    const res = await Swal.fire({
+        title: `Eliminare la razza "${nome}"?`,
+        html: '<p style="font-size:0.85rem;">I membri assegnati resteranno senza razza (campo azzerato).</p>',
+        icon: 'warning', showCancelButton: true, confirmButtonColor: '#8b0000', background: '#111', color: '#fff'
+    });
     if (!res.isConfirmed) return;
     try {
-        await deleteDoc(doc(db, 'calendario_avvento', id));
-        applyLocalRemove('calendario_avvento', id);
-        logSystemEvent('calendario', 'avvento_elimina', `Eliminato giorno avvento ${id}`, { id });
-        vampireToast('Giorno rimosso.', 'success');
+        // Rimuovi razzaId dai membri collegati
+        const batch = writeBatch(db);
+        let n = 0;
+        (listaVampiri || []).forEach(m => {
+            if (String(m.razzaId || '') === String(id) && m.nome) {
+                batch.update(doc(db, 'membri', m.nome), { razzaId: '' });
+                n++;
+            }
+        });
+        batch.delete(doc(db, 'razze', id));
+        await batch.commit();
+        applyLocalRemove('razze', id);
+        // aggiorna locale membri
+        listaVampiri = (listaVampiri || []).map(m => String(m.razzaId || '') === String(id) ? { ...m, razzaId: '' } : m);
+        logSystemEvent('razze', 'elimina', `Razza eliminata: ${nome}`, { id, membriScollegati: n });
+        vampireToast('Razza eliminata.', 'success');
+        window.renderAdminRazze?.();
+        window.renderRazzeSezione?.();
     } catch (err) {
         vampireToast('Errore: ' + (err.message || err), 'error');
     }
 };
 
-let _admMeseFotoTemp = [];
-
-window.caricaMeseCal = function(mese) {
-    const anno = getCalAnnoAdmin();
-    const e = (calendarioMesi || []).find(x => Number(x.mese) === Number(mese) && Number(x.anno) === anno);
-    document.getElementById('adm-mese-num').value = String(mese);
-    document.getElementById('adm-mese-nome').value = e?.nome || CAL_MESI_NOMI[mese];
-    document.getElementById('adm-mese-edit-id').value = e?.id || '';
-    _admMeseFotoTemp = (e && Array.isArray(e.foto)) ? e.foto.map(f => ({ url: f.url || '', caption: f.caption || '' })) : [];
-    renderAdmMeseFotoTemp();
-    window.switchAdminCalTab('mesi');
-};
-
-window.resetFormMese = function() {
-    const n = document.getElementById('adm-mese-nome'); if (n) n.value = '';
-    const e = document.getElementById('adm-mese-edit-id'); if (e) e.value = '';
-    const u = document.getElementById('adm-mese-foto-url'); if (u) u.value = '';
-    const c = document.getElementById('adm-mese-foto-caption'); if (c) c.value = '';
-    _admMeseFotoTemp = [];
-    renderAdmMeseFotoTemp();
-};
-
-function renderAdmMeseFotoTemp() {
-    const box = document.getElementById('adm-mese-foto-lista');
-    if (!box) return;
-    if (!_admMeseFotoTemp.length) {
-        box.innerHTML = '<p style="opacity:0.5;font-size:0.75rem;">Nessuna foto. Aggiungine una sotto.</p>';
-        return;
-    }
-    box.innerHTML = _admMeseFotoTemp.map((f, i) => `
-        <div class="adm-cal-foto-row">
-            <img src="${String(f.url).replace(/"/g,'&quot;')}" alt="" onerror="this.style.opacity=0.2">
-            <div style="flex:1;min-width:0;">
-                <div style="font-size:0.7rem;word-break:break-all;opacity:0.8;">${escapeHtmlCal(f.url)}</div>
-                <div style="font-size:0.75rem;color:var(--gold-dim);">${escapeHtmlCal(f.caption || '—')}</div>
-            </div>
-            <button type="button" class="btn-delete" onclick="window.rimuoviFotoMeseTemp(${i})">X</button>
-        </div>`).join('');
-}
-
-window.aggiungiFotoMeseTemp = function() {
-    const url = (document.getElementById('adm-mese-foto-url')?.value || '').trim();
-    const caption = (document.getElementById('adm-mese-foto-caption')?.value || '').trim();
-    if (!url) return vampireToast('Inserisci URL foto.', 'error');
-    _admMeseFotoTemp.push({ url, caption });
-    document.getElementById('adm-mese-foto-url').value = '';
-    document.getElementById('adm-mese-foto-caption').value = '';
-    renderAdmMeseFotoTemp();
-};
-
-window.rimuoviFotoMeseTemp = function(i) {
-    _admMeseFotoTemp.splice(i, 1);
-    renderAdmMeseFotoTemp();
-};
-
-window.salvaMeseCal = async function() {
-    if (!hasAdminPerm('calendario') && !currentUser?.isAdmin) return vampireToast('Non hai il permesso Calendario.', 'error');
-    const mese = Number(document.getElementById('adm-mese-num')?.value);
-    if (!mese || mese < 1 || mese > 12) return vampireToast('Seleziona un mese valido.', 'error');
-    const anno = getCalAnnoAdmin();
-    const nome = (document.getElementById('adm-mese-nome')?.value || '').trim() || CAL_MESI_NOMI[mese];
-    const data = { anno, mese, nome, foto: _admMeseFotoTemp.filter(f => f.url), updatedAt: Date.now() };
+window.assegnaMembroARazza = async function() {
+    if (!hasAdminPerm('razze') && !currentUser?.isAdmin) return vampireToast('Non hai il permesso Razze.', 'error');
+    const razzaId = (document.getElementById('adm-razze-assegna-razza')?.value || '').trim();
+    const nome = (document.getElementById('adm-razze-assegna-membro')?.value || '').trim();
+    if (!razzaId) return vampireToast('Seleziona una razza.', 'error');
+    if (!nome) return vampireToast('Seleziona un membro.', 'error');
     try {
-        const id = `${anno}-${String(mese).padStart(2, '0')}`;
-        await setDoc(doc(db, 'calendario_mesi', id), data, { merge: true });
-        logSystemEvent('calendario', 'mese_salva', `Mese ${CAL_MESI_NOMI[mese]} ${anno}`, { anno, mese, nFoto: data.foto.length });
-        vampireToast(`${CAL_MESI_NOMI[mese]} ${anno} salvato.`, 'success');
-        window.resetFormMese();
+        await setDoc(doc(db, 'membri', nome), { razzaId }, { merge: true });
+        const m = (listaVampiri || []).find(x => x.nome === nome);
+        if (m) m.razzaId = razzaId;
+        else listaVampiri = [...(listaVampiri || []), { nome, razzaId }];
+        const rn = (listaRazze || []).find(r => r.id === razzaId)?.nome || razzaId;
+        logSystemEvent('razze', 'assegna', `Assegnato ${nome} → ${rn}`, { nome, razzaId });
+        vampireToast(`${nome} assegnato a ${rn}.`, 'success');
+        window.renderAdminRazze?.();
+        window.renderRazzeSezione?.();
     } catch (err) {
         vampireToast('Errore: ' + (err.message || err), 'error');
     }
 };
 
-window.eliminaMeseCal = async function(id) {
-    if (!hasAdminPerm('calendario') && !currentUser?.isAdmin) return vampireToast('Non hai il permesso Calendario.', 'error');
-    const res = await Swal.fire({ title: 'Rimuovere dati del mese?', icon: 'warning', showCancelButton: true, confirmButtonColor: '#8b0000', background: '#111', color: '#fff' });
-    if (!res.isConfirmed) return;
+window.rimuoviMembroDaRazza = async function(nome) {
+    if (!hasAdminPerm('razze') && !currentUser?.isAdmin) return vampireToast('Non hai il permesso Razze.', 'error');
+    if (!nome) return;
     try {
-        await deleteDoc(doc(db, 'calendario_mesi', id));
-        applyLocalRemove('calendario_mesi', id);
-        logSystemEvent('calendario', 'mese_elimina', `Eliminato mese ${id}`, { id });
-        vampireToast('Mese rimosso.', 'success');
+        await setDoc(doc(db, 'membri', nome), { razzaId: '' }, { merge: true });
+        listaVampiri = (listaVampiri || []).map(m => m.nome === nome ? { ...m, razzaId: '' } : m);
+        logSystemEvent('razze', 'scollega', `Rimosso ${nome} dalla razza`, { nome });
+        vampireToast(`${nome} rimosso dalla razza.`, 'success');
+        window.renderAdminRazze?.();
+        window.renderRazzeSezione?.();
     } catch (err) {
         vampireToast('Errore: ' + (err.message || err), 'error');
     }
 };
-
-setInterval(() => {
-    if (typeof isSectionActive === 'function' && isSectionActive('calendario')) window.renderCalendarioSezione?.();
-}, 60000);

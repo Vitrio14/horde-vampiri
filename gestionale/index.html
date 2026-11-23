@@ -324,13 +324,13 @@
 <div class="nav-links">
     <a href="../" class="nav-link" title="Torna al Portale">Home</a>
     <div class="nav-link" onclick="window.showSection('albero')">Albero</div>
+        <div class="nav-link" onclick="window.showSection('razze')">Famiglie</div>
     <div class="nav-link active" onclick="window.showSection('generale')">Generale</div>
     <div class="nav-link" onclick="window.showSection('vendite')">Vendite</div>
     <div class="nav-link" onclick="window.showSection('materiali')">Vendita Materiali</div>
     <div class="nav-link" onclick="window.showSection('saldo')">Saldo</div>
     <div class="nav-link" onclick="window.showSection('calcolo')">Calcolo</div>
     <div class="nav-link" onclick="window.showSection('inventario')">Inventario</div>
-    <div class="nav-link" onclick="window.showSection('calendario')">Calendario</div>
     <a href="https://manuale-vampiri.vitriotv.com" class="nav-link" target="_blank" rel="noopener">Manuale</a>
     <div class="nav-link" onclick="window.showSection('gestione')">Gestione</div>
 </div>
@@ -725,35 +725,16 @@
             <div class="scroll-container"><div id="inv-logs"></div></div>
         </section>
 
-        <section id="calendario" class="section">
+                <section id="razze" class="section">
             <div class="vamp-card">
-                <h2 style="text-align:center; margin-bottom:8px;">📅 Calendario Dinastia</h2>
-                <p id="cal-live-date" class="cal-live-date">—</p>
+                <h2 style="text-align:center; margin-bottom:8px;">🩸 Famiglie della Dinastia</h2>
                 <p style="font-size:0.72rem; color:var(--text-dim); text-align:center; margin-bottom:18px;">
-                    Avvento (1–31 dicembre) · Calendario mensile <strong style="color:var(--gold-accent);">multi-anno</strong> in tempo reale
+                    Elenco famiglie · descrizione · tradizione · ruolabile · membri assegnati dal gestore
                 </p>
-                <div class="cal-tabs">
-                    <button type="button" id="cal-tab-avvento" class="cal-tab is-active" onclick="window.switchCalendarioTab('avvento')">🎄 Avvento</button>
-                    <button type="button" id="cal-tab-mesi" class="cal-tab" onclick="window.switchCalendarioTab('mesi')">📆 Calendario</button>
+                <div class="search-box" style="max-width:420px; margin:0 auto 18px;">
+                    <input type="text" id="razze-search" placeholder="Cerca famiglia, descrizione, tradizione o ruolabile..." oninput="window.renderRazzeSezione()">
                 </div>
-                <div id="cal-panel-avvento">
-                    <div class="search-box" style="max-width:420px; margin:0 auto 16px;">
-                        <input type="text" id="cal-avvento-search" placeholder="Filtra giorno, titolo o premio..." oninput="window.renderCalendarioSezione()">
-                    </div>
-                    <div id="cal-avvento-grid" class="cal-avvento-grid"></div>
-                </div>
-                <div id="cal-panel-mesi" style="display:none;">
-                    <div style="display:flex; flex-wrap:wrap; gap:12px; justify-content:center; align-items:end; margin-bottom:16px;">
-                        <div class="form-group" style="margin:0; min-width:140px;">
-                            <label>Anno</label>
-                            <select id="cal-anno-view" onchange="window.onCalAnnoViewChange()"></select>
-                        </div>
-                        <div class="search-box" style="max-width:280px; margin:0; flex:1;">
-                            <input type="text" id="cal-mesi-search" placeholder="Filtra mese..." oninput="window.renderCalendarioSezione()">
-                        </div>
-                    </div>
-                    <div id="cal-mesi-grid" class="cal-mesi-grid"></div>
-                </div>
+                <div id="razze-grid" class="razze-grid"></div>
             </div>
         </section>
 
@@ -813,9 +794,9 @@
                         <h3>🌳 Albero Genealogico</h3>
                         <p>Nodi, foto, legami di sangue e download PNG</p>
                     </div>
-<div class="admin-menu-card" data-admin-view="calendario" onclick="window.apriAdminView('calendario')">
-                        <h3>📅 Calendario</h3>
-                        <p>Avvento dicembre e mesi 2026 (foto, premi, nomi)</p>
+<div class="admin-menu-card" data-admin-view="razze" onclick="window.apriAdminView('razze')">
+                        <h3>🩸 Famiglie</h3>
+                        <p>Crea famiglie, immagini e assegna i membri</p>
                     </div>
 <div class="admin-menu-card" data-admin-view="permessi-gestione" onclick="window.apriAdminView('permessi-gestione')">
                         <h3>🔑 Permessi Gestione</h3>
@@ -876,7 +857,7 @@
                                         <label class="perm-label"><input type="checkbox" class="perm-check" value="saldo" checked> Saldo</label>
                                         <label class="perm-label"><input type="checkbox" class="perm-check" value="calcolo"> Calcolo</label>
                                         <label class="perm-label"><input type="checkbox" class="perm-check" value="inventario" checked> Inventario</label>
-                                        <label class="perm-label"><input type="checkbox" class="perm-check" value="calendario" checked> Calendario</label>
+                                        <label class="perm-label"><input type="checkbox" class="perm-check" value="razze" checked> Famiglie</label>
                                     </div>
                                 </div>
                                 <div class="permessi-group">
@@ -1346,133 +1327,83 @@
                     </div>
                 </div>
 
-                <div id="admin-view-calendario" class="admin-sub-view" style="display: none;">
+                                <div id="admin-view-razze" class="admin-sub-view" style="display: none;">
                     <button class="btn-indietro" onclick="window.tornaAdminMenu()">🔙 Torna alla Dashboard</button>
                     <div class="vamp-card">
-                        <h2>📅 Gestione Calendario</h2>
+                        <h2>🩸 Gestione Famiglie</h2>
                         <p style="font-size:0.75rem; color:var(--text-dim); margin-bottom:16px; line-height:1.5;">
-                            Configura l’<strong style="color:var(--gold-accent);">Avvento</strong> (1–31 dicembre: foto + premio per giorno)
-                            e il <strong style="color:var(--gold-accent);">Calendario mensile</strong> (scegli l’anno da modificare) (nome e una o più foto per mese; freccette se multi-foto).
+                            Crea e modifica le <strong style="color:var(--gold-accent);">famiglie</strong> (nome, immagine, descrizione, tradizione, ruolabile).
+                            Assegna i <strong style="color:var(--gold-accent);">membri</strong> alle famiglie: compariranno nella tab Famiglie per tutti gli utenti con permesso.
                         </p>
-                        <div class="cal-tabs" style="margin-bottom:20px;">
-                            <button type="button" id="adm-cal-tab-avvento" class="cal-tab is-active" onclick="window.switchAdminCalTab('avvento')">🎄 Avvento</button>
-                            <button type="button" id="adm-cal-tab-mesi" class="cal-tab" onclick="window.switchAdminCalTab('mesi')">📆 Mesi</button>
-                        </div>
-                        <div id="adm-cal-avvento">
-                            <h3 style="font-size:0.85rem; color:var(--gold-accent); margin-bottom:14px;">Giorno Avvento</h3>
-                            <div style="display:grid; grid-template-columns: 100px 1fr 1fr; gap:12px; margin-bottom:12px;">
-                                <div class="form-group" style="margin:0;">
-                                    <label>Giorno (1–31)</label>
-                                    <select id="adm-av-giorno">
-                                        <option value="1">1 dicembre</option>
-                                        <option value="2">2 dicembre</option>
-                                        <option value="3">3 dicembre</option>
-                                        <option value="4">4 dicembre</option>
-                                        <option value="5">5 dicembre</option>
-                                        <option value="6">6 dicembre</option>
-                                        <option value="7">7 dicembre</option>
-                                        <option value="8">8 dicembre</option>
-                                        <option value="9">9 dicembre</option>
-                                        <option value="10">10 dicembre</option>
-                                        <option value="11">11 dicembre</option>
-                                        <option value="12">12 dicembre</option>
-                                        <option value="13">13 dicembre</option>
-                                        <option value="14">14 dicembre</option>
-                                        <option value="15">15 dicembre</option>
-                                        <option value="16">16 dicembre</option>
-                                        <option value="17">17 dicembre</option>
-                                        <option value="18">18 dicembre</option>
-                                        <option value="19">19 dicembre</option>
-                                        <option value="20">20 dicembre</option>
-                                        <option value="21">21 dicembre</option>
-                                        <option value="22">22 dicembre</option>
-                                        <option value="23">23 dicembre</option>
-                                        <option value="24">24 dicembre</option>
-                                        <option value="25">25 dicembre</option>
-                                        <option value="26">26 dicembre</option>
-                                        <option value="27">27 dicembre</option>
-                                        <option value="28">28 dicembre</option>
-                                        <option value="29">29 dicembre</option>
-                                        <option value="30">30 dicembre</option>
-                                        <option value="31">31 dicembre</option>
-                                    </select>
-                                </div>
-                                <div class="form-group" style="margin:0;">
-                                    <label>Titolo</label>
-                                    <input type="text" id="adm-av-titolo" placeholder="es. Notte del sangue">
-                                </div>
-                                <div class="form-group" style="margin:0;">
-                                    <label>Premio 🎁</label>
-                                    <input type="text" id="adm-av-premio" placeholder="es. 500 cr / Item speciale">
-                                </div>
+
+                        <h3 style="font-size:0.85rem; color:var(--gold-accent); margin-bottom:14px;">Nuova / Modifica famiglia</h3>
+                        <div style="display:grid; grid-template-columns: 1fr 1fr; gap:12px; margin-bottom:12px;">
+                            <div class="form-group" style="margin:0;">
+                                <label>Nome famiglia</label>
+                                <input type="text" id="adm-razza-nome" placeholder="es. Vampiri, Lycan…">
                             </div>
-                            <div class="form-group">
-                                <label>Foto (URL)</label>
-                                <input type="url" id="adm-av-foto" placeholder="https://...">
-                            </div>
-                            <div class="form-group">
-                                <label>Note</label>
-                                <input type="text" id="adm-av-note" placeholder="Opzionale...">
-                            </div>
-                            <input type="hidden" id="adm-av-edit-id" value="">
-                            <div style="display:flex; gap:12px; flex-wrap:wrap; margin-bottom:20px;">
-                                <button type="button" onclick="window.salvaAvventoGiorno()" style="width:auto; padding:14px 25px;">Salva giorno</button>
-                                <button type="button" onclick="window.resetFormAvvento()" style="width:auto; padding:14px 25px; border-color:#555; color:#888;">Annulla / Nuovo</button>
-                            </div>
-                            <div class="scroll-container" style="max-height:380px;">
-                                <table style="font-size:0.75rem;">
-                                    <thead><tr><th>Giorno</th><th>Foto</th><th>Titolo / Premio</th><th>Note</th><th>Azioni</th></tr></thead>
-                                    <tbody id="adm-cal-avvento-body"></tbody>
-                                </table>
+                            <div class="form-group" style="margin:0;">
+                                <label>Ordine (lista)</label>
+                                <input type="number" id="adm-razza-ordine" value="0" min="0" step="1">
                             </div>
                         </div>
-                        <div id="adm-cal-mesi" style="display:none;">
-                            <h3 id="adm-cal-mesi-title" style="font-size:0.85rem; color:var(--gold-accent); margin-bottom:14px;">Mese</h3>
-                            <div style="display:grid; grid-template-columns: 1fr 1fr 1fr; gap:12px; margin-bottom:12px;">
-                                <div class="form-group" style="margin:0;">
-                                    <label>Anno da modificare</label>
-                                    <select id="adm-cal-anno" onchange="window.onCalAnnoAdminChange()"></select>
-                                </div>
-                                <div class="form-group" style="margin:0;">
-                                    <label>Mese</label>
-                                    <select id="adm-mese-num">
-                                        <option value="1">Gennaio</option><option value="2">Febbraio</option><option value="3">Marzo</option>
-                                        <option value="4">Aprile</option><option value="5">Maggio</option><option value="6">Giugno</option>
-                                        <option value="7">Luglio</option><option value="8">Agosto</option><option value="9">Settembre</option>
-                                        <option value="10">Ottobre</option><option value="11">Novembre</option><option value="12">Dicembre</option>
-                                    </select>
-                                </div>
-                                <div class="form-group" style="margin:0;">
-                                    <label>Nome visualizzato</label>
-                                    <input type="text" id="adm-mese-nome" placeholder="es. Gennaio del Risveglio">
-                                </div>
+                        <div style="display:grid; grid-template-columns: 1fr 1fr; gap:12px; margin-bottom:12px;">
+                            <div class="form-group" style="margin:0;">
+                                <label>Immagine (URL)</label>
+                                <input type="url" id="adm-razza-immagine" placeholder="https://...">
                             </div>
-                            <div style="background:rgba(0,0,0,0.3); border:1px solid rgba(197,160,89,0.2); border-radius:8px; padding:14px; margin-bottom:14px;">
-                                <label style="display:block; margin-bottom:8px; color:var(--gold-dim); font-size:0.7rem;">Foto del mese (una o più — freccette in vista membro)</label>
-                                <div id="adm-mese-foto-lista" style="margin-bottom:10px;"></div>
-                                <div style="display:grid; grid-template-columns: 1fr 1fr auto; gap:10px; align-items:end;">
-                                    <div class="form-group" style="margin:0;">
-                                        <label>URL foto</label>
-                                        <input type="url" id="adm-mese-foto-url" placeholder="https://...">
-                                    </div>
-                                    <div class="form-group" style="margin:0;">
-                                        <label>Didascalia</label>
-                                        <input type="text" id="adm-mese-foto-caption" placeholder="Opzionale">
-                                    </div>
-                                    <button type="button" onclick="window.aggiungiFotoMeseTemp()" style="width:auto; padding:12px 16px;">+ Foto</button>
-                                </div>
+                            <div class="form-group" style="margin:0;">
+                                <label>Ruolabile</label>
+                                <select id="adm-razza-ruolabile">
+                                    <option value="entrambi">Uomo e Donna</option>
+                                    <option value="uomo">Solo Uomo</option>
+                                    <option value="donna">Solo Donna</option>
+                                </select>
                             </div>
-                            <input type="hidden" id="adm-mese-edit-id" value="">
-                            <div style="display:flex; gap:12px; flex-wrap:wrap; margin-bottom:20px;">
-                                <button type="button" onclick="window.salvaMeseCal()" style="width:auto; padding:14px 25px;">Salva mese</button>
-                                <button type="button" onclick="window.resetFormMese()" style="width:auto; padding:14px 25px; border-color:#555; color:#888;">Annulla / Nuovo</button>
+                        </div>
+                        <div class="form-group">
+                            <label>Descrizione</label>
+                            <textarea id="adm-razza-descrizione" rows="3" placeholder="Descrizione della razza…" style="width:100%; padding:14px 20px; background:rgba(10,8,8,0.4); border:1px solid rgba(255,255,255,0.1); color:#fff; font-family:inherit; font-size:0.9rem; resize:vertical; min-height:70px;"></textarea>
+                        </div>
+                        <div class="form-group">
+                            <label>Tradizione</label>
+                            <textarea id="adm-razza-tradizione" rows="3" placeholder="Tradizione, lore e usanze…" style="width:100%; padding:14px 20px; background:rgba(10,8,8,0.4); border:1px solid rgba(255,255,255,0.1); color:#fff; font-family:inherit; font-size:0.9rem; resize:vertical; min-height:70px;"></textarea>
+                        </div>
+                        <input type="hidden" id="adm-razza-edit-id" value="">
+                        <div style="display:flex; gap:12px; flex-wrap:wrap; margin-bottom:24px;">
+                            <button type="button" onclick="window.salvaRazza()" style="width:auto; padding:14px 25px;">Salva famiglia</button>
+                            <button type="button" onclick="window.resetFormRazza()" style="width:auto; padding:14px 25px; border-color:#555; color:#888;">Annulla / Nuovo</button>
+                        </div>
+
+                        <h3 style="font-size:0.85rem; color:var(--gold-accent); margin-bottom:10px;">Famiglie esistenti</h3>
+                        <div class="scroll-container" style="max-height:280px; margin-bottom:28px;">
+                            <table style="font-size:0.75rem;">
+                                <thead><tr><th>Img</th><th>Nome</th><th>Membri</th><th>Ordine</th><th>Azioni</th></tr></thead>
+                                <tbody id="adm-razze-body"></tbody>
+                            </table>
+                        </div>
+
+                        <h3 style="font-size:0.85rem; color:var(--gold-accent); margin-bottom:14px;">Assegna membro a una famiglia</h3>
+                        <div style="display:grid; grid-template-columns: 1fr 1fr auto; gap:12px; align-items:end; margin-bottom:16px;">
+                            <div class="form-group" style="margin:0;">
+                                <label>Famiglia</label>
+                                <select id="adm-razze-assegna-razza">
+                                    <option value="">— Seleziona famiglia —</option>
+                                </select>
                             </div>
-                            <div class="scroll-container" style="max-height:380px;">
-                                <table style="font-size:0.75rem;">
-                                    <thead><tr><th>Mese</th><th>Nome</th><th>Anteprime</th><th>N° foto</th><th>Azioni</th></tr></thead>
-                                    <tbody id="adm-cal-mesi-body"></tbody>
-                                </table>
+                            <div class="form-group" style="margin:0;">
+                                <label>Membro</label>
+                                <select id="adm-razze-assegna-membro">
+                                    <option value="">— Seleziona membro —</option>
+                                </select>
                             </div>
+                            <button type="button" onclick="window.assegnaMembroARazza()" style="width:auto; padding:12px 18px;">Assegna</button>
+                        </div>
+                        <div class="scroll-container" style="max-height:260px;">
+                            <table style="font-size:0.75rem;">
+                                <thead><tr><th>Membro</th><th>Grado</th><th>Razza</th><th>Azioni</th></tr></thead>
+                                <tbody id="adm-razze-assegnazioni-body"></tbody>
+                            </table>
                         </div>
                     </div>
                 </div>
@@ -1546,7 +1477,7 @@
                                     <label class="perm-label"><input type="checkbox" class="perm-admin-check" value="inventario"> Gestione Inventario</label>
                                     <label class="perm-label"><input type="checkbox" class="perm-admin-check" value="materiali"> Tipi Materiale</label>
                                     <label class="perm-label"><input type="checkbox" class="perm-admin-check" value="albero"> Albero Genealogico</label>
-                                    <label class="perm-label"><input type="checkbox" class="perm-admin-check" value="calendario"> Calendario</label>
+                                    <label class="perm-label"><input type="checkbox" class="perm-admin-check" value="razze"> Famiglie</label>
                                 </div>
                             </div>
                         </div>
@@ -1598,8 +1529,7 @@
                                     <option value="documenti">Documenti / Link</option>
                                     <option value="tipi_materiale">Tipi Materiale</option>
                                     <option value="albero_genealogico">Albero Genealogico</option>
-                                    <option value="calendario_avvento">Calendario Avvento</option>
-                                    <option value="calendario_mesi">Calendario Mesi</option>
+                                    <option value="razze">Famiglie</option>
                                     <option value="richieste_membri">Richieste Membri</option>
                                     <option value="item_images">Immagini Inventario</option>
                                 </select>
@@ -1706,8 +1636,8 @@
             if (viewId === 'richieste-membri') {
                 if (typeof window.renderAdminRichiesteMembri === 'function') window.renderAdminRichiesteMembri();
             }
-            if (viewId === 'calendario') {
-                if (typeof window.renderAdminCalendario === 'function') window.renderAdminCalendario();
+            if (viewId === 'razze') {
+                if (typeof window.renderAdminRazze === 'function') window.renderAdminRazze();
             }
         };
 
