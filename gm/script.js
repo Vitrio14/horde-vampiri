@@ -2188,7 +2188,10 @@ function openGoogleDoc(link) {
     openDocumentViewer(link);
 }
 
-/** Viewer quasi a schermo intero per Google Docs, PDF, immagini e data-URL */
+/** Viewer quasi a schermo intero per Google Docs, PDF, immagini e data-URL.
+ *  Immagini grandi: non vengono tagliate — si adattano in larghezza e
+ *  se sono più alte del viewport si può scorrere per vederle per intero.
+ */
 function openDocumentViewer(link) {
     if (!link) return;
 
@@ -2207,22 +2210,22 @@ function openDocumentViewer(link) {
     const isImage = /\.(png|jpe?g|gif|webp|bmp|svg)(\?|$)/i.test(src) ||
                     src.startsWith('data:image/');
 
+    // Escape minimo per attributo src (data URL e URL normali)
+    const safeSrc = String(src)
+        .replace(/&/g, '&amp;')
+        .replace(/"/g, '&quot;')
+        .replace(/</g, '&lt;');
+
     let contentHtml = '';
     if (isImage) {
-        contentHtml = `
-            <div style="width:100%;height:85vh;display:flex;align-items:center;justify-content:center;background:#0a0a0a;overflow:auto;">
-                <img src="${src}" style="max-width:100%;max-height:100%;object-fit:contain;border-radius:8px;" alt="Anteprima">
-            </div>
-        `;
+        contentHtml =
+            '<div class="doc-viewer-wrap">' +
+            '<img class="doc-viewer-img" src="' + safeSrc + '" alt="Anteprima documento" loading="eager">' +
+            '</div>';
     } else {
-        contentHtml = `
-            <iframe
-                src="${src}"
-                style="width:100%;height:85vh;border:none;background:#fff;border-radius:8px;"
-                allow="fullscreen"
-                allowfullscreen
-            ></iframe>
-        `;
+        contentHtml =
+            '<iframe class="doc-viewer-iframe" src="' + safeSrc + '" ' +
+            'allow="fullscreen" allowfullscreen title="Documento"></iframe>';
     }
 
     Swal.fire({
@@ -2236,12 +2239,22 @@ function openDocumentViewer(link) {
             popup: 'swal-fullscreen-viewer',
             htmlContainer: 'swal-viewer-html'
         },
-        didOpen: () => {
+        didOpen: function () {
             const popup = document.querySelector('.swal-fullscreen-viewer');
             if (popup) {
                 popup.style.border = '1px solid rgba(197,160,89,0.25)';
                 popup.style.borderRadius = '12px';
-                popup.style.overflow = 'hidden';
+            }
+            // Dopo il load: scroll in alto così si vede sempre l'inizio del documento
+            const img = popup && popup.querySelector('.doc-viewer-img');
+            const wrap = popup && popup.querySelector('.doc-viewer-wrap');
+            if (img && wrap) {
+                const settle = function () {
+                    wrap.scrollTop = 0;
+                    wrap.scrollLeft = 0;
+                };
+                if (img.complete) settle();
+                else img.addEventListener('load', settle, { once: true });
             }
         }
     });
