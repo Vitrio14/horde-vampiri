@@ -248,10 +248,6 @@
         <button onclick="showSection('clan')">Clan</button>
         <button onclick="showSection('frammenti')">Frammenti</button>
         <button onclick="showSection('docs')">Documenti</button>
-        <button onclick="showSection('notes')">Note</button>
-        <button onclick="showSection('media')">Archivio</button>
-        <button onclick="showSection('commands')">Comandi RP</button>
-        <button onclick="showSection('admin')">Admin</button>
 
         <button class="logout" onclick="logout()">
             Esci
@@ -421,63 +417,7 @@
 
         </section>
 
-        <section id="notes" class="panel">
-
-            <div class="topbar">
-                <h1>Note</h1>
-                <div style="display: flex; gap: 10px;">
-                    <button onclick="addFolder('notes')" style="background: linear-gradient(135deg, #f59e0b, #d97706);">+ Nuova Cartella</button>
-                    <button onclick="addNote()">+ Nuova Nota</button>
-                </div>
-            </div>
-
-            <div id="notes-list" class="grid grid-compact"></div>
-
-        </section>
-
-        <section id="media" class="panel">
-
-            <div class="topbar">
-                <h1>Archivio Utilità</h1>
-                <div style="display: flex; gap: 10px;">
-                    <button onclick="addFolder('media')" style="background: linear-gradient(135deg, #f59e0b, #d97706);">+ Nuova Cartella</button>
-                    <button onclick="addMedia()">+ Aggiungi</button>
-                </div>
-            </div>
-
-            <div id="media-list" class="grid grid-compact"></div>
-
-        </section>
-
-        <section id="commands" class="panel">
-
-            <div class="topbar">
-                <h1>Comandi RP</h1>
-                <div style="display: flex; gap: 10px;">
-                    <button onclick="addFolder('commands')" style="background: linear-gradient(135deg, #f59e0b, #d97706);">+ Nuova Cartella</button>
-                    <button onclick="addCommand()">+ Aggiungi</button>
-                </div>
-            </div>
-
-            <div id="commands-list" class="grid grid-compact"></div>
-
-        </section>
-
-        <section id="admin" class="panel">
-
-            <div class="topbar">
-                <h1>Admin Panel</h1>
-                <div style="display: flex; gap: 10px;">
-                    <button onclick="addFolder('admin')" style="background: linear-gradient(135deg, #f59e0b, #d97706);">+ Nuova Cartella</button>
-                    <button onclick="saveGlobalLink()">+ Nuovo Link</button>
-                </div>
-            </div>
-
-            <div id="global-links" class="grid grid-compact"></div>
-
-        </section>
-
-    </main>
+</main>
 
 </div>
 
